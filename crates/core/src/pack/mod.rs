@@ -1,3 +1,4 @@
+pub mod markdown;
 pub mod orchestrator;
 pub mod xml;
 
