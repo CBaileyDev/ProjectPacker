@@ -1644,8 +1644,8 @@ fn rules() -> &'static [Rule] {
     RULES.get_or_init(|| {
         vec![
             Rule { name: "aws-access-key", pattern: Regex::new(r"\bAKIA[0-9A-Z]{16}\b").unwrap() },
-            Rule { name: "aws-secret-key", pattern: Regex::new(r"(?i)aws(.{0,20})?(secret|access)?(.{0,20})?[=:][\s\"']*[A-Za-z0-9/+=]{40}").unwrap() },
-            Rule { name: "github-token", pattern: Regex::new(r"\bghp_[A-Za-z0-9]{36}\b").unwrap() },
+            Rule { name: "aws-secret-key", pattern: Regex::new(r#"(?i)aws(.{0,20})?(secret|access)?(.{0,20})?[=:][\s"']*[A-Za-z0-9/+=]{40}"#).unwrap() },
+            Rule { name: "github-token", pattern: Regex::new(r"\bghp_[A-Za-z0-9]{36,}\b").unwrap() },
             Rule { name: "github-fine-grained-token", pattern: Regex::new(r"\bgithub_pat_[A-Za-z0-9_]{82}\b").unwrap() },
             Rule { name: "openai-key", pattern: Regex::new(r"\bsk-(?:proj-)?[A-Za-z0-9_\-]{20,}\b").unwrap() },
             Rule { name: "anthropic-key", pattern: Regex::new(r"\bsk-ant-(?:api03-)?[A-Za-z0-9_\-]{20,}\b").unwrap() },
