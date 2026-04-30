@@ -1,0 +1,14 @@
+{
+  "name": "projectpacker",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "bindings": "cargo run -p projectpacker-app --bin emit-bindings"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

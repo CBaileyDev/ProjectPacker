@@ -1,0 +1,38 @@
+{
+  "name": "projectpacker-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2",
+    "@tauri-apps/plugin-clipboard-manager": "^2",
+    "@tauri-apps/plugin-fs": "^2",
+    "@tauri-apps/plugin-shell": "^2",
+    "react": "^19",
+    "react-dom": "^19",
+    "react-router-dom": "^7",
+    "zustand": "^5"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@testing-library/react": "^16",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^4",
+    "happy-dom": "^15",
+    "tailwindcss": "^4",
+    "@tailwindcss/postcss": "^4",
+    "typescript": "^5.6",
+    "vite": "^6",
+    "vitest": "^3"
+  }
+}

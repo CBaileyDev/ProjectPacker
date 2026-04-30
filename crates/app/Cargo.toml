@@ -1,0 +1,38 @@
+[package]
+name = "projectpacker-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+default-run = "projectpacker-app"
+
+[lib]
+name = "projectpacker_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+projectpacker-core = { path = "../core" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+specta.workspace = true
+specta-typescript.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+tauri = { version = "2", features = [] }
+tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-shell = "2"
+arboard = "3"
+tracing-appender = "0.2"
+dashmap = "6"
+parking_lot = "0.12"

@@ -1,0 +1,26 @@
+[workspace]
+resolver = "2"
+members = ["crates/core", "crates/app"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+authors = ["CBaileyDev"]
+repository = "https://github.com/CBaileyDev/ProjectPacker"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "fs", "sync", "time"] }
+specta = { version = "=2.0.0-rc.22", features = ["derive"] }
+specta-typescript = "=0.0.9"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1
