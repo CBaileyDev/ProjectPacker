@@ -13,7 +13,7 @@ tokio.workspace = true
 specta.workspace = true
 
 ignore = "0.4"
-gix = { version = "0.66", default-features = false, features = ["blocking-network-client", "blocking-http-transport-reqwest", "max-performance-safe"] }
+gix = { version = "0.66", default-features = false, features = ["blocking-network-client", "blocking-http-transport-reqwest", "max-performance-safe", "worktree-mutation"] }
 tiktoken-rs = "0.6"
 tree-sitter = "0.25"
 tree-sitter-rust = "0.24"
@@ -27,10 +27,10 @@ sha2 = "0.10"
 uuid = { version = "1", features = ["v7"] }
 encoding_rs = "0.8"
 walkdir = "2"
+tempfile = "3"
 
 [dev-dependencies]
 insta = { version = "1", features = ["yaml"] }
 proptest = "1"
-tempfile = "3"
 tokio = { workspace = true, features = ["rt", "macros"] }
 serde_json = { workspace = true }
