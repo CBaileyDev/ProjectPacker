@@ -4,6 +4,20 @@ All notable changes to ProjectPacker are documented in this file. The format fol
 
 ## [Unreleased]
 
+### Added
+- `PackFormat` enum (`Xml | Markdown | PlainText`) with camelCase JSON serialization and TypeScript bindings.
+- `core::pack::markdown` — Markdown emitter producing fenced code blocks with directory structure and summary table.
+- `core::pack::plain` — Plain-text emitter using `=== path ===` separator format.
+- `core::tree_sitter_compress::remove_comments` — tree-sitter-based comment stripper for Rust, Python, JavaScript, TypeScript with blank-line collapsing.
+- AI context window compatibility table in the frontend showing which major models (GPT-4o, Claude, Gemini, Grok, o1/o3, DeepSeek, Llama) can handle the packed token count.
+- Format selector (XML / Markdown / Plain Text) with format-aware copy button labels.
+- Full options panel: compress skeleton, remove comments, respect gitignore, secret scan, count tokens, max file size.
+
+### Changed
+- `PackResult.xml` renamed to `PackResult.output` throughout Rust core and TypeScript bindings.
+- Frontend redesigned as a single-screen packing tool; removed multi-tab routing (Bridge, Home, Result routes deleted, `react-router-dom` removed).
+- Orchestrator now branches on `PackFormat` to dispatch the correct emitter.
+
 ## [0.1.0] - 2026-04-30
 
 ### Added

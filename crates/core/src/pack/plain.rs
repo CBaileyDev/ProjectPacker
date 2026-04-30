@@ -1,5 +1,5 @@
 use crate::pack::FileEntry;
-use crate::types::{PackFormat, PackOptions, PackStats};
+use crate::types::{PackOptions, PackStats};
 
 pub fn render(
     root_label: &str,
