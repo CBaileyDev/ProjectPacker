@@ -1,4 +1,6 @@
-//! ProjectPacker Tauri shell. Will own commands, events, settings.
+//! ProjectPacker Tauri shell.
+
+pub mod settings;
 
 pub fn run() {
     tauri::Builder::default()
