@@ -553,22 +553,27 @@ Expected: `vite v6.x.x building for production... ✓ built in …ms`. The outpu
     "longDescription": "ProjectPacker turns a folder or GitHub repo into a single self-describing XML file optimized for a Grok → Claude Code two-AI workflow.",
     "windows": {
       "wix": { "language": "en-US" },
-      "nsis": { "installMode": "perUser" }
+      "nsis": { "installMode": "currentUser" }
     }
   }
 }
 ```
 
-- [ ] **Step 2: Create a placeholder PNG icon**
+- [ ] **Step 2: Create placeholder icon files**
 
-A 1024×1024 transparent black square is fine for v0.1.0. From PowerShell:
+Tauri 2's `tauri-build` always generates a Windows resource file using `icon.ico`, *even with `--no-bundle`*. So both PNG and ICO are required. From PowerShell:
 
 ```powershell
-$bytes = [Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAFklEQVR42mNk+M9Qz0AEYBxVSF+FAEy3AYDpkxrnAAAAAElFTkSuQmCC')
-[IO.File]::WriteAllBytes("crates/app/icons/icon.png", $bytes)
+# Tiny placeholder PNG (4×4)
+$pngBytes = [Convert]::FromBase64String('iVBORw0KGgoAAAANSUhEUgAAAAQAAAAECAYAAACp8Z5+AAAAFklEQVR42mNk+M9Qz0AEYBxVSF+FAEy3AYDpkxrnAAAAAElFTkSuQmCC')
+[IO.File]::WriteAllBytes("crates/app/icons/icon.png", $pngBytes)
+
+# Minimal 1×1 ICO (76 bytes) — required by tauri-build's Windows resource step
+$icoBytes = [Convert]::FromBase64String('AAABAAEAAQEAAAEAGAAwAAAAFgAAACgAAAABAAAAAgAAAAEAGAAAAAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==')
+[IO.File]::WriteAllBytes("crates/app/icons/icon.ico", $icoBytes)
 ```
 
-(A real icon comes later. The bundler just needs *some* valid PNG.)
+A real icon set comes later. The bundler just needs valid PNG + ICO files.
 
 - [ ] **Step 3: Create the workspace `pnpm-workspace.yaml`** (lets pnpm find the frontend)
 
