@@ -6,3 +6,4 @@ pub mod ignore;
 pub mod walker;
 pub mod tokens;
 pub mod secrets;
+pub mod tree_sitter_compress;
