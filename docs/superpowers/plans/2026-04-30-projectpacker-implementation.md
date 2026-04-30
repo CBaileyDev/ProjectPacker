@@ -890,7 +890,7 @@ pub enum ProgressEvent {
     FileSkipped { path: String, reason: SkipReason },
     Tokenizing { progress_pct: u8 },
     SecretScanning { progress_pct: u8 },
-    SecretHit { path: String, kind: String, line: u32 },
+    SecretHit { path: String, secret_kind: String, line: u32 },
     Compressing { progress_pct: u8 },
     BuildingXml,
     Done { stats: PackStats },
@@ -1239,17 +1239,20 @@ impl IgnoreMatcher {
     }
 
     pub fn is_ignored(&self, path: &Path, is_dir: bool) -> bool {
-        let m = self.builtin.matched(path, is_dir);
+        // matched_path_or_any_parents climbs parents — needed because
+        // matched() alone doesn't fire on "node_modules/foo.js" when the
+        // pattern is "node_modules/".
+        let m = self.builtin.matched_path_or_any_parents(path, is_dir);
         if m.is_ignore() { return true; }
 
         if let Some(p) = &self.project {
-            let m = p.matched(path, is_dir);
+            let m = p.matched_path_or_any_parents(path, is_dir);
             if m.is_ignore() { return true; }
             if m.is_whitelist() { return false; }
         }
 
         if let Some(c) = &self.custom {
-            let m = c.matched(path, is_dir);
+            let m = c.matched_path_or_any_parents(path, is_dir);
             if m.is_ignore() { return true; }
         }
 
@@ -1377,7 +1380,7 @@ Create `crates/core/src/walker.rs`:
 ```rust
 use crate::ignore::IgnoreMatcher;
 use crate::types::{FileFound, SkipReason};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use walkdir::WalkDir;
 
 #[derive(Debug, Clone)]
@@ -1443,8 +1446,6 @@ fn is_binary(path: &Path) -> bool {
     }
     false
 }
-
-pub fn _root_path_marker(_: PathBuf) {}
 
 #[cfg(test)]
 mod tests {
@@ -2852,7 +2853,7 @@ pub fn pack(
         for e in &entries {
             for hit in secrets::scan(&e.content) {
                 secrets_found += 1;
-                let _ = tx.send(ProgressEvent::SecretHit { path: e.path.clone(), kind: hit.kind, line: hit.line });
+                let _ = tx.send(ProgressEvent::SecretHit { path: e.path.clone(), secret_kind: hit.kind, line: hit.line });
             }
         }
     }
