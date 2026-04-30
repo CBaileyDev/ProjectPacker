@@ -8,3 +8,4 @@ pub mod tokens;
 pub mod secrets;
 pub mod tree_sitter_compress;
 pub mod github;
+pub mod protocol;
