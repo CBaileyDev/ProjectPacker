@@ -29,6 +29,7 @@ const defaultOptions: PackOptions = {
   respectGitignore: true,
   customIgnorePatterns: [],
   protocolVersion: "grok-to-cc-v1",
+  format: "xml",
 };
 
 export const useApp = create<AppState>((set) => ({

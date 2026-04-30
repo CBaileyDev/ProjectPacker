@@ -2,6 +2,7 @@ import * as bindings from "../bindings";
 
 export const api = bindings;
 export type {
+  PackFormat,
   PackOptions,
   PackResult,
   PackStats,
