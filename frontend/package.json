@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "bindings": "cd .. && cargo run -p projectpacker-app --bin emit-bindings"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
