@@ -9,3 +9,4 @@ pub mod secrets;
 pub mod tree_sitter_compress;
 pub mod github;
 pub mod protocol;
+pub mod pack;
