@@ -77,7 +77,10 @@ pub fn save(path: &PathBuf, settings: &Settings) -> std::io::Result<()> {
 
 fn chrono_isoish_now() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     format!("{secs}")
 }
 
@@ -108,7 +111,11 @@ mod tests {
         let d = tempdir().unwrap();
         let path = d.path().join("settings.json");
         let mut s = Settings::defaults();
-        s.recents.push(Recent { label: "x".into(), target: "/tmp/x".into(), last_used_iso: "now".into() });
+        s.recents.push(Recent {
+            label: "x".into(),
+            target: "/tmp/x".into(),
+            last_used_iso: "now".into(),
+        });
         save(&path, &s).unwrap();
         let back = load_or_default(&path);
         assert_eq!(back.recents.len(), 1);
@@ -122,6 +129,11 @@ mod tests {
         std::fs::write(&path, "this is not json").unwrap();
         let s = load_or_default(&path);
         assert_eq!(s.default_protocol_version, "grok-to-cc-v1");
-        assert!(!path.exists() || std::fs::read_to_string(&path).unwrap().contains("\"theme\""));
+        assert!(
+            !path.exists()
+                || std::fs::read_to_string(&path)
+                    .unwrap()
+                    .contains("\"theme\"")
+        );
     }
 }

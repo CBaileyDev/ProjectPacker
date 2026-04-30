@@ -11,11 +11,9 @@ pub fn count(model: &str, text: &str) -> CoreResult<u32> {
 
 fn encoder(model: &str) -> CoreResult<&'static CoreBPE> {
     match model {
-        "gpt-4o-mini" | "gpt-4o" | "gpt-4" => {
-            Ok(GPT4O_MINI.get_or_init(|| {
-                tiktoken_rs::o200k_base().expect("o200k_base encoder must initialize")
-            }))
-        }
+        "gpt-4o-mini" | "gpt-4o" | "gpt-4" => Ok(GPT4O_MINI.get_or_init(|| {
+            tiktoken_rs::o200k_base().expect("o200k_base encoder must initialize")
+        })),
         _ => Err(CoreError::TokenizerUnavailable(model.into())),
     }
 }

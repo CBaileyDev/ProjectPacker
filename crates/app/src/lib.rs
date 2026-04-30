@@ -30,7 +30,10 @@ pub fn run() {
             commands::save_to_file,
         ])
         .setup(|app| {
-            tracing::info!("ProjectPacker started, version {}", env!("CARGO_PKG_VERSION"));
+            tracing::info!(
+                "ProjectPacker started, version {}",
+                env!("CARGO_PKG_VERSION")
+            );
             let _ = app;
             std::panic::set_hook(Box::new(|info| {
                 tracing::error!("PANIC in app process: {info}");

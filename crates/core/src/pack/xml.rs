@@ -7,11 +7,15 @@ pub struct XmlBuilder {
 }
 
 impl Default for XmlBuilder {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl XmlBuilder {
-    pub fn new() -> Self { Self { out: String::new() } }
+    pub fn new() -> Self {
+        Self { out: String::new() }
+    }
 
     pub fn open_repository(&mut self) -> &mut Self {
         self.out.push_str("<repository>\n");
@@ -25,7 +29,9 @@ impl XmlBuilder {
 
     pub fn raw_block(&mut self, body: &str) -> &mut Self {
         self.out.push_str(body);
-        if !body.ends_with('\n') { self.out.push('\n'); }
+        if !body.ends_with('\n') {
+            self.out.push('\n');
+        }
         self
     }
 
@@ -35,7 +41,9 @@ impl XmlBuilder {
         let _ = writeln!(self.out, "  files_included: {}", stats.files_included);
         let _ = writeln!(self.out, "  files_skipped: {}", stats.files_skipped);
         let _ = writeln!(self.out, "  bytes_total: {}", stats.bytes_total);
-        if let Some(t) = stats.tokens_total { let _ = writeln!(self.out, "  tokens_total: {t}"); }
+        if let Some(t) = stats.tokens_total {
+            let _ = writeln!(self.out, "  tokens_total: {t}");
+        }
         let _ = writeln!(self.out, "  secrets_found: {}", stats.secrets_found);
         let _ = writeln!(self.out, "</file_summary>");
         self
@@ -43,7 +51,10 @@ impl XmlBuilder {
 
     pub fn directory_structure(&mut self, paths: &[String]) -> &mut Self {
         self.out.push_str("<directory_structure>\n");
-        for p in paths { self.out.push_str(p); self.out.push('\n'); }
+        for p in paths {
+            self.out.push_str(p);
+            self.out.push('\n');
+        }
         self.out.push_str("</directory_structure>\n");
         self
     }
@@ -62,7 +73,9 @@ impl XmlBuilder {
                 f.hash
             );
             self.out.push_str(&escape_text(&f.content));
-            if !f.content.ends_with('\n') { self.out.push('\n'); }
+            if !f.content.ends_with('\n') {
+                self.out.push('\n');
+            }
             self.out.push_str("</file>\n");
         }
         self.out.push_str("</files>\n");
@@ -72,20 +85,29 @@ impl XmlBuilder {
     pub fn git_logs(&mut self, body: &str) -> &mut Self {
         self.out.push_str("<git_logs>\n");
         self.out.push_str(&escape_text(body));
-        if !body.ends_with('\n') { self.out.push('\n'); }
+        if !body.ends_with('\n') {
+            self.out.push('\n');
+        }
         self.out.push_str("</git_logs>\n");
         self
     }
 
-    pub fn finish(self) -> String { self.out }
+    pub fn finish(self) -> String {
+        self.out
+    }
 }
 
 fn escape_attr(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 fn escape_text(s: &str) -> String {
-    s.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;")
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
 }
 
 #[cfg(test)]
@@ -94,7 +116,15 @@ mod tests {
     use crate::types::PackStats;
 
     fn empty_stats() -> PackStats {
-        PackStats { files_total: 0, files_included: 0, files_skipped: 0, bytes_total: 0, tokens_total: None, secrets_found: 0, duration_ms: 0 }
+        PackStats {
+            files_total: 0,
+            files_included: 0,
+            files_skipped: 0,
+            bytes_total: 0,
+            tokens_total: None,
+            secrets_found: 0,
+            duration_ms: 0,
+        }
     }
 
     #[test]
@@ -108,7 +138,13 @@ mod tests {
 
     #[test]
     fn escapes_attribute_quotes() {
-        let entry = FileEntry { path: r#"a"b.txt"#.into(), content: "hi".into(), bytes: 2, tokens: None, hash: "abc".into() };
+        let entry = FileEntry {
+            path: r#"a"b.txt"#.into(),
+            content: "hi".into(),
+            bytes: 2,
+            tokens: None,
+            hash: "abc".into(),
+        };
         let mut b = XmlBuilder::new();
         b.files(&[entry]);
         let s = b.finish();
@@ -117,7 +153,13 @@ mod tests {
 
     #[test]
     fn escapes_text_content_lt_gt_amp() {
-        let entry = FileEntry { path: "a.txt".into(), content: "<x> & </x>".into(), bytes: 11, tokens: None, hash: "abc".into() };
+        let entry = FileEntry {
+            path: "a.txt".into(),
+            content: "<x> & </x>".into(),
+            bytes: 11,
+            tokens: None,
+            hash: "abc".into(),
+        };
         let mut b = XmlBuilder::new();
         b.files(&[entry]);
         let s = b.finish();
@@ -127,7 +169,15 @@ mod tests {
     #[test]
     fn file_summary_emits_stats_lines() {
         let mut b = XmlBuilder::new();
-        let stats = PackStats { files_total: 5, files_included: 4, files_skipped: 1, bytes_total: 1024, tokens_total: Some(200), secrets_found: 0, duration_ms: 100 };
+        let stats = PackStats {
+            files_total: 5,
+            files_included: 4,
+            files_skipped: 1,
+            bytes_total: 1024,
+            tokens_total: Some(200),
+            secrets_found: 0,
+            duration_ms: 100,
+        };
         b.file_summary(&stats);
         let s = b.finish();
         assert!(s.contains("files_total: 5"));

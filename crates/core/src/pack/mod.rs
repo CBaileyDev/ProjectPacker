@@ -1,5 +1,5 @@
-pub mod xml;
 pub mod orchestrator;
+pub mod xml;
 
 pub use orchestrator::{pack, PackEvent};
 

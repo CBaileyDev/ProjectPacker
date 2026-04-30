@@ -16,7 +16,11 @@ pub enum CoreError {
     WalkFailed(String),
 
     #[error("io error reading {path}: {source}")]
-    FileIo { path: PathBuf, #[source] source: std::io::Error },
+    FileIo {
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
 
     #[error("xml emission failed: {0}")]
     XmlWrite(String),
@@ -54,7 +58,9 @@ mod tests {
 
     #[test]
     fn plan_invalid_includes_errors() {
-        let e = CoreError::PlanInvalid { errors: vec!["missing Summary".into(), "no rationale on Step 2".into()] };
+        let e = CoreError::PlanInvalid {
+            errors: vec!["missing Summary".into(), "no rationale on Step 2".into()],
+        };
         let s = e.to_string();
         assert!(s.contains("missing Summary"));
         assert!(s.contains("no rationale on Step 2"));

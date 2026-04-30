@@ -117,7 +117,8 @@ mod tests {
 
     #[test]
     fn rust_skeleton_keeps_signatures_drops_bodies() {
-        let src = "fn add(a: i32, b: i32) -> i32 { a + b }\nfn sub(a: i32, b: i32) -> i32 { a - b }\n";
+        let src =
+            "fn add(a: i32, b: i32) -> i32 { a + b }\nfn sub(a: i32, b: i32) -> i32 { a - b }\n";
         let out = compress(src, Lang::Rust);
         assert!(out.contains("fn add(a: i32, b: i32) -> i32"));
         assert!(out.contains("fn sub(a: i32, b: i32) -> i32"));

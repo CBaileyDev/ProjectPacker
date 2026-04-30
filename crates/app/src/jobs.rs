@@ -11,15 +11,21 @@ pub struct JobRegistry {
 }
 
 impl JobRegistry {
-    pub fn new() -> Self { Self::default() }
+    pub fn new() -> Self {
+        Self::default()
+    }
 
     pub fn register(&self, job_id: &str, handle: JoinHandle<()>) {
-        self.handles.insert(job_id.to_string(), Arc::new(Mutex::new(Some(handle))));
+        self.handles
+            .insert(job_id.to_string(), Arc::new(Mutex::new(Some(handle))));
     }
 
     pub fn cancel(&self, job_id: &str) -> bool {
         if let Some(entry) = self.handles.get(job_id) {
-            if let Some(h) = entry.lock().take() { h.abort(); return true; }
+            if let Some(h) = entry.lock().take() {
+                h.abort();
+                return true;
+            }
         }
         false
     }

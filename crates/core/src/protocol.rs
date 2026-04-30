@@ -4,8 +4,9 @@ const V1: &str = include_str!("../../../docs/protocol/grok-to-cc-v1.md");
 
 pub fn block_for_pack(goal: &str, version: &str) -> CoreResult<String> {
     let template = template_for(version)?;
-    let body = extract_section(template, "PACK_PROTOCOL_BLOCK")
-        .ok_or_else(|| CoreError::Internal(format!("template {version} missing PACK_PROTOCOL_BLOCK")))?;
+    let body = extract_section(template, "PACK_PROTOCOL_BLOCK").ok_or_else(|| {
+        CoreError::Internal(format!("template {version} missing PACK_PROTOCOL_BLOCK"))
+    })?;
     let mut out = String::new();
     out.push_str(&format!("<protocol version=\"{version}\">\n"));
     out.push_str(body);
@@ -18,8 +19,9 @@ pub fn block_for_pack(goal: &str, version: &str) -> CoreResult<String> {
 
 pub fn claude_code_prompt(version: &str) -> CoreResult<String> {
     let template = template_for(version)?;
-    let body = extract_section(template, "CLAUDE_CODE_PROMPT")
-        .ok_or_else(|| CoreError::Internal(format!("template {version} missing CLAUDE_CODE_PROMPT")))?;
+    let body = extract_section(template, "CLAUDE_CODE_PROMPT").ok_or_else(|| {
+        CoreError::Internal(format!("template {version} missing CLAUDE_CODE_PROMPT"))
+    })?;
     Ok(body.to_string())
 }
 
@@ -32,7 +34,9 @@ pub fn build_combined_prompt(plan_md: &str, version: &str) -> CoreResult<String>
 fn template_for(version: &str) -> CoreResult<&'static str> {
     match version {
         "grok-to-cc-v1" => Ok(V1),
-        other => Err(CoreError::Internal(format!("unknown protocol version: {other}"))),
+        other => Err(CoreError::Internal(format!(
+            "unknown protocol version: {other}"
+        ))),
     }
 }
 
@@ -67,7 +71,9 @@ const VALID_ACTIONS: &[&str] = &["edit", "create", "delete", "rename", "run"];
 
 pub fn validate_plan(md: &str, version: &str) -> CoreResult<PlanValidation> {
     if version != "grok-to-cc-v1" {
-        return Err(CoreError::Internal(format!("unknown protocol version: {version}")));
+        return Err(CoreError::Internal(format!(
+            "unknown protocol version: {version}"
+        )));
     }
     let mut errors = Vec::new();
 
@@ -79,7 +85,8 @@ pub fn validate_plan(md: &str, version: &str) -> CoreResult<PlanValidation> {
                 message: format!("Missing section: ### {name}"),
             }),
             Some(&pos) => {
-                if let Some((prev_name, &prev_pos)) = REQUIRED_SECTIONS.iter()
+                if let Some((prev_name, &prev_pos)) = REQUIRED_SECTIONS
+                    .iter()
                     .take(i)
                     .filter_map(|n| section_positions.get(*n).map(|p| (*n, p)))
                     .next_back()
@@ -111,7 +118,10 @@ pub fn validate_plan(md: &str, version: &str) -> CoreResult<PlanValidation> {
         }
     }
 
-    Ok(PlanValidation { ok: errors.is_empty(), errors })
+    Ok(PlanValidation {
+        ok: errors.is_empty(),
+        errors,
+    })
 }
 
 fn find_sections(md: &str) -> std::collections::HashMap<&'static str, usize> {
@@ -132,9 +142,14 @@ fn find_sections(md: &str) -> std::collections::HashMap<&'static str, usize> {
     out
 }
 
-fn section_text<'a>(md: &'a str, positions: &std::collections::HashMap<&'static str, usize>, name: &str) -> Option<&'a str> {
+fn section_text<'a>(
+    md: &'a str,
+    positions: &std::collections::HashMap<&'static str, usize>,
+    name: &str,
+) -> Option<&'a str> {
     let start = *positions.get(name)?;
-    let next = REQUIRED_SECTIONS.iter()
+    let next = REQUIRED_SECTIONS
+        .iter()
         .filter_map(|n| positions.get(*n).copied())
         .filter(|&p| p > start)
         .min()
@@ -175,26 +190,46 @@ fn check_step(num: u32, block: &str, errors: &mut Vec<PlanError>) {
     let has_details = block.contains("**Details:**");
 
     if action.is_none() {
-        errors.push(PlanError { code: "missing_field".into(), message: format!("Step {num}: missing Action") });
+        errors.push(PlanError {
+            code: "missing_field".into(),
+            message: format!("Step {num}: missing Action"),
+        });
     } else if let Some(a) = action {
         let a_norm = a.trim().to_lowercase();
         if !VALID_ACTIONS.iter().any(|v| **v == a_norm) {
-            errors.push(PlanError { code: "invalid_action".into(), message: format!("Step {num}: invalid Action '{a}' (expected edit|create|delete|rename|run)") });
+            errors.push(PlanError {
+                code: "invalid_action".into(),
+                message: format!(
+                    "Step {num}: invalid Action '{a}' (expected edit|create|delete|rename|run)"
+                ),
+            });
         }
     }
 
     if target.is_none() {
-        errors.push(PlanError { code: "missing_field".into(), message: format!("Step {num}: missing Target") });
+        errors.push(PlanError {
+            code: "missing_field".into(),
+            message: format!("Step {num}: missing Target"),
+        });
     }
 
     match rationale {
-        None => errors.push(PlanError { code: "missing_field".into(), message: format!("Step {num}: missing Rationale") }),
-        Some(r) if r.trim().len() < 10 => errors.push(PlanError { code: "rationale_too_short".into(), message: format!("Step {num}: Rationale must be ≥10 characters") }),
+        None => errors.push(PlanError {
+            code: "missing_field".into(),
+            message: format!("Step {num}: missing Rationale"),
+        }),
+        Some(r) if r.trim().len() < 10 => errors.push(PlanError {
+            code: "rationale_too_short".into(),
+            message: format!("Step {num}: Rationale must be ≥10 characters"),
+        }),
         _ => {}
     }
 
     if !has_details {
-        errors.push(PlanError { code: "missing_field".into(), message: format!("Step {num}: missing Details") });
+        errors.push(PlanError {
+            code: "missing_field".into(),
+            message: format!("Step {num}: missing Details"),
+        });
     }
 }
 
@@ -285,7 +320,10 @@ pub fn thing() {}
         let plan = good_plan().replace("### Summary\nA short overview.", "");
         let v = validate_plan(&plan, "grok-to-cc-v1").unwrap();
         assert!(!v.ok);
-        assert!(v.errors.iter().any(|e| e.code == "missing_section" && e.message.contains("Summary")));
+        assert!(v
+            .errors
+            .iter()
+            .any(|e| e.code == "missing_section" && e.message.contains("Summary")));
     }
 
     #[test]
@@ -296,7 +334,10 @@ pub fn thing() {}
         );
         let v = validate_plan(&plan, "grok-to-cc-v1").unwrap();
         assert!(!v.ok);
-        assert!(v.errors.iter().any(|e| e.message.contains("missing Rationale")));
+        assert!(v
+            .errors
+            .iter()
+            .any(|e| e.message.contains("missing Rationale")));
     }
 
     #[test]

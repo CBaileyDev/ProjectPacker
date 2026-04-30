@@ -97,18 +97,45 @@ pub struct FileFound {
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", tag = "kind")]
 pub enum ProgressEvent {
-    Started { job_id: String, target_label: String },
-    Cloning { progress_pct: u8 },
-    Walking { files_scanned: u32 },
-    FileFoundBatch { paths: Vec<FileFound> },
-    FileSkipped { path: String, reason: SkipReason },
-    Tokenizing { progress_pct: u8 },
-    SecretScanning { progress_pct: u8 },
-    SecretHit { path: String, secret_kind: String, line: u32 },
-    Compressing { progress_pct: u8 },
+    Started {
+        job_id: String,
+        target_label: String,
+    },
+    Cloning {
+        progress_pct: u8,
+    },
+    Walking {
+        files_scanned: u32,
+    },
+    FileFoundBatch {
+        paths: Vec<FileFound>,
+    },
+    FileSkipped {
+        path: String,
+        reason: SkipReason,
+    },
+    Tokenizing {
+        progress_pct: u8,
+    },
+    SecretScanning {
+        progress_pct: u8,
+    },
+    SecretHit {
+        path: String,
+        secret_kind: String,
+        line: u32,
+    },
+    Compressing {
+        progress_pct: u8,
+    },
     BuildingXml,
-    Done { stats: PackStats },
-    Error { message: String, fatal: bool },
+    Done {
+        stats: PackStats,
+    },
+    Error {
+        message: String,
+        fatal: bool,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]

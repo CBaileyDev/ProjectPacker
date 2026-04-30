@@ -29,8 +29,13 @@ impl From<CoreError> for AppError {
             CoreError::PlanInvalid { .. } => "plan_invalid",
             CoreError::Cancelled => "cancelled",
             _ => "internal",
-        }.to_string();
-        AppError { code, message: e.to_string(), details: None }
+        }
+        .to_string();
+        AppError {
+            code,
+            message: e.to_string(),
+            details: None,
+        }
     }
 }
 
@@ -52,7 +57,10 @@ pub async fn pack_start(
 
     // Reject GitHub URLs in v0.1.0 (URL parsing/clone exist in core::github but
     // are not wired through the orchestrator yet — see follow-up plan).
-    if matches!(opts.target, projectpacker_core::types::PackTarget::GitHub(_)) {
+    if matches!(
+        opts.target,
+        projectpacker_core::types::PackTarget::GitHub(_)
+    ) {
         return Err(AppError {
             code: "not_implemented".into(),
             message: "GitHub URL packing is deferred to v0.2.0. Use a local folder.".into(),
@@ -94,10 +102,15 @@ pub async fn pack_cancel(registry: State<'_, Arc<JobRegistry>>, job_id: String) 
 
 #[tauri::command]
 #[specta::specta]
-pub async fn pack_get_result(registry: State<'_, Arc<JobRegistry>>, job_id: String) -> CmdResult<PackResult> {
-    registry.inner()
-        .take_result(&job_id)
-        .ok_or(AppError { code: "result_not_ready".into(), message: format!("no result for job {job_id}"), details: None })
+pub async fn pack_get_result(
+    registry: State<'_, Arc<JobRegistry>>,
+    job_id: String,
+) -> CmdResult<PackResult> {
+    registry.inner().take_result(&job_id).ok_or(AppError {
+        code: "result_not_ready".into(),
+        message: format!("no result for job {job_id}"),
+        details: None,
+    })
 }
 
 #[tauri::command]

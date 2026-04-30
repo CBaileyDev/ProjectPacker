@@ -10,11 +10,7 @@ pub struct IgnoreMatcher {
 }
 
 impl IgnoreMatcher {
-    pub fn new(
-        project_root: &Path,
-        custom_patterns: &[String],
-        respect_gitignore: bool,
-    ) -> Self {
+    pub fn new(project_root: &Path, custom_patterns: &[String], respect_gitignore: bool) -> Self {
         let builtin = build_from_lines(BUILTIN_DEFAULTS.lines(), Path::new(""));
 
         let project = if respect_gitignore {
@@ -26,25 +22,40 @@ impl IgnoreMatcher {
         let custom = if custom_patterns.is_empty() {
             None
         } else {
-            Some(build_from_lines(custom_patterns.iter().map(String::as_str), Path::new("")))
+            Some(build_from_lines(
+                custom_patterns.iter().map(String::as_str),
+                Path::new(""),
+            ))
         };
 
-        Self { builtin, project, custom }
+        Self {
+            builtin,
+            project,
+            custom,
+        }
     }
 
     pub fn is_ignored(&self, path: &Path, is_dir: bool) -> bool {
         let m = self.builtin.matched_path_or_any_parents(path, is_dir);
-        if m.is_ignore() { return true; }
+        if m.is_ignore() {
+            return true;
+        }
 
         if let Some(p) = &self.project {
             let m = p.matched_path_or_any_parents(path, is_dir);
-            if m.is_ignore() { return true; }
-            if m.is_whitelist() { return false; }
+            if m.is_ignore() {
+                return true;
+            }
+            if m.is_whitelist() {
+                return false;
+            }
         }
 
         if let Some(c) = &self.custom {
             let m = c.matched_path_or_any_parents(path, is_dir);
-            if m.is_ignore() { return true; }
+            if m.is_ignore() {
+                return true;
+            }
         }
 
         false
@@ -55,7 +66,9 @@ fn build_from_lines<'a>(lines: impl IntoIterator<Item = &'a str>, root: &Path) -
     let mut b = GitignoreBuilder::new(root);
     for line in lines {
         let line = line.trim();
-        if line.is_empty() || line.starts_with('#') { continue; }
+        if line.is_empty() || line.starts_with('#') {
+            continue;
+        }
         let _ = b.add_line(None, line);
     }
     b.build().expect("ignore: builtin pattern compile failure")

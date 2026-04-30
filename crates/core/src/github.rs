@@ -78,7 +78,10 @@ mod tests {
         let p = parse_github_url("https://github.com/CBaileyDev/ProjectPacker").unwrap();
         assert_eq!(p.owner, "CBaileyDev");
         assert_eq!(p.repo, "ProjectPacker");
-        assert_eq!(p.https_url, "https://github.com/CBaileyDev/ProjectPacker.git");
+        assert_eq!(
+            p.https_url,
+            "https://github.com/CBaileyDev/ProjectPacker.git"
+        );
     }
 
     #[test]

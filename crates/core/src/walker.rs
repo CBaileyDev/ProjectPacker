@@ -17,8 +17,14 @@ pub fn walk(root: &Path, matcher: &IgnoreMatcher, opts: &WalkOptions) -> WalkOut
     let mut included = Vec::new();
     let mut skipped = Vec::new();
 
-    for entry in WalkDir::new(root).follow_links(false).into_iter().filter_map(Result::ok) {
-        if !entry.file_type().is_file() { continue; }
+    for entry in WalkDir::new(root)
+        .follow_links(false)
+        .into_iter()
+        .filter_map(Result::ok)
+    {
+        if !entry.file_type().is_file() {
+            continue;
+        }
 
         let abs = entry.path();
         let rel = match abs.strip_prefix(root) {
@@ -50,7 +56,10 @@ pub fn walk(root: &Path, matcher: &IgnoreMatcher, opts: &WalkOptions) -> WalkOut
             continue;
         }
 
-        included.push(FileFound { path: rel_str, bytes });
+        included.push(FileFound {
+            path: rel_str,
+            bytes,
+        });
     }
 
     WalkOutcome { included, skipped }
@@ -88,7 +97,13 @@ mod tests {
     fn walks_and_skips_node_modules() {
         let d = make_fixture();
         let m = IgnoreMatcher::new(d.path(), &[], false);
-        let out = walk(d.path(), &m, &WalkOptions { max_file_size_kb: 1024 });
+        let out = walk(
+            d.path(),
+            &m,
+            &WalkOptions {
+                max_file_size_kb: 1024,
+            },
+        );
         let included: Vec<_> = out.included.iter().map(|f| f.path.as_str()).collect();
         assert!(included.contains(&"a.txt"));
         assert!(included.contains(&"b.rs"));
@@ -99,8 +114,17 @@ mod tests {
     fn skips_oversize_files() {
         let d = make_fixture();
         let m = IgnoreMatcher::new(d.path(), &[], false);
-        let out = walk(d.path(), &m, &WalkOptions { max_file_size_kb: 1 });
-        let big_skipped = out.skipped.iter().any(|(p, r)| p == "big.txt" && matches!(r, SkipReason::TooLarge));
+        let out = walk(
+            d.path(),
+            &m,
+            &WalkOptions {
+                max_file_size_kb: 1,
+            },
+        );
+        let big_skipped = out
+            .skipped
+            .iter()
+            .any(|(p, r)| p == "big.txt" && matches!(r, SkipReason::TooLarge));
         assert!(big_skipped, "big.txt should be skipped as TooLarge");
     }
 
@@ -108,8 +132,17 @@ mod tests {
     fn skips_binary_files() {
         let d = make_fixture();
         let m = IgnoreMatcher::new(d.path(), &[], false);
-        let out = walk(d.path(), &m, &WalkOptions { max_file_size_kb: 1024 });
-        let bin_skipped = out.skipped.iter().any(|(p, r)| p == "binary.bin" && matches!(r, SkipReason::Binary));
+        let out = walk(
+            d.path(),
+            &m,
+            &WalkOptions {
+                max_file_size_kb: 1024,
+            },
+        );
+        let bin_skipped = out
+            .skipped
+            .iter()
+            .any(|(p, r)| p == "binary.bin" && matches!(r, SkipReason::Binary));
         assert!(bin_skipped, "binary.bin should be skipped as Binary");
     }
 }
