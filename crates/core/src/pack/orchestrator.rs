@@ -135,7 +135,7 @@ pub fn pack(
         .directory_structure(&dir_paths)
         .files(&entries)
         .close_repository();
-    let xml = builder.finish();
+    let output = builder.finish();
 
     let claude_code_prompt = protocol::claude_code_prompt(&opts.protocol_version)?;
 
@@ -144,7 +144,7 @@ pub fn pack(
     });
 
     Ok(PackResult {
-        xml,
+        output,
         claude_code_prompt,
         stats,
         warnings,
@@ -187,10 +187,10 @@ mod tests {
         };
         let (tx, _rx) = std::sync::mpsc::channel();
         let result = pack(d.path(), &opts, tx, "job-test").unwrap();
-        assert!(result.xml.contains("<protocol version=\"grok-to-cc-v1\">"));
-        assert!(result.xml.contains("<files>"));
-        assert!(result.xml.contains("README.md"));
-        assert!(result.xml.contains("a.rs"));
+        assert!(result.output.contains("<protocol version=\"grok-to-cc-v1\">"));
+        assert!(result.output.contains("<files>"));
+        assert!(result.output.contains("README.md"));
+        assert!(result.output.contains("a.rs"));
         assert_eq!(result.stats.files_included, 2);
         assert!(result
             .claude_code_prompt
