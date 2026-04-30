@@ -23,12 +23,12 @@ fn tiny_fixture_packs_with_expected_files() {
     let (tx, _rx) = std::sync::mpsc::channel();
     let result = pack::pack(&root, &opts, tx, "test-job").unwrap();
 
-    assert!(result.xml.contains("README.md"));
-    assert!(result.xml.contains("src/main.rs"));
-    assert!(result.xml.contains("src/util.rs"));
-    assert!(result.xml.contains("docs/intro.md"));
+    assert!(result.output.contains("README.md"));
+    assert!(result.output.contains("src/main.rs"));
+    assert!(result.output.contains("src/util.rs"));
+    assert!(result.output.contains("docs/intro.md"));
     assert!(
-        !result.xml.contains("build/output.txt"),
+        !result.output.contains("build/output.txt"),
         "build/ should be gitignored"
     );
 }
@@ -57,7 +57,7 @@ fn tiny_fixture_includes_protocol_block() {
     };
     let (tx, _rx) = std::sync::mpsc::channel();
     let result = pack::pack(&root, &opts, tx, "test-job").unwrap();
-    assert!(result.xml.contains("<protocol version=\"grok-to-cc-v1\">"));
-    assert!(result.xml.contains("<user_task>"));
-    assert!(result.xml.contains("Add docs"));
+    assert!(result.output.contains("<protocol version=\"grok-to-cc-v1\">"));
+    assert!(result.output.contains("<user_task>"));
+    assert!(result.output.contains("Add docs"));
 }
