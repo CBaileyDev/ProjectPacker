@@ -1,7 +1,9 @@
 use crate::error::{CoreError, CoreResult};
 use crate::ignore::IgnoreMatcher;
 use crate::pack::xml::XmlBuilder;
+use crate::pack::{markdown, plain};
 use crate::pack::FileEntry;
+use crate::types::PackFormat;
 use crate::protocol;
 use crate::secrets;
 use crate::tokens;
@@ -28,7 +30,7 @@ pub fn pack(
     let label = root.display().to_string();
     let _ = tx.send(ProgressEvent::Started {
         job_id: job_id.into(),
-        target_label: label,
+        target_label: label.clone(),
     });
 
     let matcher = IgnoreMatcher::new(root, &opts.custom_ignore_patterns, opts.respect_gitignore);
@@ -62,14 +64,27 @@ pub fn pack(
         .map(|f| {
             let abs = root.join(&f.path);
             let raw = read_text(&abs).unwrap_or_default();
-            let content = if opts.compress {
+
+            // Step 1: strip comments if requested (tree-sitter languages only).
+            let after_comments = if opts.remove_comments {
                 if let Some(lang) = tree_sitter_compress::detect_language(&f.path) {
-                    tree_sitter_compress::compress(&raw, lang)
+                    tree_sitter_compress::remove_comments(&raw, lang)
                 } else {
                     raw.clone()
                 }
             } else {
                 raw.clone()
+            };
+
+            // Step 2: optionally compress to a skeleton.
+            let content = if opts.compress {
+                if let Some(lang) = tree_sitter_compress::detect_language(&f.path) {
+                    tree_sitter_compress::compress(&after_comments, lang)
+                } else {
+                    after_comments.clone()
+                }
+            } else {
+                after_comments
             };
 
             let tokens = if opts.count_tokens {
@@ -126,16 +141,23 @@ pub fn pack(
     };
 
     let dir_paths: Vec<String> = entries.iter().map(|e| e.path.clone()).collect();
-    let protocol_block = protocol::block_for_pack(&opts.goal, &opts.protocol_version)?;
-    let mut builder = XmlBuilder::new();
-    builder
-        .open_repository()
-        .raw_block(&protocol_block)
-        .file_summary(&stats)
-        .directory_structure(&dir_paths)
-        .files(&entries)
-        .close_repository();
-    let output = builder.finish();
+
+    let output = match opts.format {
+        PackFormat::Xml => {
+            let protocol_block = protocol::block_for_pack(&opts.goal, &opts.protocol_version)?;
+            let mut builder = XmlBuilder::new();
+            builder
+                .open_repository()
+                .raw_block(&protocol_block)
+                .file_summary(&stats)
+                .directory_structure(&dir_paths)
+                .files(&entries)
+                .close_repository();
+            builder.finish()
+        }
+        PackFormat::Markdown => markdown::render(&label, opts, &stats, &entries),
+        PackFormat::PlainText => plain::render(&label, opts, &stats, &entries),
+    };
 
     let claude_code_prompt = protocol::claude_code_prompt(&opts.protocol_version)?;
 
