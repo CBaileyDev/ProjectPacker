@@ -11,6 +11,15 @@ pub enum PackTarget {
     GitHub(String),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum PackFormat {
+    #[default]
+    Xml,
+    Markdown,
+    PlainText,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct PackOptions {
@@ -26,6 +35,7 @@ pub struct PackOptions {
     pub respect_gitignore: bool,
     pub custom_ignore_patterns: Vec<String>,
     pub protocol_version: String,
+    pub format: PackFormat,
 }
 
 impl Default for PackOptions {
@@ -43,6 +53,7 @@ impl Default for PackOptions {
             respect_gitignore: true,
             custom_ignore_patterns: Vec::new(),
             protocol_version: "grok-to-cc-v1".into(),
+            format: PackFormat::Xml,
         }
     }
 }
@@ -141,7 +152,7 @@ pub enum ProgressEvent {
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct PackResult {
-    pub xml: String,
+    pub output: String,
     pub claude_code_prompt: String,
     pub stats: PackStats,
     pub warnings: Vec<PackWarning>,
@@ -158,6 +169,7 @@ mod tests {
         assert_eq!(opts.tokenizer_model, "gpt-4o-mini");
         assert_eq!(opts.max_file_size_kb, 1024);
         assert!(opts.respect_gitignore);
+        assert_eq!(opts.format, PackFormat::Xml);
     }
 
     #[test]
