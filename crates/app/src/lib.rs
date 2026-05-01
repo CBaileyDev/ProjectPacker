@@ -5,11 +5,9 @@ pub mod jobs;
 pub mod settings;
 
 use std::sync::Arc;
-use tracing_subscriber::prelude::*;
+use tauri::Manager;
 
 pub fn run() {
-    init_tracing();
-
     let registry = Arc::new(jobs::JobRegistry::new());
 
     tauri::Builder::default()
@@ -18,6 +16,24 @@ pub fn run() {
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
+        .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            // Focus the existing main window when a second launch is attempted.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_focus();
+                let _ = window.unminimize();
+            }
+        }))
+        .plugin(
+            tauri_plugin_log::Builder::default()
+                .level(if cfg!(debug_assertions) {
+                    log::LevelFilter::Debug
+                } else {
+                    log::LevelFilter::Info
+                })
+                .build(),
+        )
         .invoke_handler(tauri::generate_handler![
             commands::pack_start,
             commands::pack_cancel,
@@ -29,35 +45,16 @@ pub fn run() {
             commands::save_to_file,
         ])
         .setup(|app| {
-            tracing::info!(
+            log::info!(
                 "ProjectPacker started, version {}",
                 env!("CARGO_PKG_VERSION")
             );
             let _ = app;
             std::panic::set_hook(Box::new(|info| {
-                tracing::error!("PANIC in app process: {info}");
+                log::error!("PANIC in app process: {info}");
             }));
             Ok(())
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-}
-
-fn init_tracing() {
-    let env_filter = tracing_subscriber::EnvFilter::from_default_env();
-
-    // Use indented HierarchicalLayer in debug builds or when RUST_LOG_TREE is set (any value).
-    let use_tree = cfg!(debug_assertions) || std::env::var("RUST_LOG_TREE").is_ok();
-
-    if use_tree {
-        tracing_subscriber::registry()
-            .with(env_filter)
-            .with(tracing_tree::HierarchicalLayer::new(2))
-            .init();
-    } else {
-        tracing_subscriber::registry()
-            .with(env_filter)
-            .with(tracing_subscriber::fmt::layer().json())
-            .init();
-    }
 }

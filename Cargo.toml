@@ -18,8 +18,6 @@ tokio-util = "0.7.18"
 specta = { version = "=2.0.0-rc.22", features = ["derive"] }
 specta-typescript = "=0.0.9"
 anyhow = "1"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["json", "env-filter"] }
 
 [profile.release]
 strip = true
