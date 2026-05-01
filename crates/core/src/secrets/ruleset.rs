@@ -108,7 +108,10 @@ pub fn from_toml(input: &str) -> Result<RuleSet, RuleSetError> {
             // content-regex rules; skip silently.
             continue;
         };
-        match Regex::new(regex_src) {
+        match regex::RegexBuilder::new(regex_src)
+            .size_limit(32 * 1024 * 1024) // 32 MiB; 10 MiB default chokes on generic-api-key et al.
+            .build()
+        {
             Ok(regex) => rules.push(Rule {
                 id: raw_rule.id,
                 description: raw_rule.description,
@@ -172,8 +175,8 @@ mod tests {
     fn vendored_skipped_count_is_bounded() {
         let rs = vendored();
         assert!(
-            rs.skipped_count() < 30,
-            "expected < 30 skipped rules, got {}",
+            rs.skipped_count() <= 5,
+            "expected <= 5 skipped rules, got {}",
             rs.skipped_count()
         );
     }
