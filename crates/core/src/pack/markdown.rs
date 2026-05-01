@@ -175,8 +175,8 @@ mod tests {
             !out.contains("## Summary"),
             "output must NOT contain ## Summary"
         );
-        // Also verify key stats fields are present.
-        assert!(out.contains("<pack_target>") == false); // should be MD table format
+        // Also verify key stats fields are present (and we haven't accidentally emitted XML tags).
+        assert!(!out.contains("<pack_target>"), "MD output must not contain XML tags");
         assert!(out.contains("| Target |"));
         assert!(out.contains("| Redacted bytes |"));
         assert!(out.contains("| Cache hits |"));

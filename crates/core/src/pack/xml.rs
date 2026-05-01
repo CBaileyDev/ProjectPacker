@@ -98,22 +98,6 @@ impl XmlBuilder {
         self
     }
 
-    /// Legacy helper kept for any call-sites that still use it directly.
-    /// Prefer `stats_block` for new code.
-    pub fn file_summary(&mut self, stats: &PackStats) -> &mut Self {
-        let _ = writeln!(self.out, "<file_summary>");
-        let _ = writeln!(self.out, "  files_total: {}", stats.files_total);
-        let _ = writeln!(self.out, "  files_included: {}", stats.files_included);
-        let _ = writeln!(self.out, "  files_skipped: {}", stats.files_skipped);
-        let _ = writeln!(self.out, "  bytes_total: {}", stats.bytes_total);
-        if let Some(t) = stats.tokens_total {
-            let _ = writeln!(self.out, "  tokens_total: {t}");
-        }
-        let _ = writeln!(self.out, "  secrets_found: {}", stats.secrets_found);
-        let _ = writeln!(self.out, "</file_summary>");
-        self
-    }
-
     pub fn directory_structure(&mut self, paths: &[String]) -> &mut Self {
         self.out.push_str("<directory_structure>\n");
         for p in paths {
@@ -180,18 +164,6 @@ mod tests {
     use super::*;
     use crate::types::PackStats;
 
-    fn empty_stats() -> PackStats {
-        PackStats {
-            files_total: 0,
-            files_included: 0,
-            files_skipped: 0,
-            bytes_total: 0,
-            tokens_total: None,
-            secrets_found: 0,
-            duration_ms: 0,
-        }
-    }
-
     #[test]
     fn empty_repository_brackets() {
         let mut b = XmlBuilder::new();
@@ -231,30 +203,6 @@ mod tests {
         assert!(s.contains("&lt;x&gt; &amp; &lt;/x&gt;"));
     }
 
-    #[test]
-    fn file_summary_emits_stats_lines() {
-        let mut b = XmlBuilder::new();
-        let stats = PackStats {
-            files_total: 5,
-            files_included: 4,
-            files_skipped: 1,
-            bytes_total: 1024,
-            tokens_total: Some(200),
-            secrets_found: 0,
-            duration_ms: 100,
-        };
-        b.file_summary(&stats);
-        let s = b.finish();
-        assert!(s.contains("files_total: 5"));
-        assert!(s.contains("tokens_total: 200"));
-    }
-
-    #[test]
-    fn unused_helper_ref_is_ok() {
-        // ensure empty_stats() helper is referenced somewhere to avoid dead-code warnings
-        let _ = empty_stats();
-    }
-
     // Test 6: stats block appears first inside <repository>.
     #[test]
     fn xml_stats_block_appears_first() {
@@ -291,8 +239,8 @@ mod tests {
 
         // The doc opens with <repository> and immediately the <stats> block follows.
         assert!(s.starts_with("<repository>\n<stats>"));
-        assert!(s.contains("<stats>"));
         assert!(s.contains("<pack_target>my-target</pack_target>"));
+        assert!(s.contains("<goal>test</goal>"));
         assert!(s.contains("<files>included=1 total=2 skipped=1</files>"));
         assert!(s.contains("<tokens model=\"gpt-4o-mini\">100</tokens>"));
         assert!(s.contains("</stats>"));
