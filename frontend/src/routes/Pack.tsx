@@ -1,10 +1,10 @@
-import { useState } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { commands } from "../bindings";
+import { open } from "@tauri-apps/plugin-dialog";
+import { useState } from "react";
 import type { PackFormat, PackStats, ProgressEvent } from "../bindings";
-import { useApp } from "../lib/store";
+import { commands } from "../bindings";
 import { createPackProgressChannel } from "../lib/events";
+import { useApp } from "../lib/store";
 
 // ---------------------------------------------------------------------------
 // AI context-window compatibility data (as of mid-2025)
@@ -57,7 +57,9 @@ function Toggle({
         onChange={(e) => onChange(e.target.checked)}
       />
       <span>
-        <span className="text-sm text-zinc-200 group-hover:text-white">{label}</span>
+        <span className="text-sm text-zinc-200 group-hover:text-white">
+          {label}
+        </span>
         {hint && <span className="ml-1.5 text-xs text-zinc-500">{hint}</span>}
       </span>
     </label>
@@ -73,6 +75,7 @@ function CopyButton({ label, text }: { label: string; text: string }) {
   }
   return (
     <button
+      type="button"
       onClick={doCopy}
       className="rounded border border-zinc-600 bg-zinc-800 px-4 py-2 text-sm hover:bg-zinc-700 active:scale-95 transition-all"
     >
@@ -95,17 +98,22 @@ function StatsBar({ stats }: { stats: PackStats }) {
       </span>
       <span>
         <span className="text-zinc-400">Size </span>
-        <span className="font-medium text-zinc-100">{fmtBytes(stats.bytesTotal)}</span>
+        <span className="font-medium text-zinc-100">
+          {fmtBytes(stats.bytesTotal)}
+        </span>
       </span>
       {stats.tokensTotal != null && (
         <span>
           <span className="text-zinc-400">Tokens </span>
-          <span className="font-medium text-zinc-100">{fmtNum(stats.tokensTotal)}</span>
+          <span className="font-medium text-zinc-100">
+            {fmtNum(stats.tokensTotal)}
+          </span>
         </span>
       )}
       {stats.secretsFound > 0 && (
         <span className="font-medium text-amber-400">
-          ⚠ {stats.secretsFound} secret{stats.secretsFound !== 1 ? "s" : ""} detected
+          ⚠ {stats.secretsFound} secret{stats.secretsFound !== 1 ? "s" : ""}{" "}
+          detected
         </span>
       )}
       <span>
@@ -135,13 +143,20 @@ function AiContextTable({ tokens }: { tokens: number }) {
             const fits = tokens <= m.context;
             const pct = Math.min(100, Math.round((tokens / m.context) * 100));
             return (
-              <tr key={m.name} className="border-b border-zinc-800 last:border-0">
+              <tr
+                key={m.name}
+                className="border-b border-zinc-800 last:border-0"
+              >
                 <td className="px-3 py-2 text-zinc-200">{m.name}</td>
-                <td className="px-3 py-2 text-right text-zinc-400">{fmtNum(m.context)}</td>
+                <td className="px-3 py-2 text-right text-zinc-400">
+                  {fmtNum(m.context)}
+                </td>
                 <td className="px-3 py-2">
                   <div className="flex items-center justify-center gap-2">
                     {fits ? (
-                      <span className="font-medium text-emerald-400">✓ Yes</span>
+                      <span className="font-medium text-emerald-400">
+                        ✓ Yes
+                      </span>
                     ) : (
                       <span className="font-medium text-red-400">✗ No</span>
                     )}
@@ -161,13 +176,16 @@ function ProgressLog({ events }: { events: ProgressEvent[] }) {
   const lines: string[] = events
     .map((e) => {
       if (e.kind === "started") return `▶ ${e.target_label}`;
-      if (e.kind === "walking") return `  Walking… ${e.files_scanned} files scanned`;
+      if (e.kind === "walking")
+        return `  Walking… ${e.files_scanned} files scanned`;
       if (e.kind === "tokenizing") return `  Tokenizing… ${e.progress_pct}%`;
-      if (e.kind === "secretScanning") return `  Secret scan… ${e.progress_pct}%`;
+      if (e.kind === "secretScanning")
+        return `  Secret scan… ${e.progress_pct}%`;
       if (e.kind === "compressing") return `  Compressing… ${e.progress_pct}%`;
       if (e.kind === "buildingOutput") return `  Building output…`;
       if (e.kind === "cloning") return `  Cloning repository…`;
-      if (e.kind === "secretHit") return `  ⚠ Secret in ${e.path} (line ${e.line})`;
+      if (e.kind === "secretHit")
+        return `  ⚠ Secret in ${e.path} (line ${e.line})`;
       if (e.kind === "done") return `✓ Done`;
       if (e.kind === "error") return `✗ Error: ${e.message}`;
       return null;
@@ -176,9 +194,14 @@ function ProgressLog({ events }: { events: ProgressEvent[] }) {
 
   return (
     <div className="rounded border border-zinc-700 bg-zinc-900 px-4 py-3">
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">Progress</div>
+      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+        Progress
+      </div>
       <div className="space-y-0.5 font-mono text-xs text-zinc-400">
         {lines.slice(-16).map((l, i) => (
+          // Progress log is append-only and never reordered; the trailing-window
+          // index is a stable identity for as long as the line is on screen.
+          // biome-ignore lint/suspicious/noArrayIndexKey: append-only log
           <div key={i}>{l}</div>
         ))}
       </div>
@@ -206,9 +229,14 @@ const COPY_BUTTON_LABELS: Record<PackFormat, string> = {
 // ---------------------------------------------------------------------------
 export default function Pack() {
   const {
-    options, setOptions,
-    status, events,
-    setJob, pushEvent, setResult, result,
+    options,
+    setOptions,
+    status,
+    events,
+    setJob,
+    pushEvent,
+    setResult,
+    result,
     reset,
   } = useApp();
 
@@ -275,7 +303,6 @@ export default function Pack() {
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <div className="mx-auto max-w-2xl space-y-6 p-6">
-
         {/* ── Header ── */}
         <div>
           <h1 className="text-2xl font-bold tracking-tight">ProjectPacker</h1>
@@ -286,9 +313,9 @@ export default function Pack() {
 
         {/* ── Target ── */}
         <section className="space-y-2">
-          <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
+          <h3 className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
             Target
-          </label>
+          </h3>
           <div className="flex gap-2">
             <button
               type="button"
@@ -321,10 +348,14 @@ export default function Pack() {
                 value={targetVal}
                 placeholder="/path/to/project"
                 onChange={(e) =>
-                  setOptions({ ...options, target: { kind: "folder", value: e.target.value } })
+                  setOptions({
+                    ...options,
+                    target: { kind: "folder", value: e.target.value },
+                  })
                 }
               />
               <button
+                type="button"
                 className="rounded border border-zinc-600 bg-zinc-700 px-3 py-2 text-sm hover:bg-zinc-600"
                 onClick={pickFolder}
               >
@@ -342,7 +373,10 @@ export default function Pack() {
                 value={targetVal}
                 placeholder="https://github.com/owner/repo"
                 onChange={(e) =>
-                  setOptions({ ...options, target: { kind: "github", value: e.target.value } })
+                  setOptions({
+                    ...options,
+                    target: { kind: "github", value: e.target.value },
+                  })
                 }
               />
               {targetVal && !isValidTarget && (
@@ -356,9 +390,9 @@ export default function Pack() {
 
         {/* ── Goal ── */}
         <section className="space-y-2">
-          <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
+          <h3 className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
             Goal / Task Description
-          </label>
+          </h3>
           <textarea
             className="h-20 w-full resize-none rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
             value={options.goal}
@@ -369,7 +403,9 @@ export default function Pack() {
 
         {/* ── Options ── */}
         <section className="space-y-4">
-          <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Options</div>
+          <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            Options
+          </div>
 
           <div className="grid grid-cols-2 gap-x-8 gap-y-3">
             <Toggle
@@ -403,15 +439,18 @@ export default function Pack() {
           </div>
 
           <div className="flex flex-wrap items-center gap-6">
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            <label className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
                 Output Format
-              </label>
+              </span>
               <select
                 className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm focus:border-zinc-500 focus:outline-none"
                 value={options.format}
                 onChange={(e) =>
-                  setOptions({ ...options, format: e.target.value as PackFormat })
+                  setOptions({
+                    ...options,
+                    format: e.target.value as PackFormat,
+                  })
                 }
               >
                 {(Object.keys(FORMAT_LABELS) as PackFormat[]).map((f) => (
@@ -420,12 +459,12 @@ export default function Pack() {
                   </option>
                 ))}
               </select>
-            </div>
+            </label>
 
-            <div className="flex items-center gap-2">
-              <label className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            <label className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
                 Max File Size
-              </label>
+              </span>
               <input
                 type="number"
                 min={1}
@@ -433,16 +472,20 @@ export default function Pack() {
                 className="w-20 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm focus:border-zinc-500 focus:outline-none"
                 value={options.maxFileSizeKb}
                 onChange={(e) =>
-                  setOptions({ ...options, maxFileSizeKb: Number(e.target.value) })
+                  setOptions({
+                    ...options,
+                    maxFileSizeKb: Number(e.target.value),
+                  })
                 }
               />
               <span className="text-xs text-zinc-500">KB</span>
-            </div>
+            </label>
           </div>
         </section>
 
         {/* ── Pack button ── */}
         <button
+          type="button"
           className="w-full rounded bg-emerald-700 py-3 text-sm font-semibold transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
           onClick={runPack}
           disabled={isRunning || !isValidTarget}
@@ -463,7 +506,9 @@ export default function Pack() {
         {/* ── Results ── */}
         {isDone && result && (
           <div className="space-y-4">
-            <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Result</div>
+            <div className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              Result
+            </div>
 
             <StatsBar stats={result.stats} />
 
@@ -472,8 +517,12 @@ export default function Pack() {
                 label={COPY_BUTTON_LABELS[options.format]}
                 text={result.output}
               />
-              <CopyButton label="Copy Claude Code Prompt" text={result.claudeCodePrompt} />
+              <CopyButton
+                label="Copy Claude Code Prompt"
+                text={result.claudeCodePrompt}
+              />
               <button
+                type="button"
                 className="rounded border border-zinc-600 bg-zinc-800 px-4 py-2 text-sm hover:bg-zinc-700"
                 onClick={() => reset()}
               >
@@ -483,9 +532,14 @@ export default function Pack() {
 
             {result.warnings.length > 0 && (
               <div className="rounded border border-amber-700 bg-amber-950/30 px-4 py-3 text-sm">
-                <div className="mb-1 font-semibold text-amber-400">Warnings</div>
-                {result.warnings.map((w, i) => (
-                  <div key={i} className="text-xs text-amber-300">
+                <div className="mb-1 font-semibold text-amber-400">
+                  Warnings
+                </div>
+                {result.warnings.map((w) => (
+                  <div
+                    key={`${w.kind}:${w.path ?? ""}:${w.message}`}
+                    className="text-xs text-amber-300"
+                  >
                     {w.message}
                   </div>
                 ))}
@@ -497,7 +551,6 @@ export default function Pack() {
             )}
           </div>
         )}
-
       </div>
     </div>
   );
