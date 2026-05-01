@@ -5,11 +5,10 @@ pub mod jobs;
 pub mod settings;
 
 use std::sync::Arc;
+use tracing_subscriber::prelude::*;
 
 pub fn run() {
-    tracing_subscriber::fmt()
-        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
-        .init();
+    init_tracing();
 
     let registry = Arc::new(jobs::JobRegistry::new());
 
@@ -42,4 +41,24 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+fn init_tracing() {
+    let env_filter = tracing_subscriber::EnvFilter::from_default_env();
+
+    // Use indented HierarchicalLayer in debug builds or when RUST_LOG_TREE=1 is set.
+    let use_tree = cfg!(debug_assertions)
+        || std::env::var("RUST_LOG_TREE").as_deref() == Ok("1");
+
+    if use_tree {
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(tracing_tree::HierarchicalLayer::new(2))
+            .init();
+    } else {
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(tracing_subscriber::fmt::layer().json())
+            .init();
+    }
 }
