@@ -166,7 +166,7 @@ function ProgressLog({ events }: { events: ProgressEvent[] }) {
       if (e.kind === "secretScanning") return `  Secret scan… ${e.progress_pct}%`;
       if (e.kind === "compressing") return `  Compressing… ${e.progress_pct}%`;
       if (e.kind === "buildingOutput") return `  Building output…`;
-      if (e.kind === "cloning") return `  Cloning repository… ${e.progress_pct}%`;
+      if (e.kind === "cloning") return `  Cloning repository…`;
       if (e.kind === "secretHit") return `  ⚠ Secret in ${e.path} (line ${e.line})`;
       if (e.kind === "done") return `✓ Done`;
       if (e.kind === "error") return `✗ Error: ${e.message}`;
@@ -252,7 +252,7 @@ export default function Pack() {
   const targetVal = options.target.value;
 
   const githubUrlPattern =
-    /^(https?:\/\/github\.com\/|git@github\.com:|github\.com\/)[^/\s]+\/[^/\s]+\/?$/;
+    /^(https:\/\/github\.com\/|git@github\.com:|github\.com\/)[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+(\.git)?\/?$/;
 
   const isValidTarget =
     targetMode === "folder"
