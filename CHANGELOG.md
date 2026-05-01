@@ -2,7 +2,42 @@
 
 All notable changes to ProjectPacker are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.3.0] - 2026-05-01
+
+### Added
+
+#### Tokens — multi-model accuracy
+- Typed `core::tokens::count(text, TokenModel)` API; `TokenModel` enum with 7 variants (`Gpt4o | Claude | Llama3 | Qwen2_5 | DeepSeek | Mistral | GeminiApprox`).
+- Vendored HuggingFace tokenizer JSONs at `crates/core/assets/tokenizers/` (~25 MiB total) for Llama 3, Qwen 2.5, DeepSeek, and Mistral. Loaded lazily via `OnceLock` on first use of each model.
+- `core::tokens::count_all(text)` returning all 7 model counts at once (cl100k shared between Gpt4o/Claude/GeminiApprox).
+- `PackStats.tokens_per_model: Option<TokensPerModel>` exposes per-model counts to the frontend.
+- Frontend AI compatibility table now shows per-row token counts using each model's authentic tokenizer; new rows for Mistral 7B/Mixtral and Qwen 2.5; "approx" badge + footer disclaimer on rows using proxy tokenizers (Claude/Grok cl100k, Gemini cl100k×1.05).
+- `tokenizers = "0.23"` and `toml = "0.8"` added as core deps (with `unstable_wasm` feature on tokenizers — pure-Rust regex backend, no onig C dep).
+
+#### Secrets — vendored gitleaks engine
+- Vendored gitleaks v8.25.0 ruleset at `crates/core/assets/gitleaks.toml` (~167 rules); `LICENSE-3RD-PARTY` adds gitleaks MIT attribution.
+- New `core::secrets::ruleset::{vendored, from_toml, RuleSet, Rule, RuleSetError}` loader with `RegexBuilder::size_limit(32 MiB)` so `generic-api-key`, `vault-batch-token`, etc. compile (default 10 MiB was too small). Only `pypi-upload-token` exceeds the cap and is skipped.
+- New `core::secrets::engine::scan_and_redact(content, ruleset) -> ScanResult` engine with:
+  - Aho-Corasick keyword pre-filter (case-insensitive) — skips regex evaluation on lines with no rule keyword.
+  - Shannon-entropy gate — rules with `entropy_min` reject low-entropy matches.
+  - Specificity-aware overlap resolution — `generic-api-key` is demoted so specific rules (`aws-access-token`, etc.) win when both match.
+  - In-place `[REDACTED:<rule-id>]` substitution — pack content ships post-redaction.
+- `Redaction { rule_id, line, byte_offset, matched_excerpt }` and `PackRedaction { file, rule_id, line, byte_offset }` types; `PackResult.redactions` lists all redactions for the pack.
+- `<security_report>` block (XML/Markdown/Plain variants) emitted in pack output between stats and entries when redactions occurred. Lists each redaction by `(file, rule_id, line, byte_offset)`. Empty redaction set → no fragment emitted (preserves byte-equivalence for clean fixtures).
+- Performance: warmed scan ~200 µs on a 100 KB fixture (release build); meets the <2s target for 100k LOC.
+- `aho-corasick = "1"` added as core dep.
+
+### Changed
+- `core::secrets::scan(content) -> Vec<SecretHit>` now backs onto the new engine + vendored ruleset (was hand-rolled 10-rule list). Public API and shape preserved; rule IDs renamed to gitleaks canonical (`aws-access-key` → `aws-access-token`, `github-token` → `github-pat`, `private-key-pem` → `private-key`, etc.).
+- `tests/fixtures/tiny/src/danger.txt` updated from `AKIA0000…` to canonical `AKIAIOSFODNN7EXAMPLE` (the new gitleaks AWS regex enforces the base32 alphabet).
+- Orchestrator now mutates each entry's content to its redacted form before emission; pack output ships `[REDACTED:<rule-id>]` markers in place of secrets.
+
+### Deferred
+- The legacy `core::secrets::scan` wrapper remains as orphaned-but-harmless compat for any out-of-tree callers. Removal is on the v0.4+ backlog.
+- `path_filter` (gitleaks `[rules.allowlist].paths`) is not yet modeled in `Rule`; gitleaks allowlists with `regexes`/`commits`/`stopwords` are also ignored. Worth revisiting if false-positive volume grows.
+- The single gitleaks rule `pypi-upload-token` is skipped at load time because its compiled NFA exceeds the 32 MiB regex size limit.
+
+## [0.2.0] - 2026-04-30
 
 ### Added
 - `PackFormat` enum (`Xml | Markdown | PlainText`) with camelCase JSON serialization and TypeScript bindings.
