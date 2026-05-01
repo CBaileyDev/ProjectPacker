@@ -11,10 +11,10 @@ use crate::tree_sitter_compress;
 use crate::types::*;
 use crate::walker::{self, WalkOptions};
 use rayon::prelude::*;
-use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::sync::mpsc::Sender;
 use std::time::Instant;
+use tokio_util::sync::CancellationToken;
 
 pub type PackEvent = ProgressEvent;
 
@@ -23,6 +23,7 @@ pub fn pack(
     opts: &PackOptions,
     tx: Sender<PackEvent>,
     job_id: &str,
+    cancel: CancellationToken,
 ) -> CoreResult<PackResult> {
     let start = Instant::now();
     let mut warnings: Vec<PackWarning> = Vec::new();
@@ -59,6 +60,11 @@ pub fn pack(
         });
     }
 
+    // Checkpoint 1: after walk, before processing.
+    if cancel.is_cancelled() {
+        return Err(CoreError::Cancelled);
+    }
+
     let _ = tx.send(ProgressEvent::BuildingOutput);
 
     let results: Vec<(FileEntry, Vec<PackWarning>)> = outcome
@@ -67,6 +73,20 @@ pub fn pack(
         .map(|f| {
             let abs = root.join(&f.path);
             let mut file_warnings: Vec<PackWarning> = Vec::new();
+
+            // Per-file cancellation check.
+            if cancel.is_cancelled() {
+                return (
+                    FileEntry {
+                        path: f.path.clone(),
+                        content: String::new(),
+                        bytes: 0,
+                        tokens: None,
+                        hash: String::new(),
+                    },
+                    file_warnings,
+                );
+            }
 
             let raw = match read_text_with_fallback(&abs) {
                 Ok((content, fallback)) => {
@@ -117,9 +137,7 @@ pub fn pack(
                 None
             };
 
-            let mut hasher = Sha256::new();
-            hasher.update(raw.as_bytes());
-            let hash = format!("{:x}", hasher.finalize());
+            let hash = hash_content(raw.as_bytes(), &abs);
 
             (
                 FileEntry {
@@ -133,6 +151,11 @@ pub fn pack(
             )
         })
         .collect();
+
+    // Checkpoint 2: after process loop.
+    if cancel.is_cancelled() {
+        return Err(CoreError::Cancelled);
+    }
 
     let mut entries: Vec<FileEntry> = Vec::with_capacity(results.len());
     for (entry, w) in results {
@@ -194,6 +217,11 @@ pub fn pack(
 
     let claude_code_prompt = protocol::claude_code_prompt(&opts.protocol_version)?;
 
+    // Checkpoint 3: after emit, before returning result.
+    if cancel.is_cancelled() {
+        return Err(CoreError::Cancelled);
+    }
+
     let _ = tx.send(ProgressEvent::Done {
         stats: stats.clone(),
     });
@@ -204,6 +232,27 @@ pub fn pack(
         stats,
         warnings,
     })
+}
+
+/// Hash file content using BLAKE3.
+///
+/// For files ≤256 KB the bytes are already in memory (from `read_text_with_fallback`),
+/// so we hash in-process. For larger files we use `update_mmap_rayon` to parallelise
+/// the read; the mmap path takes the on-disk file so we pass the path through.
+const MMAP_THRESHOLD: usize = 256 * 1024; // 256 KB
+
+fn hash_content(bytes: &[u8], path: &Path) -> String {
+    if bytes.len() <= MMAP_THRESHOLD {
+        let digest = blake3::hash(bytes);
+        digest.to_hex().to_string()
+    } else {
+        let mut hasher = blake3::Hasher::new();
+        // update_mmap_rayon returns a Result; fall back to in-memory on error.
+        if hasher.update_mmap_rayon(path).is_err() {
+            hasher.update(bytes);
+        }
+        hasher.finalize().to_hex().to_string()
+    }
 }
 
 fn resolve_target(
@@ -265,6 +314,17 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
+    // BLAKE3 known test vector: empty input → this exact digest.
+    // Source: https://github.com/BLAKE3-team/BLAKE3/blob/master/test_vectors/test_vectors.json
+    #[test]
+    fn blake3_empty_input_matches_known_vector() {
+        let digest = hash_content(b"", std::path::Path::new(""));
+        assert_eq!(
+            digest,
+            "af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262"
+        );
+    }
+
     fn fixture() -> tempfile::TempDir {
         let d = tempdir().unwrap();
         fs::write(d.path().join("a.rs"), "fn main() { println!(\"hi\"); }\n").unwrap();
@@ -280,7 +340,7 @@ mod tests {
             ..PackOptions::default()
         };
         let (tx, _rx) = std::sync::mpsc::channel();
-        let result = pack(&PackTarget::Folder(d.path().to_path_buf()), &opts, tx, "job-test").unwrap();
+        let result = pack(&PackTarget::Folder(d.path().to_path_buf()), &opts, tx, "job-test", CancellationToken::new()).unwrap();
         assert!(result.output.contains("<protocol version=\"grok-to-cc-v1\">"));
         assert!(result.output.contains("<files>"));
         assert!(result.output.contains("README.md"));
@@ -301,7 +361,7 @@ mod tests {
             ..PackOptions::default()
         };
         let (tx, rx) = std::sync::mpsc::channel();
-        let _ = pack(&PackTarget::Folder(d.path().to_path_buf()), &opts, tx, "job-test").unwrap();
+        let _ = pack(&PackTarget::Folder(d.path().to_path_buf()), &opts, tx, "job-test", CancellationToken::new()).unwrap();
         let mut events: Vec<&'static str> = Vec::new();
         for ev in rx.try_iter() {
             events.push(match ev {
@@ -395,7 +455,7 @@ mod tests {
             ..PackOptions::default()
         };
         let (tx, _rx) = std::sync::mpsc::channel();
-        let result = pack(&PackTarget::Folder(d.path().to_path_buf()), &opts, tx, "job-test").unwrap();
+        let result = pack(&PackTarget::Folder(d.path().to_path_buf()), &opts, tx, "job-test", CancellationToken::new()).unwrap();
 
         assert!(
             result
@@ -414,5 +474,36 @@ mod tests {
             "/definitely/does/not/exist/xyz.txt",
         ));
         assert!(matches!(result, Err(CoreError::FileIo { .. })));
+    }
+
+    /// Verify that a pre-cancelled token causes pack() to return Err(Cancelled)
+    /// immediately, without processing any files.
+    #[test]
+    fn pack_returns_cancelled_when_token_is_pre_cancelled() {
+        let d = fixture();
+        let opts = PackOptions {
+            goal: "x".into(),
+            secret_scan: false,
+            count_tokens: false,
+            ..PackOptions::default()
+        };
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let cancel = CancellationToken::new();
+        cancel.cancel(); // signal before pack() starts
+
+        let start = std::time::Instant::now();
+        let result = pack(&PackTarget::Folder(d.path().to_path_buf()), &opts, tx, "job-cancel-test", cancel);
+        let elapsed = start.elapsed();
+
+        assert!(
+            matches!(result, Err(CoreError::Cancelled)),
+            "expected Err(Cancelled), got {:?}",
+            result
+        );
+        assert!(
+            elapsed.as_millis() < 500,
+            "pack() took too long after cancellation: {:?}",
+            elapsed
+        );
     }
 }
