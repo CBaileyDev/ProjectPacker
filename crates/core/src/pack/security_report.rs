@@ -8,6 +8,7 @@
 //! fragments so byte-for-byte equivalence with the no-secrets case is
 //! preserved).
 
+use crate::pack::xml_escape_attr as escape_attr;
 use crate::types::PackRedaction;
 use std::collections::HashSet;
 use std::fmt::Write;
@@ -58,7 +59,10 @@ pub fn emit_markdown(redactions: &[PackRedaction]) -> String {
         let _ = writeln!(
             out,
             "| {} | {} | {} | {} |",
-            r.rule_id, r.file, r.line, r.byte_offset,
+            r.rule_id.replace('|', "\\|"),
+            r.file.replace('|', "\\|"),
+            r.line,
+            r.byte_offset,
         );
     }
     out.push('\n');
@@ -110,13 +114,6 @@ pub fn emit_plain(redactions: &[PackRedaction]) -> String {
     }
     out.push_str("=== END SECURITY REPORT ===\n");
     out
-}
-
-fn escape_attr(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
 }
 
 #[cfg(test)]
@@ -185,6 +182,25 @@ mod tests {
         assert!(out.contains("generic-api-key"), "missing generic rule id");
         assert!(out.contains("3 redactions across 2 files"));
         assert!(out.contains("| Rule | File | Line | Byte Offset |"));
+    }
+
+    #[test]
+    fn emit_markdown_escapes_pipe_in_file_path() {
+        let red = vec![PackRedaction {
+            file: "weird|path/file.rs".to_string(),
+            rule_id: "demo-rule".to_string(),
+            line: 1,
+            byte_offset: 0,
+        }];
+        let out = emit_markdown(&red);
+        assert!(out.contains("weird\\|path/file.rs"));
+        // The literal pipe-with-slash should not appear unescaped in any data cell.
+        let table_lines: Vec<&str> = out.lines().filter(|l| l.starts_with("| ")).collect();
+        let data_row = table_lines.last().unwrap();
+        // Count only un-escaped column separators (i.e. `|` not preceded by `\`).
+        let cell_count = data_row.matches('|').count() - data_row.matches("\\|").count();
+        // 5 separators expected for a 4-column row (`| a | b | c | d |`).
+        assert_eq!(cell_count, 5, "pipe escape preserved column count");
     }
 
     #[test]

@@ -1,5 +1,6 @@
 use crate::pack::security_report;
 use crate::pack::stats::StatsBlock;
+use crate::pack::xml_escape_attr as escape_attr;
 use crate::pack::FileEntry;
 use crate::types::{PackOptions, PackRedaction, PackStats};
 use std::fmt::Write;
@@ -206,13 +207,6 @@ impl XmlBuilder {
     pub fn finish(self) -> String {
         self.out
     }
-}
-
-fn escape_attr(s: &str) -> String {
-    s.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
 }
 
 fn escape_text(s: &str) -> String {

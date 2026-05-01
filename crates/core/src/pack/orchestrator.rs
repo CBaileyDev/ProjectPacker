@@ -268,6 +268,11 @@ pub fn pack(
     let mut secrets_found = 0u32;
     let mut all_redactions: Vec<PackRedaction> = Vec::new();
     if opts.secret_scan {
+        // This loop has two responsibilities:
+        //   (1) Build `all_redactions` for the security_report block + PackResult.
+        //   (2) Mutate each entry's `content` to its redacted form so the pack
+        //       output ships `[REDACTED:<rule-id>]` markers, not the secrets.
+        // Hoisting `vendored()` out keeps the keyword-index cache hot across files.
         let ruleset = secrets::ruleset::vendored();
         for e in entries.iter_mut() {
             let result = secrets::scan_and_redact(&e.content, ruleset);

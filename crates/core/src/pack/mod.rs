@@ -20,3 +20,14 @@ pub struct FileEntry {
     pub tokens: Option<u32>,
     pub hash: String,
 }
+
+/// Escape a value for inclusion in a double-quoted XML attribute.
+///
+/// Escapes `&`, `<`, `>`, and `"` per XML 1.0 §2.4. Apostrophes are not
+/// escaped because all attributes in our emitters use double-quote delimiters.
+pub(crate) fn xml_escape_attr(s: &str) -> String {
+    s.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}

@@ -121,6 +121,7 @@ fn pack_emits_security_report_and_redactions_for_xml() {
         "missing <security_report block: {}",
         result.output,
     );
+    assert!(result.output.contains("</security_report>"));
     assert!(
         result.output.contains("rule_id=\"aws-access-token\""),
         "missing rule_id attribute in security_report: {}",
