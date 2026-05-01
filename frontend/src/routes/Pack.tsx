@@ -4,7 +4,7 @@ import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { commands } from "../bindings";
 import type { PackFormat, PackStats, ProgressEvent } from "../bindings";
 import { useApp } from "../lib/store";
-import { subscribePackProgress } from "../lib/events";
+import { createPackProgressChannel } from "../lib/events";
 
 // ---------------------------------------------------------------------------
 // AI context-window compatibility data (as of mid-2025)
@@ -224,28 +224,35 @@ export default function Pack() {
   async function runPack() {
     setErrorMsg(null);
     reset();
-    const startRes = await commands.packStart(options);
+
+    // Channel is created before packStart so Tauri can wire it up on the Rust
+    // side. We update onmessage after we have the jobId (events only arrive
+    // after the job is registered, so there is no race).
+    const channel = createPackProgressChannel(() => {});
+
+    const startRes = await commands.packStart(options, channel);
     if (startRes.status !== "ok") {
       setErrorMsg(startRes.error.message);
       return;
     }
     const jobId = startRes.data;
     setJob(jobId);
-    const unlisten = await subscribePackProgress(jobId, (e) => {
+
+    channel.onmessage = (e) => {
       pushEvent(e);
       if (e.kind === "done") {
         (async () => {
           const r = await commands.packGetResult(jobId);
           if (r.status === "ok") setResult(r.data);
           else setErrorMsg(r.error.message);
-          await unlisten();
+          channel.onmessage = () => {};
         })();
       }
       if (e.kind === "error" && e.fatal) {
         setErrorMsg(e.message);
-        void unlisten();
+        channel.onmessage = () => {};
       }
-    });
+    };
   }
 
   const targetMode = options.target.kind;

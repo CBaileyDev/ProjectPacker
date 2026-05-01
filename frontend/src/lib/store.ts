@@ -30,6 +30,7 @@ const defaultOptions: PackOptions = {
   customIgnorePatterns: [],
   protocolVersion: "grok-to-cc-v1",
   format: "xml",
+  xmlSchema: "cxml",
 };
 
 export const useApp = create<AppState>((set) => ({

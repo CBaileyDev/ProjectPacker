@@ -1,9 +1,10 @@
-import { listen, type Event, type UnlistenFn } from "@tauri-apps/api/event";
+import { Channel } from "@tauri-apps/api/core";
 import type { ProgressEvent } from "./api";
 
-export function subscribePackProgress(
-  jobId: string,
+export function createPackProgressChannel(
   onEvent: (e: ProgressEvent) => void,
-): Promise<UnlistenFn> {
-  return listen<ProgressEvent>(`pack:${jobId}:progress`, (e: Event<ProgressEvent>) => onEvent(e.payload));
+): Channel<ProgressEvent> {
+  const channel = new Channel<ProgressEvent>();
+  channel.onmessage = onEvent;
+  return channel;
 }

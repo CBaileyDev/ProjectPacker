@@ -8,7 +8,7 @@ use serde::Serialize;
 use specta::Type;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Manager, State};
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -45,23 +45,21 @@ pub type CmdResult<T> = Result<T, AppError>;
 #[tauri::command]
 #[specta::specta]
 pub async fn pack_start(
-    app: AppHandle,
     registry: State<'_, Arc<JobRegistry>>,
     opts: PackOptions,
+    on_event: tauri::ipc::Channel<ProgressEvent>,
 ) -> CmdResult<String> {
     let job_id = Uuid::now_v7().to_string();
     let registry_arc = registry.inner().clone();
     let registry_for_task = registry_arc.clone();
-    let app_for_emit = app.clone();
-    let id = job_id.clone();
-    let id_for_task = id.clone();
+    let id_for_task = job_id.clone();
 
     let (tx, rx) = std::sync::mpsc::channel::<ProgressEvent>();
 
+    let on_event_for_relay = on_event.clone();
     std::thread::spawn(move || {
         for ev in rx {
-            let topic = format!("pack:{id}:progress");
-            let _ = app_for_emit.emit(&topic, ev);
+            let _ = on_event_for_relay.send(ev);
         }
     });
 

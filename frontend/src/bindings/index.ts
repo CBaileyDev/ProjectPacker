@@ -7,9 +7,9 @@
 
 
 export const commands = {
-async packStart(opts: PackOptions) : Promise<Result<string, AppError>> {
+async packStart(opts: PackOptions, onEvent: TAURI_CHANNEL<ProgressEvent>) : Promise<Result<string, AppError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("pack_start", { opts }) };
+    return { status: "ok", data: await TAURI_INVOKE("pack_start", { opts, onEvent }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -87,7 +87,7 @@ export type AppError = { code: string; message: string; details: string | null }
 export type FileFound = { path: string; bytes: number }
 export type GoalTemplate = { name: string; body: string }
 export type PackFormat = "xml" | "markdown" | "plainText"
-export type PackOptions = { target: PackTarget; goal: string; includeGitHistory: boolean; countTokens: boolean; tokenizerModel: string; secretScan: boolean; compress: boolean; removeComments: boolean; maxFileSizeKb: number; respectGitignore: boolean; customIgnorePatterns: string[]; protocolVersion: string; format: PackFormat }
+export type PackOptions = { target: PackTarget; goal: string; includeGitHistory: boolean; countTokens: boolean; tokenizerModel: string; secretScan: boolean; compress: boolean; removeComments: boolean; maxFileSizeKb: number; respectGitignore: boolean; customIgnorePatterns: string[]; protocolVersion: string; format: PackFormat; xmlSchema: XmlSchema }
 export type PackResult = { output: string; claudeCodePrompt: string; stats: PackStats; warnings: PackWarning[] }
 export type PackStats = { filesTotal: number; filesIncluded: number; filesSkipped: number; bytesTotal: number; tokensTotal: number | null; secretsFound: number; durationMs: number }
 export type PackTarget = { kind: "folder"; value: string } | { kind: "github"; value: string }
@@ -101,6 +101,7 @@ export type Settings = { theme: Theme; defaultProtocolVersion: string; defaultTo
 export type SkipReason = { kind: "ignored" } | { kind: "tooLarge" } | { kind: "binary" } | { kind: "inaccessible" } | { kind: "encodingFailed" }
 export type Theme = "dark" | "light"
 export type WarningKind = { kind: "fileSkipped" } | { kind: "treeSitterFailed" } | { kind: "gitLogMissing" } | { kind: "encodingFallback" } | { kind: "secretScanFailed" }
+export type XmlSchema = "cxml" | "legacy"
 
 /** tauri-specta globals **/
 
