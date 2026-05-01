@@ -208,14 +208,18 @@ pub fn pack(
 
 fn resolve_target(
     target: &PackTarget,
-    _job_id: &str,
-    _tx: &Sender<PackEvent>,
+    job_id: &str,
+    tx: &Sender<PackEvent>,
 ) -> CoreResult<(std::path::PathBuf, String, Option<crate::github::ClonedRepo>)> {
     match target {
         PackTarget::Folder(p) => Ok((p.clone(), p.display().to_string(), None)),
-        PackTarget::GitHub(_) => Err(CoreError::Internal(
-            "github target wiring is added in the next task".into(),
-        )),
+        PackTarget::GitHub(url) => {
+            let _ = tx.send(ProgressEvent::Cloning { progress_pct: 0 });
+            let parsed = crate::github::parse_github_url(url)?;
+            let label = format!("github.com/{}/{}", parsed.owner, parsed.repo);
+            let cloned = crate::github::shallow_clone(url, job_id)?;
+            Ok((cloned.path.clone(), label, Some(cloned)))
+        }
     }
 }
 

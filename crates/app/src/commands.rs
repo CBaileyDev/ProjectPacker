@@ -55,19 +55,6 @@ pub async fn pack_start(
     let id = job_id.clone();
     let id_for_task = id.clone();
 
-    // Reject GitHub URLs in v0.1.0 (URL parsing/clone exist in core::github but
-    // are not wired through the orchestrator yet — see follow-up plan).
-    if matches!(
-        opts.target,
-        projectpacker_core::types::PackTarget::GitHub(_)
-    ) {
-        return Err(AppError {
-            code: "not_implemented".into(),
-            message: "GitHub URL packing is deferred to v0.2.0. Use a local folder.".into(),
-            details: None,
-        });
-    }
-
     let (tx, rx) = std::sync::mpsc::channel::<ProgressEvent>();
 
     std::thread::spawn(move || {
@@ -78,10 +65,16 @@ pub async fn pack_start(
     });
 
     let handle = tokio::task::spawn_blocking(move || {
-        if let Ok(result) = pack::pack(&opts.target, &opts, tx, &id_for_task) {
-            registry_for_task.store_result(&id_for_task, result);
+        let tx_for_err = tx.clone();
+        match pack::pack(&opts.target, &opts, tx, &id_for_task) {
+            Ok(result) => registry_for_task.store_result(&id_for_task, result),
+            Err(e) => {
+                let _ = tx_for_err.send(ProgressEvent::Error {
+                    message: e.to_string(),
+                    fatal: true,
+                });
+            }
         }
-        // Failure path is wired up in the next task.
     });
 
     registry_arc.register(&job_id, handle);
