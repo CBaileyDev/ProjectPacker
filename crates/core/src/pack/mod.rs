@@ -1,5 +1,6 @@
 pub mod markdown;
 pub mod orchestrator;
+pub mod pin;
 pub mod plain;
 pub mod stats;
 pub mod xml;

@@ -40,6 +40,22 @@ impl IgnoreMatcher {
         }
     }
 
+    /// Check only the user tier (Tier 3: `.repomixignore` + `custom_patterns`).
+    ///
+    /// Returns `true` if the path is explicitly ignored by the user tier.
+    /// Does NOT consult Tier 1 (builtin) or Tier 2 (project / gitignore).
+    /// Used by the pin pre-pass to decide whether a pinned file has been
+    /// explicitly excluded by the user.
+    pub fn is_user_ignored(&self, path: &Path, is_dir: bool) -> bool {
+        if let Some(c) = &self.custom {
+            let m = c.matched_path_or_any_parents(path, is_dir);
+            if m.is_ignore() {
+                return true;
+            }
+        }
+        false
+    }
+
     pub fn is_ignored(&self, path: &Path, is_dir: bool) -> bool {
         let m = self.builtin.matched_path_or_any_parents(path, is_dir);
         if m.is_ignore() {
@@ -267,6 +283,37 @@ mod tests {
         assert!(
             m.is_ignored(Path::new("other.bak"), false),
             "non-negated *.bak files must still be ignored"
+        );
+    }
+
+    // ── Task E tests ───────────────────────────────────────────────────────
+
+    /// `is_user_ignored` must only consult the user tier (Tier 3).
+    /// A path matched by `.gitignore` (Tier 2) must NOT be reported as user-ignored.
+    /// A path matched by `custom_patterns` (Tier 3) MUST be reported as user-ignored.
+    #[test]
+    fn is_user_ignored_only_consults_user_tier() {
+        let dir = tempdir().unwrap();
+        // Set up a .gitignore that ignores bar.md (Tier 2).
+        std::fs::write(dir.path().join(".gitignore"), "bar.md\n").unwrap();
+
+        // Matcher with custom pattern foo.md (Tier 3) and respect_gitignore = true (Tier 2 active).
+        let m = IgnoreMatcher::new(dir.path(), &["foo.md".into()], true);
+
+        // foo.md is in custom_patterns → user-ignored.
+        assert!(
+            m.is_user_ignored(Path::new("foo.md"), false),
+            "foo.md must be user-ignored (in custom_patterns)"
+        );
+        // bar.md is only in .gitignore (Tier 2), not in user tier → not user-ignored.
+        assert!(
+            !m.is_user_ignored(Path::new("bar.md"), false),
+            "bar.md must NOT be user-ignored (only in .gitignore, not user tier)"
+        );
+        // bar.md IS still ignored via the full is_ignored check (proves Tier 2 works).
+        assert!(
+            m.is_ignored(Path::new("bar.md"), false),
+            "bar.md must still be ignored via full is_ignored (Tier 2)"
         );
     }
 

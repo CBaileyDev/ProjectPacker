@@ -1,5 +1,6 @@
 use crate::error::{CoreError, CoreResult};
 use crate::ignore::IgnoreMatcher;
+use crate::pack::pin;
 use crate::pack::xml::XmlBuilder;
 use crate::pack::{markdown, plain};
 use crate::pack::FileEntry;
@@ -11,6 +12,7 @@ use crate::tree_sitter_compress;
 use crate::types::*;
 use crate::walker::{self, WalkOptions};
 use rayon::prelude::*;
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::mpsc::Sender;
 use std::time::Instant;
@@ -38,13 +40,61 @@ pub fn pack(
     });
 
     let matcher = IgnoreMatcher::new(&root, &opts.custom_ignore_patterns, opts.respect_gitignore);
-    let outcome = walker::walk(
+    let mut outcome = walker::walk(
         &root,
         &matcher,
         &WalkOptions {
             max_file_size_kb: opts.max_file_size_kb,
         },
     );
+
+    // ── Pin pre-pass ─────────────────────────────────────────────────────────
+    // Resolve all instructional files that exist under root and decide which
+    // ones need to be force-included (i.e. weren't already picked up by the
+    // walker). We also build the set of pinned paths so we can reorder entries
+    // afterwards (pinned entries render first).
+    let pinned_rel_paths: Vec<String> = pin::pinned_files(&root);
+
+    // Build a fast lookup of paths already in outcome.included.
+    let mut already_included: HashSet<String> = outcome
+        .included
+        .iter()
+        .map(|f| f.path.clone())
+        .collect();
+
+    let mut pinned_set: HashSet<String> = HashSet::new();
+
+    for pinned_path in &pinned_rel_paths {
+        pinned_set.insert(pinned_path.clone());
+
+        if already_included.contains(pinned_path) {
+            // Already included by the walker — nothing to add, just track it.
+            continue;
+        }
+
+        // Not included by the walker. Check whether the user tier explicitly
+        // excludes it. If so, respect that and skip.
+        let native_path = std::path::Path::new(pinned_path);
+        if matcher.is_user_ignored(native_path, false) {
+            // User explicitly excluded this pinned file — honour it.
+            continue;
+        }
+
+        // Force-include: the file exists (pinned_files already checked) and
+        // the user hasn't blocked it. Read metadata for bytes.
+        let abs = root.join(pinned_path.replace('/', std::path::MAIN_SEPARATOR_STR));
+        let bytes = std::fs::metadata(&abs).map(|m| m.len()).unwrap_or(0);
+
+        // Remove from skipped if it appears there (e.g. was blocked by builtin/project tier).
+        outcome.skipped.retain(|(p, _)| p != pinned_path);
+
+        outcome.included.push(FileFound {
+            path: pinned_path.clone(),
+            bytes,
+        });
+        already_included.insert(pinned_path.clone());
+    }
+    // ── End pin pre-pass ──────────────────────────────────────────────────────
 
     let _ = tx.send(ProgressEvent::Walking {
         files_scanned: outcome.included.len() as u32,
@@ -162,6 +212,41 @@ pub fn pack(
         entries.push(entry);
         warnings.extend(w);
     }
+
+    // ── Pin reorder ───────────────────────────────────────────────────────────
+    // Partition entries into (pinned, non-pinned), then reassemble with pinned
+    // entries in declaration order first, non-pinned in their original walk order.
+    {
+        // Build a lookup from path → index in the `entries` Vec.
+        let mut path_to_idx: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        for (i, e) in entries.iter().enumerate() {
+            path_to_idx.insert(e.path.as_str(), i);
+        }
+
+        // Collect pinned entries in declaration order (skipping absent ones).
+        let mut pinned_entries: Vec<FileEntry> = Vec::new();
+        let mut pinned_indices: HashSet<usize> = HashSet::new();
+        for rel in &pinned_rel_paths {
+            if let Some(&idx) = path_to_idx.get(rel.as_str()) {
+                if !pinned_indices.contains(&idx) {
+                    pinned_indices.insert(idx);
+                    pinned_entries.push(entries[idx].clone());
+                }
+            }
+        }
+
+        // Collect non-pinned entries in their original walk order.
+        let non_pinned: Vec<FileEntry> = entries
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| !pinned_indices.contains(i))
+            .map(|(_, e)| e.clone())
+            .collect();
+
+        entries = pinned_entries;
+        entries.extend(non_pinned);
+    }
+    // ── End pin reorder ───────────────────────────────────────────────────────
 
     let mut secrets_found = 0u32;
     if opts.secret_scan {
@@ -504,6 +589,80 @@ mod tests {
             elapsed.as_millis() < 500,
             "pack() took too long after cancellation: {:?}",
             elapsed
+        );
+    }
+
+    // ── Task E tests ──────────────────────────────────────────────────────────
+
+    /// Pinned file (`AGENTS.md`) must appear before a non-pinned file (`random.md`)
+    /// in the pack entries (proves reordering).
+    #[test]
+    fn pack_pinned_file_rendered_before_normal_files() {
+        let d = tempdir().unwrap();
+        fs::write(d.path().join("AGENTS.md"), "# Agent instructions\n").unwrap();
+        fs::write(d.path().join("random.md"), "# Just a regular file\n").unwrap();
+
+        let opts = PackOptions {
+            goal: "x".into(),
+            count_tokens: false,
+            secret_scan: false,
+            respect_gitignore: false,
+            ..PackOptions::default()
+        };
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let result = pack(
+            &PackTarget::Folder(d.path().to_path_buf()),
+            &opts,
+            tx,
+            "job-pin-order",
+            CancellationToken::new(),
+        )
+        .unwrap();
+
+        // The output must contain AGENTS.md before random.md.
+        let agents_pos = result.output.find("AGENTS.md").expect("AGENTS.md not in output");
+        let random_pos = result.output.find("random.md").expect("random.md not in output");
+        assert!(
+            agents_pos < random_pos,
+            "AGENTS.md must appear before random.md in the output"
+        );
+        assert_eq!(result.stats.files_included, 2);
+    }
+
+    /// User explicitly excluding a pinned file via `custom_ignore_patterns` must
+    /// be respected — the file must NOT appear in the pack output.
+    #[test]
+    fn pack_respects_user_excluding_a_pinned_file() {
+        let d = tempdir().unwrap();
+        fs::write(d.path().join("AGENTS.md"), "# Agent instructions\n").unwrap();
+
+        let opts = PackOptions {
+            goal: "x".into(),
+            count_tokens: false,
+            secret_scan: false,
+            respect_gitignore: false,
+            custom_ignore_patterns: vec!["AGENTS.md".into()],
+            ..PackOptions::default()
+        };
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let result = pack(
+            &PackTarget::Folder(d.path().to_path_buf()),
+            &opts,
+            tx,
+            "job-pin-excluded",
+            CancellationToken::new(),
+        )
+        .unwrap();
+
+        // AGENTS.md must NOT appear in the output.
+        // (The <files> block should not contain it; file path search is fine.)
+        assert!(
+            !result.output.contains("<file path=\"AGENTS.md\""),
+            "AGENTS.md must be absent when user-excluded via custom_ignore_patterns"
+        );
+        assert_eq!(
+            result.stats.files_included, 0,
+            "no files should be included when the only file is user-excluded"
         );
     }
 }
