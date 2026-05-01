@@ -182,7 +182,7 @@ pub fn pack(
             };
 
             let tokens = if opts.count_tokens {
-                tokens::count(&opts.tokenizer_model, &content).ok()
+                tokens::count_by_name(&opts.tokenizer_model, &content).ok()
             } else {
                 None
             };
