@@ -29,6 +29,8 @@ uuid = { version = "1", features = ["v7"] }
 encoding_rs = "0.8"
 walkdir = "2"
 tempfile = "3"
+infer = "0.19"
+file-format = "0.29"
 
 [dev-dependencies]
 insta = { version = "1", features = ["yaml"] }

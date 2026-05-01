@@ -51,7 +51,7 @@ pub fn walk(root: &Path, matcher: &IgnoreMatcher, opts: &WalkOptions) -> WalkOut
             continue;
         }
 
-        if is_binary(abs) {
+        if crate::detect::is_binary(abs) {
             skipped.push((rel_str, SkipReason::Binary));
             continue;
         }
@@ -63,17 +63,6 @@ pub fn walk(root: &Path, matcher: &IgnoreMatcher, opts: &WalkOptions) -> WalkOut
     }
 
     WalkOutcome { included, skipped }
-}
-
-fn is_binary(path: &Path) -> bool {
-    let mut buf = [0u8; 8192];
-    use std::io::Read;
-    if let Ok(mut f) = std::fs::File::open(path) {
-        if let Ok(n) = f.read(&mut buf) {
-            return buf[..n].contains(&0u8);
-        }
-    }
-    false
 }
 
 #[cfg(test)]

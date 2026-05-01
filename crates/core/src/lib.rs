@@ -1,5 +1,6 @@
 //! ProjectPacker core library — pure Rust packing pipeline. No Tauri deps.
 
+pub mod detect;
 pub mod error;
 pub mod github;
 pub mod ignore;
