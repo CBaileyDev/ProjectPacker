@@ -115,6 +115,30 @@ export type PlanValidation = { ok: boolean; errors: PlanError[] }
 export type Preset = { name: string; optionsJson: string }
 export type ProgressEvent = { kind: "started"; job_id: string; target_label: string } | { kind: "cloning"; progress_pct: number } | { kind: "walking"; files_scanned: number } | { kind: "fileFoundBatch"; paths: FileFound[] } | { kind: "fileSkipped"; path: string; reason: SkipReason } | { kind: "tokenizing"; progress_pct: number } | { kind: "secretScanning"; progress_pct: number } | { kind: "secretHit"; path: string; secret_kind: string; line: number } | { kind: "compressing"; progress_pct: number } | { kind: "buildingOutput" } | { kind: "done"; stats: PackStats } | { kind: "error"; message: string; fatal: boolean }
 export type Recent = { label: string; target: string; lastUsedIso: string }
+/**
+ * One redacted span discovered during a scan. Offsets refer to the
+ * **original** (pre-redaction) content so callers can correlate against
+ * the source.
+ */
+export type Redaction = { 
+/**
+ * Stable gitleaks rule id (e.g. `"aws-access-token"`).
+ */
+ruleId: string; 
+/**
+ * 1-based line number in the original content.
+ */
+line: number; 
+/**
+ * 0-based byte offset in the original content where the redaction
+ * begins.
+ */
+byteOffset: number; 
+/**
+ * First 4 + last 4 chars of the matched substring with `***` in
+ * between (or `***` for short matches).
+ */
+matchedExcerpt: string }
 export type Settings = { theme: Theme; defaultProtocolVersion: string; defaultTokenizerModel: string; recents: Recent[]; goalTemplates: GoalTemplate[]; presets: Preset[] }
 export type SkipReason = { kind: "ignored" } | { kind: "tooLarge" } | { kind: "binary" } | { kind: "inaccessible" } | { kind: "encodingFailed" }
 export type Theme = "dark" | "light"

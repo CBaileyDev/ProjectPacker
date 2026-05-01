@@ -1,1 +1,1 @@
-AKIA0000000000000000  # fake aws key
+AKIAIOSFODNN7EXAMPLE  # fake aws key (gitleaks-shaped)
