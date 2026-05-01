@@ -61,6 +61,9 @@ impl IgnoreMatcher {
             if m.is_ignore() {
                 return true;
             }
+            if m.is_whitelist() {
+                return false;
+            }
         }
 
         false
@@ -83,7 +86,9 @@ fn build_project_tier(root: &Path) -> Gitignore {
 
 /// Tier 3: user-level patterns.
 /// Merges `.repomixignore` (if present) with caller-supplied `custom_patterns`.
-/// `.repomixignore` lines come first so `custom_patterns` can override them.
+/// `.repomixignore` lines come first so `custom_patterns` can override them
+/// — including via gitignore-style negation (`!pattern`), which `is_ignored`
+/// honours uniformly across project and user tiers.
 fn build_user_tier(root: &Path, custom_patterns: &[String]) -> Option<Gitignore> {
     let repomix_path = root.join(".repomixignore");
     let repomix_lines: Vec<String> = std::fs::read_to_string(&repomix_path)
@@ -124,7 +129,6 @@ fn build_from_lines<'a>(lines: impl IntoIterator<Item = &'a str>, root: &Path) -
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
     use tempfile::tempdir;
 
     fn root(p: &Path) -> IgnoreMatcher {
@@ -246,6 +250,26 @@ mod tests {
         );
     }
 
+    /// Tier 3: `custom_patterns` can negate (`!pattern`) lines from `.repomixignore`.
+    /// This proves the user tier honours whitelist semantics, just like the project tier.
+    /// (Note: gitignore semantics forbid re-including a file under an excluded
+    /// directory, so this exercises the file-pattern path which is allowed.)
+    #[test]
+    fn user_tier_negation_overrides_repomixignore() {
+        let dir = tempdir().unwrap();
+        std::fs::write(dir.path().join(".repomixignore"), "*.bak\n").unwrap();
+
+        let m = IgnoreMatcher::new(dir.path(), &["!keep.bak".into()], false);
+        assert!(
+            !m.is_ignored(Path::new("keep.bak"), false),
+            "!keep.bak in custom_patterns must override *.bak from .repomixignore"
+        );
+        assert!(
+            m.is_ignored(Path::new("other.bak"), false),
+            "non-negated *.bak files must still be ignored"
+        );
+    }
+
     /// Legacy `.codeparserignore` must no longer be consulted.
     #[test]
     fn codeparserignore_no_longer_consulted() {
@@ -261,8 +285,4 @@ mod tests {
         );
     }
 
-    #[allow(dead_code)]
-    fn _unused_pathbuf_to_silence_warning() {
-        let _ = PathBuf::new();
-    }
 }
