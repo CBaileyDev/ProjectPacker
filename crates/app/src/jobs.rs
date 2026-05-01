@@ -100,6 +100,7 @@ mod tests {
                 duration_ms: 0,
             },
             warnings: Vec::new(),
+            redactions: Vec::new(),
         };
         registry.store_result("job-1", result);
 

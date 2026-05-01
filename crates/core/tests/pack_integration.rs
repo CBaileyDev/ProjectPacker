@@ -47,6 +47,93 @@ fn tiny_fixture_detects_secret() {
         result.stats.secrets_found >= 1,
         "expected at least one secret hit"
     );
+    assert!(
+        !result.redactions.is_empty(),
+        "expected redactions list to be non-empty"
+    );
+    assert_eq!(
+        result.redactions[0].rule_id, "aws-access-token",
+        "expected the AWS rule id from gitleaks ruleset"
+    );
+    assert!(
+        result.redactions[0].file.contains("danger.txt"),
+        "expected redaction.file to reference danger.txt, got: {}",
+        result.redactions[0].file,
+    );
+    assert!(
+        result.output.contains("[REDACTED:aws-access-token]"),
+        "pack output must contain the redaction marker"
+    );
+    assert!(
+        !result.output.contains("AKIAIOSFODNN7EXAMPLE"),
+        "pack output must NOT contain the plaintext AWS key"
+    );
+    assert!(
+        result.output.contains("<security_report"),
+        "pack output (XML default) must contain the <security_report block"
+    );
+}
+
+/// Orchestrator-level round-trip: a fixture with one secret, packed in XML
+/// format, must surface the secret in the structured `redactions` list AND
+/// in the `<security_report>` block of the output text.
+#[test]
+fn pack_emits_security_report_and_redactions_for_xml() {
+    use std::fs;
+    use tempfile::tempdir;
+
+    let d = tempdir().unwrap();
+    fs::write(
+        d.path().join("danger.txt"),
+        "key = AKIAIOSFODNN7EXAMPLE\n",
+    )
+    .unwrap();
+
+    let opts = PackOptions {
+        goal: "x".into(),
+        count_tokens: false,
+        secret_scan: true,
+        respect_gitignore: false,
+        format: PackFormat::Xml,
+        ..PackOptions::default()
+    };
+    let (tx, _rx) = std::sync::mpsc::channel();
+    let result = pack::pack(
+        &PackTarget::Folder(d.path().to_path_buf()),
+        &opts,
+        tx,
+        "job-secrep-xml",
+        CancellationToken::new(),
+    )
+    .unwrap();
+
+    // Structured surface
+    assert!(
+        result.redactions.iter().any(|r| r.rule_id == "aws-access-token"
+            && r.file == "danger.txt"),
+        "expected aws-access-token redaction on danger.txt, got: {:?}",
+        result.redactions,
+    );
+
+    // XML surface
+    assert!(
+        result.output.contains("<security_report"),
+        "missing <security_report block: {}",
+        result.output,
+    );
+    assert!(
+        result.output.contains("rule_id=\"aws-access-token\""),
+        "missing rule_id attribute in security_report: {}",
+        result.output,
+    );
+    assert!(
+        result.output.contains("[REDACTED:aws-access-token]"),
+        "missing redaction marker in pack content"
+    );
+    assert!(
+        !result.output.contains("AKIAIOSFODNN7EXAMPLE"),
+        "plaintext AWS key still present in pack output"
+    );
 }
 
 #[test]

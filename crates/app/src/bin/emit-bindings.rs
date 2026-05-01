@@ -18,7 +18,8 @@ fn main() {
         .typ::<projectpacker_core::types::ProgressEvent>()
         .typ::<projectpacker_core::tokens::TokenModel>()
         .typ::<projectpacker_core::tokens::TokensPerModel>()
-        .typ::<projectpacker_core::secrets::Redaction>();
+        .typ::<projectpacker_core::secrets::Redaction>()
+        .typ::<projectpacker_core::types::PackRedaction>();
 
     builder
         .export(

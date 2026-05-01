@@ -1,6 +1,7 @@
+use crate::pack::security_report;
 use crate::pack::stats::StatsBlock;
 use crate::pack::FileEntry;
-use crate::types::{PackOptions, PackStats};
+use crate::types::{PackOptions, PackRedaction, PackStats};
 
 pub fn render(
     root_label: &str,
@@ -8,6 +9,7 @@ pub fn render(
     stats: &PackStats,
     entries: &[FileEntry],
     pinned_count: usize,
+    redactions: &[PackRedaction],
 ) -> String {
     let block = StatsBlock::from(root_label, opts, stats, entries);
     let mut out = String::new();
@@ -37,6 +39,13 @@ pub fn render(
     out.push_str(&format!("Cache hits: {}\n", block.cache_hits));
     out.push_str(&format!("Duration: {}ms\n", block.duration_ms));
     out.push_str("=== END STATS ===\n\n");
+
+    // Security report (between stats and entries; emitted only when non-empty).
+    let sec = security_report::emit_plain(redactions);
+    if !sec.is_empty() {
+        out.push_str(&sec);
+        out.push('\n');
+    }
 
     // Pinned entries in incoming order, then non-pinned sorted alphabetically.
     let pinned_count = pinned_count.min(entries.len());
@@ -103,7 +112,7 @@ mod tests {
 
     #[test]
     fn renders_header_and_goal() {
-        let out = render("my-repo", &opts(), &stats(), &[], 0);
+        let out = render("my-repo", &opts(), &stats(), &[], 0, &[]);
         assert!(out.starts_with("=== STATS ===\n"));
         assert!(out.contains("Target: my-repo"));
         assert!(out.contains("Goal: test goal"));
@@ -120,7 +129,7 @@ mod tests {
             tokens: None,
             hash: "abc".into(),
         }];
-        let out = render("repo", &opts(), &stats(), &entries, 0);
+        let out = render("repo", &opts(), &stats(), &entries, 0, &[]);
         assert!(out.contains("=== src/lib.rs ===\n"));
         assert!(out.contains("pub fn foo() {}"));
     }
@@ -134,7 +143,7 @@ mod tests {
             tokens: None,
             hash: "".into(),
         }];
-        let out = render("r", &opts(), &stats(), &entries, 0);
+        let out = render("r", &opts(), &stats(), &entries, 0, &[]);
         assert!(out.contains("no newline\n"));
     }
 
@@ -144,14 +153,14 @@ mod tests {
         let mut s = stats();
         o.count_tokens = false;
         s.tokens_total = None;
-        let out = render("r", &o, &s, &[], 0);
+        let out = render("r", &o, &s, &[], 0, &[]);
         assert!(!out.contains("Tokens:"));
     }
 
     // Test 8: Stats block uses === STATS === / === END STATS === delimiters.
     #[test]
     fn plain_stats_block_uses_delimiters() {
-        let out = render("my-repo", &opts(), &stats(), &[], 0);
+        let out = render("my-repo", &opts(), &stats(), &[], 0, &[]);
         assert!(
             out.contains("=== STATS ==="),
             "output should contain === STATS ==="
@@ -170,7 +179,7 @@ mod tests {
     #[test]
     fn plain_alphabetizes_non_pinned_tail() {
         let entries = vec![entry("b.rs"), entry("a.rs")];
-        let out = render("repo", &opts(), &stats(), &entries, 0);
+        let out = render("repo", &opts(), &stats(), &entries, 0, &[]);
         let a_pos = out.find("a.rs").expect("a.rs not in output");
         let b_pos = out.find("b.rs").expect("b.rs not in output");
         assert!(a_pos < b_pos, "a.rs must appear before b.rs after alphabetical sort");

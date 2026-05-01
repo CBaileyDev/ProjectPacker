@@ -1,6 +1,7 @@
+use crate::pack::security_report;
 use crate::pack::stats::StatsBlock;
 use crate::pack::FileEntry;
-use crate::types::{PackOptions, PackStats};
+use crate::types::{PackOptions, PackRedaction, PackStats};
 use std::fmt::Write;
 
 pub struct XmlBuilder {
@@ -95,6 +96,17 @@ impl XmlBuilder {
             block.duration_ms
         );
         let _ = writeln!(self.out, "</stats>");
+        self
+    }
+
+    /// Emit a `<security_report>` block listing every redaction performed
+    /// during the pack pipeline. Empty input is a no-op so the byte-for-byte
+    /// output is preserved when no secrets were found.
+    pub fn security_report_block(&mut self, redactions: &[PackRedaction]) -> &mut Self {
+        let fragment = security_report::emit_xml(redactions);
+        if !fragment.is_empty() {
+            self.out.push_str(&fragment);
+        }
         self
     }
 

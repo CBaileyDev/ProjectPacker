@@ -266,16 +266,28 @@ pub fn pack(
     );
 
     let mut secrets_found = 0u32;
+    let mut all_redactions: Vec<PackRedaction> = Vec::new();
     if opts.secret_scan {
-        for e in &entries {
-            for hit in secrets::scan(&e.content) {
+        let ruleset = secrets::ruleset::vendored();
+        for e in entries.iter_mut() {
+            let result = secrets::scan_and_redact(&e.content, ruleset);
+            for r in &result.redactions {
                 secrets_found += 1;
                 let _ = tx.send(ProgressEvent::SecretHit {
                     path: e.path.clone(),
-                    secret_kind: hit.kind,
-                    line: hit.line,
+                    secret_kind: r.rule_id.clone(),
+                    line: r.line,
+                });
+                all_redactions.push(PackRedaction {
+                    file: e.path.clone(),
+                    rule_id: r.rule_id.clone(),
+                    line: r.line,
+                    byte_offset: r.byte_offset,
                 });
             }
+            // Replace original content with redacted content so the pack
+            // output ships the redacted version, not the secrets.
+            e.content = result.redacted_content;
         }
     }
 
@@ -345,6 +357,7 @@ pub fn pack(
                 .open_repository()
                 .raw_block(&protocol_block)
                 .stats_block(&label, opts, &stats, &entries)
+                .security_report_block(&all_redactions)
                 .directory_structure(&dir_paths);
             // Route to the Anthropic cxml schema (default) or the legacy schema.
             match opts.xml_schema {
@@ -354,8 +367,12 @@ pub fn pack(
             builder.close_repository();
             builder.finish()
         }
-        PackFormat::Markdown => markdown::render(&label, opts, &stats, &entries, pinned_count),
-        PackFormat::PlainText => plain::render(&label, opts, &stats, &entries, pinned_count),
+        PackFormat::Markdown => {
+            markdown::render(&label, opts, &stats, &entries, pinned_count, &all_redactions)
+        }
+        PackFormat::PlainText => {
+            plain::render(&label, opts, &stats, &entries, pinned_count, &all_redactions)
+        }
     };
 
     let claude_code_prompt = protocol::claude_code_prompt(&opts.protocol_version)?;
@@ -374,6 +391,7 @@ pub fn pack(
         claude_code_prompt,
         stats,
         warnings,
+        redactions: all_redactions,
     })
 }
 

@@ -93,7 +93,16 @@ export type PackOptions = { target: PackTarget; goal: string; includeGitHistory:
  * deserialize cleanly to `XmlSchema::Cxml` (the new default).
  */
 xmlSchema?: XmlSchema }
-export type PackResult = { output: string; claudeCodePrompt: string; stats: PackStats; warnings: PackWarning[] }
+/**
+ * A redaction performed during the pack pipeline, surfaced in the
+ * `<security_report>` block and via `PackResult.redactions`.
+ * 
+ * Note: deliberately omits the matched-excerpt field on the underlying
+ * [`crate::secrets::Redaction`] — the security report should not reproduce
+ * secrets, even partially.
+ */
+export type PackRedaction = { file: string; ruleId: string; line: number; byteOffset: number }
+export type PackResult = { output: string; claudeCodePrompt: string; stats: PackStats; warnings: PackWarning[]; redactions: PackRedaction[] }
 export type PackStats = { filesTotal: number; filesIncluded: number; filesSkipped: number; bytesTotal: number; 
 /**
  * Token count under the user-selected tokenizer (`opts.tokenizer_model`),

@@ -1,6 +1,7 @@
+use crate::pack::security_report;
 use crate::pack::stats::StatsBlock;
 use crate::pack::FileEntry;
-use crate::types::{PackOptions, PackStats};
+use crate::types::{PackOptions, PackRedaction, PackStats};
 
 pub fn render(
     root_label: &str,
@@ -8,6 +9,7 @@ pub fn render(
     stats: &PackStats,
     entries: &[FileEntry],
     pinned_count: usize,
+    redactions: &[PackRedaction],
 ) -> String {
     let block = StatsBlock::from(root_label, opts, stats, entries);
     let mut out = String::new();
@@ -37,6 +39,12 @@ pub fn render(
     out.push_str(&format!("| Redacted bytes | {} |\n", block.redacted_bytes));
     out.push_str(&format!("| Cache hits | {} |\n", block.cache_hits));
     out.push_str(&format!("| Duration | {}ms |\n\n", block.duration_ms));
+
+    // Security report (between stats and entries; emitted only when non-empty).
+    let sec = security_report::emit_markdown(redactions);
+    if !sec.is_empty() {
+        out.push_str(&sec);
+    }
 
     // Build the ordered slice: pinned entries in incoming order, then non-pinned
     // entries sorted alphabetically by path for diffability.
@@ -123,7 +131,7 @@ mod tests {
 
     #[test]
     fn renders_header_and_summary() {
-        let out = render("my-repo", &opts(), &stats(), &[], 0);
+        let out = render("my-repo", &opts(), &stats(), &[], 0, &[]);
         assert!(out.contains("# Repository Pack"));
         assert!(out.contains("`my-repo`"));
         assert!(out.contains("add a feature"));
@@ -142,7 +150,7 @@ mod tests {
             tokens: None,
             hash: "abc".into(),
         }];
-        let out = render("repo", &opts(), &stats(), &entries, 0);
+        let out = render("repo", &opts(), &stats(), &entries, 0, &[]);
         assert!(out.contains("### `src/main.rs`"));
         assert!(out.contains("```rust\n"));
         assert!(out.contains("fn main() {}"));
@@ -154,7 +162,7 @@ mod tests {
             FileEntry { path: "a.rs".into(), content: "".into(), bytes: 0, tokens: None, hash: "".into() },
             FileEntry { path: "b.py".into(), content: "".into(), bytes: 0, tokens: None, hash: "".into() },
         ];
-        let out = render("repo", &opts(), &stats(), &entries, 0);
+        let out = render("repo", &opts(), &stats(), &entries, 0, &[]);
         assert!(out.contains("## Directory Structure"));
         assert!(out.contains("a.rs"));
         assert!(out.contains("b.py"));
@@ -169,14 +177,14 @@ mod tests {
             tokens: None,
             hash: "".into(),
         }];
-        let out = render("r", &opts(), &stats(), &entries, 0);
+        let out = render("r", &opts(), &stats(), &entries, 0, &[]);
         assert!(out.contains("export {}\n```"));
     }
 
     // Test 7: ## Stats replaces ## Summary.
     #[test]
     fn markdown_stats_section_replaces_summary() {
-        let out = render("my-repo", &opts(), &stats(), &[], 0);
+        let out = render("my-repo", &opts(), &stats(), &[], 0, &[]);
         assert!(out.contains("## Stats"), "output should contain ## Stats");
         assert!(
             !out.contains("## Summary"),
@@ -195,7 +203,7 @@ mod tests {
     #[test]
     fn markdown_alphabetizes_non_pinned_tail() {
         let entries = vec![entry("b.rs"), entry("a.rs")];
-        let out = render("repo", &opts(), &stats(), &entries, 0);
+        let out = render("repo", &opts(), &stats(), &entries, 0, &[]);
         let a_pos = out.find("a.rs").expect("a.rs not in output");
         let b_pos = out.find("b.rs").expect("b.rs not in output");
         assert!(a_pos < b_pos, "a.rs must appear before b.rs after alphabetical sort");
@@ -212,7 +220,7 @@ mod tests {
             entry("z.rs"),
             entry("a.rs"),
         ];
-        let out = render("repo", &opts(), &stats(), &entries, 2);
+        let out = render("repo", &opts(), &stats(), &entries, 2, &[]);
 
         let agents_pos = out.find("AGENTS.md").expect("AGENTS.md not in output");
         let claude_pos = out.find("CLAUDE.md").expect("CLAUDE.md not in output");

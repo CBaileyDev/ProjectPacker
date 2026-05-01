@@ -171,6 +171,21 @@ pub enum ProgressEvent {
     },
 }
 
+/// A redaction performed during the pack pipeline, surfaced in the
+/// `<security_report>` block and via `PackResult.redactions`.
+///
+/// Note: deliberately omits the matched-excerpt field on the underlying
+/// [`crate::secrets::Redaction`] — the security report should not reproduce
+/// secrets, even partially.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct PackRedaction {
+    pub file: String,
+    pub rule_id: String,
+    pub line: u32,
+    pub byte_offset: u32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct PackResult {
@@ -178,6 +193,7 @@ pub struct PackResult {
     pub claude_code_prompt: String,
     pub stats: PackStats,
     pub warnings: Vec<PackWarning>,
+    pub redactions: Vec<PackRedaction>,
 }
 
 #[cfg(test)]
