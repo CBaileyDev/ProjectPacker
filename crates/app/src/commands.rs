@@ -78,15 +78,10 @@ pub async fn pack_start(
     });
 
     let handle = tokio::task::spawn_blocking(move || {
-        let root = match &opts.target {
-            projectpacker_core::types::PackTarget::Folder(p) => p.clone(),
-            projectpacker_core::types::PackTarget::GitHub(_) => return, // unreachable — guarded above
-        };
-        if let Ok(result) = pack::pack(&root, &opts, tx, &id_for_task) {
+        if let Ok(result) = pack::pack(&opts.target, &opts, tx, &id_for_task) {
             registry_for_task.store_result(&id_for_task, result);
         }
-        // Failure path: orchestrator did not emit Done; UI distinguishes by
-        // absence-of-Done plus a timeout. Better error plumbing is a follow-up.
+        // Failure path is wired up in the next task.
     });
 
     registry_arc.register(&job_id, handle);

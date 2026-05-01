@@ -19,7 +19,7 @@ use std::time::Instant;
 pub type PackEvent = ProgressEvent;
 
 pub fn pack(
-    root: &Path,
+    target: &PackTarget,
     opts: &PackOptions,
     tx: Sender<PackEvent>,
     job_id: &str,
@@ -27,15 +27,16 @@ pub fn pack(
     let start = Instant::now();
     let mut warnings: Vec<PackWarning> = Vec::new();
 
-    let label = root.display().to_string();
+    let (root, label, _clone_guard) = resolve_target(target, job_id, &tx)?;
+
     let _ = tx.send(ProgressEvent::Started {
         job_id: job_id.into(),
         target_label: label.clone(),
     });
 
-    let matcher = IgnoreMatcher::new(root, &opts.custom_ignore_patterns, opts.respect_gitignore);
+    let matcher = IgnoreMatcher::new(&root, &opts.custom_ignore_patterns, opts.respect_gitignore);
     let outcome = walker::walk(
-        root,
+        &root,
         &matcher,
         &WalkOptions {
             max_file_size_kb: opts.max_file_size_kb,
@@ -203,6 +204,19 @@ pub fn pack(
     })
 }
 
+fn resolve_target(
+    target: &PackTarget,
+    _job_id: &str,
+    _tx: &Sender<PackEvent>,
+) -> CoreResult<(std::path::PathBuf, String, Option<crate::github::ClonedRepo>)> {
+    match target {
+        PackTarget::Folder(p) => Ok((p.clone(), p.display().to_string(), None)),
+        PackTarget::GitHub(_) => Err(CoreError::Internal(
+            "github target wiring is added in the next task".into(),
+        )),
+    }
+}
+
 /// Read a file as text, returning `(content, used_non_utf8_fallback)`.
 ///
 /// Detection order:
@@ -260,7 +274,7 @@ mod tests {
             ..PackOptions::default()
         };
         let (tx, _rx) = std::sync::mpsc::channel();
-        let result = pack(d.path(), &opts, tx, "job-test").unwrap();
+        let result = pack(&PackTarget::Folder(d.path().to_path_buf()), &opts, tx, "job-test").unwrap();
         assert!(result.output.contains("<protocol version=\"grok-to-cc-v1\">"));
         assert!(result.output.contains("<files>"));
         assert!(result.output.contains("README.md"));
@@ -281,7 +295,7 @@ mod tests {
             ..PackOptions::default()
         };
         let (tx, rx) = std::sync::mpsc::channel();
-        let _ = pack(d.path(), &opts, tx, "job-test").unwrap();
+        let _ = pack(&PackTarget::Folder(d.path().to_path_buf()), &opts, tx, "job-test").unwrap();
         let mut events: Vec<&'static str> = Vec::new();
         for ev in rx.try_iter() {
             events.push(match ev {
@@ -375,7 +389,7 @@ mod tests {
             ..PackOptions::default()
         };
         let (tx, _rx) = std::sync::mpsc::channel();
-        let result = pack(d.path(), &opts, tx, "job-test").unwrap();
+        let result = pack(&PackTarget::Folder(d.path().to_path_buf()), &opts, tx, "job-test").unwrap();
 
         assert!(
             result
