@@ -25,7 +25,7 @@ pub fn pack(
     job_id: &str,
 ) -> CoreResult<PackResult> {
     let start = Instant::now();
-    let warnings: Vec<PackWarning> = Vec::new();
+    let mut warnings: Vec<PackWarning> = Vec::new();
 
     let label = root.display().to_string();
     let _ = tx.send(ProgressEvent::Started {
@@ -58,12 +58,33 @@ pub fn pack(
 
     let _ = tx.send(ProgressEvent::BuildingXml);
 
-    let entries: Vec<FileEntry> = outcome
+    let results: Vec<(FileEntry, Vec<PackWarning>)> = outcome
         .included
         .par_iter()
         .map(|f| {
             let abs = root.join(&f.path);
-            let raw = read_text_with_fallback(&abs).map(|(s, _)| s).unwrap_or_default();
+            let mut file_warnings: Vec<PackWarning> = Vec::new();
+
+            let raw = match read_text_with_fallback(&abs) {
+                Ok((content, fallback)) => {
+                    if fallback {
+                        file_warnings.push(PackWarning {
+                            kind: WarningKind::EncodingFallback,
+                            path: Some(f.path.clone()),
+                            message: "Decoded as non-UTF-8 (UTF-16 or Windows-1252)".into(),
+                        });
+                    }
+                    content
+                }
+                Err(e) => {
+                    file_warnings.push(PackWarning {
+                        kind: WarningKind::FileSkipped,
+                        path: Some(f.path.clone()),
+                        message: format!("Read failed: {e}"),
+                    });
+                    String::new()
+                }
+            };
 
             // Step 1: strip comments if requested (tree-sitter languages only).
             let after_comments = if opts.remove_comments {
@@ -97,15 +118,24 @@ pub fn pack(
             hasher.update(raw.as_bytes());
             let hash = format!("{:x}", hasher.finalize());
 
-            FileEntry {
-                path: f.path.clone(),
-                content,
-                bytes: f.bytes,
-                tokens,
-                hash,
-            }
+            (
+                FileEntry {
+                    path: f.path.clone(),
+                    content,
+                    bytes: f.bytes,
+                    tokens,
+                    hash,
+                },
+                file_warnings,
+            )
         })
         .collect();
+
+    let mut entries: Vec<FileEntry> = Vec::with_capacity(results.len());
+    for (entry, w) in results {
+        entries.push(entry);
+        warnings.extend(w);
+    }
 
     let mut secrets_found = 0u32;
     if opts.secret_scan {
@@ -325,6 +355,37 @@ mod tests {
         let (s, fallback) = read_text_with_fallback(&p).unwrap();
         assert_eq!(s, "hé");
         assert!(fallback);
+    }
+
+    #[test]
+    fn pack_emits_encoding_fallback_warning() {
+        let d = tempdir().unwrap();
+        // Write a Windows-1252 file (will trigger encoding fallback).
+        // NOTE: original task spec used UTF-16 LE bytes [0xFF, 0xFE, 0x68, 0x00, 0x69, 0x00],
+        // but the walker's `is_binary` check flags any file containing a 0x00 byte as binary
+        // and skips it before the orchestrator ever calls read_text_with_fallback. Windows-1252
+        // bytes with no nulls survive the walker and exercise the same EncodingFallback path.
+        let bytes: [u8; 2] = [0x68, 0xE9]; // 'h' + 'é' (0xE9 invalid as UTF-8 start byte)
+        fs::write(d.path().join("note.txt"), bytes).unwrap();
+
+        let opts = PackOptions {
+            goal: "x".into(),
+            secret_scan: false,
+            count_tokens: false,
+            ..PackOptions::default()
+        };
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let result = pack(d.path(), &opts, tx, "job-test").unwrap();
+
+        assert!(
+            result
+                .warnings
+                .iter()
+                .any(|w| matches!(w.kind, WarningKind::EncodingFallback)
+                    && w.path.as_deref() == Some("note.txt")),
+            "expected an EncodingFallback warning for note.txt, got {:?}",
+            result.warnings
+        );
     }
 
     #[test]
