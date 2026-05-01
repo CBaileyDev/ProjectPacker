@@ -1,6 +1,7 @@
 pub mod markdown;
 pub mod orchestrator;
 pub mod plain;
+pub mod stats;
 pub mod xml;
 
 pub use orchestrator::{pack, PackEvent};

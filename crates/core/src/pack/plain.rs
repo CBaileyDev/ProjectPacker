@@ -1,3 +1,4 @@
+use crate::pack::stats::StatsBlock;
 use crate::pack::FileEntry;
 use crate::types::{PackOptions, PackStats};
 
@@ -7,21 +8,34 @@ pub fn render(
     stats: &PackStats,
     entries: &[FileEntry],
 ) -> String {
+    let block = StatsBlock::from(root_label, opts, stats, entries);
     let mut out = String::new();
 
-    out.push_str("=== REPOSITORY PACK ===\n");
-    out.push_str(&format!("Target: {root_label}\n"));
-    if !opts.goal.is_empty() {
-        out.push_str(&format!("Goal: {}\n", opts.goal));
+    out.push_str("=== STATS ===\n");
+    out.push_str(&format!("Target: {}\n", block.target_label));
+    if !block.goal.is_empty() {
+        out.push_str(&format!("Goal: {}\n", block.goal));
     }
     out.push_str(&format!(
-        "Files: {}/{} included  |  {} skipped  |  {} bytes",
-        stats.files_included, stats.files_total, stats.files_skipped, stats.bytes_total
+        "Files: {} included | {} total | {} skipped\n",
+        block.files_included, block.files_total, block.files_skipped
     ));
-    if let Some(t) = stats.tokens_total {
-        out.push_str(&format!("  |  {t} tokens ({})", opts.tokenizer_model));
+    out.push_str(&format!("Bytes: {}\n", block.bytes_total));
+    if let Some(t) = block.tokens_total {
+        out.push_str(&format!(
+            "Tokens: {t} ({})\n",
+            block.tokenizer_model
+        ));
     }
-    out.push_str("\n\n");
+    if !block.languages.is_empty() {
+        out.push_str(&format!("Languages: {}\n", block.languages_display()));
+    }
+    // Phase 2 (secret redaction) will populate redacted_bytes
+    out.push_str(&format!("Redacted bytes: {}\n", block.redacted_bytes));
+    // Phase 3 (content-addressed cache) will populate cache_hits
+    out.push_str(&format!("Cache hits: {}\n", block.cache_hits));
+    out.push_str(&format!("Duration: {}ms\n", block.duration_ms));
+    out.push_str("=== END STATS ===\n\n");
 
     for e in entries {
         out.push_str(&format!("=== {} ===\n", e.path));
@@ -64,12 +78,11 @@ mod tests {
     #[test]
     fn renders_header_and_goal() {
         let out = render("my-repo", &opts(), &stats(), &[]);
-        assert!(out.starts_with("=== REPOSITORY PACK ===\n"));
+        assert!(out.starts_with("=== STATS ===\n"));
         assert!(out.contains("Target: my-repo"));
         assert!(out.contains("Goal: test goal"));
-        assert!(out.contains("1/1 included"));
-        assert!(out.contains("20 tokens"));
-        assert!(out.contains("gpt-4o-mini"));
+        assert!(out.contains("1 included | 1 total | 0 skipped"));
+        assert!(out.contains("Tokens: 20 (gpt-4o-mini)"));
     }
 
     #[test]
@@ -106,6 +119,22 @@ mod tests {
         o.count_tokens = false;
         s.tokens_total = None;
         let out = render("r", &o, &s, &[]);
-        assert!(!out.contains("tokens"));
+        assert!(!out.contains("Tokens:"));
+    }
+
+    // Test 8: Stats block uses === STATS === / === END STATS === delimiters.
+    #[test]
+    fn plain_stats_block_uses_delimiters() {
+        let out = render("my-repo", &opts(), &stats(), &[]);
+        assert!(
+            out.contains("=== STATS ==="),
+            "output should contain === STATS ==="
+        );
+        assert!(
+            out.contains("=== END STATS ==="),
+            "output should contain === END STATS ==="
+        );
+        // Verify it does NOT use the old REPOSITORY PACK header at the top
+        assert!(!out.starts_with("=== REPOSITORY PACK ==="));
     }
 }

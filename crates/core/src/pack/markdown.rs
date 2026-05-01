@@ -1,3 +1,4 @@
+use crate::pack::stats::StatsBlock;
 use crate::pack::FileEntry;
 use crate::types::{PackOptions, PackStats};
 
@@ -7,23 +8,34 @@ pub fn render(
     stats: &PackStats,
     entries: &[FileEntry],
 ) -> String {
+    let block = StatsBlock::from(root_label, opts, stats, entries);
     let mut out = String::new();
 
     out.push_str("# Repository Pack\n\n");
-    out.push_str(&format!("**Target:** `{root_label}`\n\n"));
-    if !opts.goal.is_empty() {
-        out.push_str(&format!("**Goal:** {}\n\n", opts.goal));
-    }
 
-    out.push_str("## Summary\n\n");
+    out.push_str("## Stats\n\n");
     out.push_str("| Metric | Value |\n|--------|-------|\n");
-    out.push_str(&format!("| Files included | {} |\n", stats.files_included));
-    out.push_str(&format!("| Files skipped  | {} |\n", stats.files_skipped));
-    out.push_str(&format!("| Total bytes    | {} |\n", stats.bytes_total));
-    if let Some(t) = stats.tokens_total {
-        out.push_str(&format!("| Tokens ({})  | {t} |\n", opts.tokenizer_model));
+    out.push_str(&format!("| Target | `{}` |\n", block.target_label));
+    if !block.goal.is_empty() {
+        out.push_str(&format!("| Goal | {} |\n", block.goal));
     }
-    out.push_str(&format!("| Duration       | {}ms |\n\n", stats.duration_ms));
+    out.push_str(&format!(
+        "| Files | {} included \\| {} total \\| {} skipped |\n",
+        block.files_included, block.files_total, block.files_skipped
+    ));
+    out.push_str(&format!("| Bytes | {} |\n", block.bytes_total));
+    if let Some(t) = block.tokens_total {
+        out.push_str(&format!(
+            "| Tokens ({}) | {t} |\n",
+            block.tokenizer_model
+        ));
+    }
+    if !block.languages.is_empty() {
+        out.push_str(&format!("| Languages | {} |\n", block.languages_display()));
+    }
+    out.push_str(&format!("| Redacted bytes | {} |\n", block.redacted_bytes));
+    out.push_str(&format!("| Cache hits | {} |\n", block.cache_hits));
+    out.push_str(&format!("| Duration | {}ms |\n\n", block.duration_ms));
 
     out.push_str("## Directory Structure\n\n```\n");
     for e in entries {
@@ -108,7 +120,8 @@ mod tests {
         assert!(out.contains("# Repository Pack"));
         assert!(out.contains("`my-repo`"));
         assert!(out.contains("add a feature"));
-        assert!(out.contains("| 2 |"));
+        // files_included=2, files_total=2, files_skipped=0
+        assert!(out.contains("2 included"));
         assert!(out.contains("gpt-4o-mini"));
         assert!(out.contains("| 50 |"));
     }
@@ -151,5 +164,21 @@ mod tests {
         }];
         let out = render("r", &opts(), &stats(), &entries);
         assert!(out.contains("export {}\n```"));
+    }
+
+    // Test 7: ## Stats replaces ## Summary.
+    #[test]
+    fn markdown_stats_section_replaces_summary() {
+        let out = render("my-repo", &opts(), &stats(), &[]);
+        assert!(out.contains("## Stats"), "output should contain ## Stats");
+        assert!(
+            !out.contains("## Summary"),
+            "output must NOT contain ## Summary"
+        );
+        // Also verify key stats fields are present.
+        assert!(out.contains("<pack_target>") == false); // should be MD table format
+        assert!(out.contains("| Target |"));
+        assert!(out.contains("| Redacted bytes |"));
+        assert!(out.contains("| Cache hits |"));
     }
 }

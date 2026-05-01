@@ -205,7 +205,7 @@ pub fn pack(
             builder
                 .open_repository()
                 .raw_block(&protocol_block)
-                .file_summary(&stats)
+                .stats_block(&label, opts, &stats, &entries)
                 .directory_structure(&dir_paths)
                 .files(&entries)
                 .close_repository();

@@ -1,5 +1,6 @@
+use crate::pack::stats::StatsBlock;
 use crate::pack::FileEntry;
-use crate::types::PackStats;
+use crate::types::{PackOptions, PackStats};
 use std::fmt::Write;
 
 pub struct XmlBuilder {
@@ -35,6 +36,70 @@ impl XmlBuilder {
         self
     }
 
+    /// Emit a rich `<stats>` block at the top of the pack output.
+    /// Replaces the old `<file_summary>` block.
+    pub fn stats_block(
+        &mut self,
+        target_label: &str,
+        opts: &PackOptions,
+        stats: &PackStats,
+        entries: &[FileEntry],
+    ) -> &mut Self {
+        let block = StatsBlock::from(target_label, opts, stats, entries);
+        let _ = writeln!(self.out, "<stats>");
+        let _ = writeln!(
+            self.out,
+            "  <pack_target>{}</pack_target>",
+            escape_text(&block.target_label)
+        );
+        if !block.goal.is_empty() {
+            let _ = writeln!(
+                self.out,
+                "  <goal>{}</goal>",
+                escape_text(&block.goal)
+            );
+        }
+        let _ = writeln!(
+            self.out,
+            "  <files>included={} total={} skipped={}</files>",
+            block.files_included, block.files_total, block.files_skipped
+        );
+        let _ = writeln!(self.out, "  <bytes>{}</bytes>", block.bytes_total);
+        if let Some(t) = block.tokens_total {
+            let _ = writeln!(
+                self.out,
+                "  <tokens model=\"{}\">{t}</tokens>",
+                escape_attr(&block.tokenizer_model)
+            );
+        }
+        if !block.languages.is_empty() {
+            let _ = writeln!(
+                self.out,
+                "  <languages>{}</languages>",
+                block.languages_display()
+            );
+        }
+        let _ = writeln!(
+            self.out,
+            "  <redacted_bytes>{}</redacted_bytes>",
+            block.redacted_bytes
+        );
+        let _ = writeln!(
+            self.out,
+            "  <cache_hits>{}</cache_hits>",
+            block.cache_hits
+        );
+        let _ = writeln!(
+            self.out,
+            "  <duration_ms>{}</duration_ms>",
+            block.duration_ms
+        );
+        let _ = writeln!(self.out, "</stats>");
+        self
+    }
+
+    /// Legacy helper kept for any call-sites that still use it directly.
+    /// Prefer `stats_block` for new code.
     pub fn file_summary(&mut self, stats: &PackStats) -> &mut Self {
         let _ = writeln!(self.out, "<file_summary>");
         let _ = writeln!(self.out, "  files_total: {}", stats.files_total);
@@ -188,5 +253,48 @@ mod tests {
     fn unused_helper_ref_is_ok() {
         // ensure empty_stats() helper is referenced somewhere to avoid dead-code warnings
         let _ = empty_stats();
+    }
+
+    // Test 6: stats block appears first inside <repository>.
+    #[test]
+    fn xml_stats_block_appears_first() {
+        use crate::types::PackFormat;
+        let opts = PackOptions {
+            goal: "test".into(),
+            count_tokens: true,
+            tokenizer_model: "gpt-4o-mini".into(),
+            format: PackFormat::Xml,
+            ..PackOptions::default()
+        };
+        let stats = PackStats {
+            files_total: 2,
+            files_included: 1,
+            files_skipped: 1,
+            bytes_total: 500,
+            tokens_total: Some(100),
+            secrets_found: 0,
+            duration_ms: 42,
+        };
+        let entries = vec![FileEntry {
+            path: "a.rs".into(),
+            content: "fn main() {}".into(),
+            bytes: 12,
+            tokens: Some(5),
+            hash: "abc".into(),
+        }];
+
+        let mut b = XmlBuilder::new();
+        b.open_repository()
+            .stats_block("my-target", &opts, &stats, &entries)
+            .close_repository();
+        let s = b.finish();
+
+        // The doc opens with <repository> and immediately the <stats> block follows.
+        assert!(s.starts_with("<repository>\n<stats>"));
+        assert!(s.contains("<stats>"));
+        assert!(s.contains("<pack_target>my-target</pack_target>"));
+        assert!(s.contains("<files>included=1 total=2 skipped=1</files>"));
+        assert!(s.contains("<tokens model=\"gpt-4o-mini\">100</tokens>"));
+        assert!(s.contains("</stats>"));
     }
 }
