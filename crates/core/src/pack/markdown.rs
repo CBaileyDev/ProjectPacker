@@ -79,6 +79,7 @@ fn ext_fence_lang(path: &str) -> &str {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::PackFormat;
 
     fn opts() -> PackOptions {
         PackOptions {
