@@ -115,6 +115,53 @@ pub enum TokenModel {
     GeminiApprox,
 }
 
+/// All seven per-model token counts for a single input.
+///
+/// Returned by [`count_all`]; mirrors the rows in the AI compatibility table.
+/// The wire-format field names match [`TokenModel`]'s variant strings so
+/// frontends can subscript with `tokensPerModel[tokenModel]` at type-check
+/// time. See `frontend/src/routes/Pack.tsx` for the consumer side.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TokensPerModel {
+    #[serde(rename = "gpt4o")]
+    pub gpt4o: u32,
+    pub claude: u32,
+    pub llama3: u32,
+    #[serde(rename = "qwen2_5")]
+    pub qwen2_5: u32,
+    pub deep_seek: u32,
+    pub mistral: u32,
+    pub gemini_approx: u32,
+}
+
+/// Tokenize `text` once per model and return the seven counts.
+///
+/// Internally `Gpt4o`, `Claude`, and `GeminiApprox` all share the cl100k
+/// `OnceLock` encoder, so calling [`count`] three times for those variants
+/// is cheap (one real encode plus two repeated encodes). The four HF
+/// tokenizers each parse + encode once.
+///
+/// All counts are computed by routing through [`count`] rather than
+/// open-coding the math here, so any future change to the per-model
+/// encoder selection automatically picks up here too.
+///
+/// Errors from individual tokenizers propagate; in practice the only
+/// failure mode is an internal HF tokenizer bug, which orchestrator
+/// callers swallow via `.ok()` to keep packs non-fatal.
+pub fn count_all(text: &str) -> CoreResult<TokensPerModel> {
+    let cl100k = count(text, TokenModel::Gpt4o)?;
+    Ok(TokensPerModel {
+        gpt4o: cl100k,
+        claude: cl100k, // shares cl100k via the OnceLock; this is the same number.
+        gemini_approx: count(text, TokenModel::GeminiApprox)?,
+        llama3: count(text, TokenModel::Llama3)?,
+        qwen2_5: count(text, TokenModel::Qwen2_5)?,
+        deep_seek: count(text, TokenModel::DeepSeek)?,
+        mistral: count(text, TokenModel::Mistral)?,
+    })
+}
+
 /// Count tokens for `text` using the encoder family selected by `model`.
 pub fn count(text: &str, model: TokenModel) -> CoreResult<u32> {
     match model {
@@ -320,5 +367,61 @@ mod tests {
         // round-trip
         assert_eq!(serde_json::from_str::<TokenModel>("\"gpt4o\"").unwrap(),    TokenModel::Gpt4o);
         assert_eq!(serde_json::from_str::<TokenModel>("\"qwen2_5\"").unwrap(),  TokenModel::Qwen2_5);
+    }
+
+    // --- count_all (per-model batch) ---------------------------------------
+
+    #[test]
+    fn count_all_returns_seven_counts() {
+        let input = "fn main() { println!(\"hello, world!\"); }";
+        let counts = count_all(input).unwrap();
+        // All seven fields should be non-zero on a non-trivial input.
+        assert!(counts.gpt4o > 0, "gpt4o = 0");
+        assert!(counts.claude > 0, "claude = 0");
+        assert!(counts.llama3 > 0, "llama3 = 0");
+        assert!(counts.qwen2_5 > 0, "qwen2_5 = 0");
+        assert!(counts.deep_seek > 0, "deep_seek = 0");
+        assert!(counts.mistral > 0, "mistral = 0");
+        assert!(counts.gemini_approx > 0, "gemini_approx = 0");
+    }
+
+    #[test]
+    fn count_all_gpt4o_equals_claude() {
+        // Both routes share the cl100k encoder, so the counts must match
+        // byte-for-byte regardless of input.
+        let input = "The quick brown fox jumps over the lazy dog. 1234567890.";
+        let counts = count_all(input).unwrap();
+        assert_eq!(counts.gpt4o, counts.claude);
+    }
+
+    #[test]
+    fn count_all_gemini_is_gpt4o_times_105_ceil() {
+        // Mirror the single-model `gemini_approx_is_5pct_higher` test: the
+        // batched API must produce the same +5%-ceil math.
+        let input = "Lorem ipsum dolor sit amet, consectetur adipiscing elit, \
+                     sed do eiusmod tempor incididunt ut labore et dolore magna \
+                     aliqua. Ut enim ad minim veniam, quis nostrud exercitation \
+                     ullamco laboris nisi ut aliquip ex ea commodo consequat.";
+        let counts = count_all(input).unwrap();
+        assert!(counts.gpt4o >= 40, "test corpus too short: got {} tokens", counts.gpt4o);
+        let expected = (u64::from(counts.gpt4o) * 105).div_ceil(100) as u32;
+        assert_eq!(counts.gemini_approx, expected);
+        assert!(counts.gemini_approx > counts.gpt4o);
+    }
+
+    #[test]
+    fn count_all_hf_models_disagree_with_each_other() {
+        // Mixed punctuation / numerics / Unicode: extremely unlikely that
+        // four independently-trained vocabularies all converge on the same
+        // length. Catches accidental misrouting where every HF model would
+        // funnel through the same encoder.
+        let input = "The quick brown fox jumps over 12 lazy dogs — and 3.14 \
+                     pies, costing $42.99 each. Café résumé naïve façade.";
+        let counts = count_all(input).unwrap();
+        let hf = [counts.llama3, counts.qwen2_5, counts.deep_seek, counts.mistral];
+        assert!(
+            hf.iter().any(|c| *c != hf[0]),
+            "all 4 HF models returned identical counts {hf:?} — vocabularies should differ"
+        );
     }
 }

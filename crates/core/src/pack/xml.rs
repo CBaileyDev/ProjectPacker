@@ -280,6 +280,7 @@ mod tests {
             files_skipped: 1,
             bytes_total: 500,
             tokens_total: Some(100),
+            tokens_per_model: None,
             secrets_found: 0,
             duration_ms: 42,
         };

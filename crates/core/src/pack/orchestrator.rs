@@ -288,6 +288,22 @@ pub fn pack(
         }
     }
 
+    // Per-model token counts: encode the joined pack content once per
+    // tokenizer family. Costs ~5-50ms cold (HF lazy parse) + ~5ms × 4 hot
+    // for a typical pack. `.ok()` mirrors the defensive pattern used for
+    // `tokens_total`: if a single tokenizer fails (extremely unlikely),
+    // we drop the whole field rather than failing the pack.
+    let tokens_per_model = if opts.count_tokens {
+        let joined: String = entries
+            .iter()
+            .map(|e| e.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        tokens::count_all(&joined).ok()
+    } else {
+        None
+    };
+
     // files_total accounting:
     //   included = files we kept (walker matches + force-included pins)
     //   skipped  = files we explicitly excluded (after pin pre-pass removed
@@ -305,6 +321,7 @@ pub fn pack(
         files_skipped: outcome.skipped.len() as u32,
         bytes_total,
         tokens_total: opts.count_tokens.then_some(tokens_total),
+        tokens_per_model,
         secrets_found,
         duration_ms: start.elapsed().as_millis() as u32,
     };
@@ -660,6 +677,73 @@ mod tests {
             "AGENTS.md must appear before random.md in the output"
         );
         assert_eq!(result.stats.files_included, 2);
+    }
+
+    /// `tokens_per_model` must be `Some(_)` when count_tokens=true and the
+    /// per-model counts must include non-zero numbers for all 7 model rows.
+    #[test]
+    fn pack_emits_tokens_per_model_when_count_tokens_enabled() {
+        let d = fixture();
+        let opts = PackOptions {
+            goal: "x".into(),
+            count_tokens: true,
+            secret_scan: false,
+            ..PackOptions::default()
+        };
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let result = pack(
+            &PackTarget::Folder(d.path().to_path_buf()),
+            &opts,
+            tx,
+            "job-tokens-per-model",
+            CancellationToken::new(),
+        )
+        .unwrap();
+
+        let tpm = result
+            .stats
+            .tokens_per_model
+            .expect("tokens_per_model should be Some when count_tokens is true");
+        // Smoke-check that all 7 fields received non-zero counts on the
+        // joined fixture content (a.rs + README.md).
+        assert!(tpm.gpt4o > 0);
+        assert!(tpm.claude > 0);
+        assert!(tpm.llama3 > 0);
+        assert!(tpm.qwen2_5 > 0);
+        assert!(tpm.deep_seek > 0);
+        assert!(tpm.mistral > 0);
+        assert!(tpm.gemini_approx > 0);
+        // GeminiApprox is cl100k × 1.05 ceil — always >= gpt4o.
+        assert!(tpm.gemini_approx >= tpm.gpt4o);
+        // gpt4o and claude share the cl100k encoder.
+        assert_eq!(tpm.gpt4o, tpm.claude);
+    }
+
+    /// `tokens_per_model` must be `None` when count_tokens=false.
+    #[test]
+    fn pack_omits_tokens_per_model_when_count_tokens_disabled() {
+        let d = fixture();
+        let opts = PackOptions {
+            goal: "x".into(),
+            count_tokens: false,
+            secret_scan: false,
+            ..PackOptions::default()
+        };
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let result = pack(
+            &PackTarget::Folder(d.path().to_path_buf()),
+            &opts,
+            tx,
+            "job-tokens-per-model-off",
+            CancellationToken::new(),
+        )
+        .unwrap();
+
+        assert!(
+            result.stats.tokens_per_model.is_none(),
+            "tokens_per_model should be None when count_tokens is false"
+        );
+        assert!(result.stats.tokens_total.is_none());
     }
 
     /// User explicitly excluding a pinned file via `custom_ignore_patterns` must

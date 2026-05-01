@@ -85,6 +85,7 @@ mod tests {
             files_skipped: 0,
             bytes_total: 50,
             tokens_total: Some(20),
+            tokens_per_model: None,
             secrets_found: 0,
             duration_ms: 5,
         }

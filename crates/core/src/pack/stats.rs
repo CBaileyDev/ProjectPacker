@@ -111,6 +111,7 @@ mod tests {
             files_skipped: 0,
             bytes_total: 0,
             tokens_total: None,
+            tokens_per_model: None,
             secrets_found: 0,
             duration_ms: 0,
         }

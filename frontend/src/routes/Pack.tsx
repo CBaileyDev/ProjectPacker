@@ -1,7 +1,13 @@
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { open } from "@tauri-apps/plugin-dialog";
 import { useState } from "react";
-import type { PackFormat, PackStats, ProgressEvent } from "../bindings";
+import type {
+  PackFormat,
+  PackStats,
+  ProgressEvent,
+  TokenModel,
+  TokensPerModel,
+} from "../bindings";
 import { commands } from "../bindings";
 import { createPackProgressChannel } from "../lib/events";
 import { useApp } from "../lib/store";
@@ -9,16 +15,52 @@ import { useApp } from "../lib/store";
 // ---------------------------------------------------------------------------
 // AI context-window compatibility data (as of mid-2025)
 // ---------------------------------------------------------------------------
-const AI_MODELS: { name: string; context: number }[] = [
-  { name: "GPT-4o / GPT-4o mini", context: 128_000 },
-  { name: "DeepSeek V3", context: 128_000 },
-  { name: "Llama 3.x (70B+)", context: 128_000 },
-  { name: "Grok 2 / 3", context: 131_072 },
-  { name: "o1 / o3", context: 200_000 },
-  { name: "Claude 3.x / Claude 4.x", context: 200_000 },
-  { name: "Gemini 1.5 Pro", context: 1_048_576 },
-  { name: "Gemini 2.0 Flash", context: 1_048_576 },
-  { name: "Gemini 2.5 Pro", context: 1_048_576 },
+type ModelRow = {
+  name: string;
+  context: number;
+  tokenModel: TokenModel;
+  /** True when our tokenizer is an approximation, not the model's authentic
+   * tokenizer. Renders an "approx" badge and is called out in the footer. */
+  approx?: boolean;
+};
+
+const AI_MODELS: ModelRow[] = [
+  { name: "GPT-4o / GPT-4o mini", context: 128_000, tokenModel: "gpt4o" },
+  {
+    name: "Claude 3.x / Claude 4.x",
+    context: 200_000,
+    tokenModel: "claude",
+    approx: true, // Anthropic's tokenizer is unpublished; we use cl100k as a proxy.
+  },
+  { name: "o1 / o3", context: 200_000, tokenModel: "gpt4o" },
+  { name: "DeepSeek V3", context: 128_000, tokenModel: "deepSeek" },
+  { name: "Llama 3.x (70B+)", context: 128_000, tokenModel: "llama3" },
+  { name: "Qwen 2.5 (7B+)", context: 128_000, tokenModel: "qwen2_5" },
+  { name: "Mistral 7B / Mixtral", context: 32_768, tokenModel: "mistral" },
+  {
+    name: "Grok 2 / 3",
+    context: 131_072,
+    tokenModel: "gpt4o",
+    approx: true, // xAI's tokenizer is unpublished; cl100k is a proxy.
+  },
+  {
+    name: "Gemini 1.5 Pro",
+    context: 1_048_576,
+    tokenModel: "geminiApprox",
+    approx: true,
+  },
+  {
+    name: "Gemini 2.0 Flash",
+    context: 1_048_576,
+    tokenModel: "geminiApprox",
+    approx: true,
+  },
+  {
+    name: "Gemini 2.5 Pro",
+    context: 1_048_576,
+    tokenModel: "geminiApprox",
+    approx: true,
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -124,22 +166,37 @@ function StatsBar({ stats }: { stats: PackStats }) {
   );
 }
 
-function AiContextTable({ tokens }: { tokens: number }) {
+function AiContextTable({
+  tokensPerModel,
+}: {
+  tokensPerModel: TokensPerModel | null;
+}) {
+  if (!tokensPerModel) {
+    return (
+      <div className="rounded border border-zinc-700 bg-zinc-800/50 p-4 text-sm text-zinc-400">
+        Enable “Count tokens” in options to see AI context-window compatibility.
+      </div>
+    );
+  }
+
   return (
     <div className="overflow-hidden rounded border border-zinc-700">
       <div className="border-b border-zinc-700 bg-zinc-800 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">
-        AI Context Window Compatibility — {fmtNum(tokens)} tokens packed
+        AI Context Window Compatibility
       </div>
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-zinc-700 text-xs text-zinc-500">
             <th className="px-3 py-2 text-left font-normal">Model</th>
-            <th className="px-3 py-2 text-right font-normal">Context limit</th>
+            <th className="px-3 py-2 text-right font-normal">
+              Tokens / context
+            </th>
             <th className="px-3 py-2 text-center font-normal">Fits?</th>
           </tr>
         </thead>
         <tbody>
           {AI_MODELS.map((m) => {
+            const tokens = tokensPerModel[m.tokenModel];
             const fits = tokens <= m.context;
             const pct = Math.min(100, Math.round((tokens / m.context) * 100));
             return (
@@ -147,9 +204,19 @@ function AiContextTable({ tokens }: { tokens: number }) {
                 key={m.name}
                 className="border-b border-zinc-800 last:border-0"
               >
-                <td className="px-3 py-2 text-zinc-200">{m.name}</td>
+                <td className="px-3 py-2 text-zinc-200">
+                  {m.name}
+                  {m.approx && (
+                    <span className="ml-1.5 rounded bg-zinc-700 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-300">
+                      approx
+                    </span>
+                  )}
+                </td>
                 <td className="px-3 py-2 text-right text-zinc-400">
-                  {fmtNum(m.context)}
+                  <span className="font-medium text-zinc-200">
+                    {fmtNum(tokens)}
+                  </span>
+                  <span className="text-zinc-500"> / {fmtNum(m.context)}</span>
                 </td>
                 <td className="px-3 py-2">
                   <div className="flex items-center justify-center gap-2">
@@ -168,6 +235,11 @@ function AiContextTable({ tokens }: { tokens: number }) {
           })}
         </tbody>
       </table>
+      <div className="border-t border-zinc-700 bg-zinc-800/50 px-3 py-2 text-xs text-zinc-500">
+        Rows marked “approx” use a proxy tokenizer (cl100k for Claude/Grok,
+        cl100k×1.05 ceil for Gemini) since the authentic tokenizers are not
+        public.
+      </div>
     </div>
   );
 }
@@ -546,9 +618,7 @@ export default function Pack() {
               </div>
             )}
 
-            {result.stats.tokensTotal != null && (
-              <AiContextTable tokens={result.stats.tokensTotal} />
-            )}
+            <AiContextTable tokensPerModel={result.stats.tokensPerModel} />
           </div>
         )}
       </div>

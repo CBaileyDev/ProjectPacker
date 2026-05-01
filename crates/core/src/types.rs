@@ -1,3 +1,4 @@
+use crate::tokens::TokensPerModel;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::path::PathBuf;
@@ -78,7 +79,15 @@ pub struct PackStats {
     pub files_included: u32,
     pub files_skipped: u32,
     pub bytes_total: u64,
+    /// Token count under the user-selected tokenizer (`opts.tokenizer_model`),
+    /// summed across all included files. `None` when `count_tokens` is off.
     pub tokens_total: Option<u32>,
+    /// Per-model token counts of the joined pack content, computed via the
+    /// authentic tokenizer of each model family (with cl100k as a proxy for
+    /// Claude/Gemini, which don't ship public tokenizers). Surfaced in the
+    /// AI compatibility table on the result screen. `None` when
+    /// `count_tokens` is off, mirroring `tokens_total`.
+    pub tokens_per_model: Option<TokensPerModel>,
     pub secrets_found: u32,
     pub duration_ms: u32,
 }
@@ -216,6 +225,7 @@ mod tests {
                 files_skipped: 1,
                 bytes_total: 12345,
                 tokens_total: Some(2000),
+                tokens_per_model: None,
                 secrets_found: 0,
                 duration_ms: 200,
             },

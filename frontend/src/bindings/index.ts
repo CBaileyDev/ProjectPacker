@@ -94,7 +94,20 @@ export type PackOptions = { target: PackTarget; goal: string; includeGitHistory:
  */
 xmlSchema?: XmlSchema }
 export type PackResult = { output: string; claudeCodePrompt: string; stats: PackStats; warnings: PackWarning[] }
-export type PackStats = { filesTotal: number; filesIncluded: number; filesSkipped: number; bytesTotal: number; tokensTotal: number | null; secretsFound: number; durationMs: number }
+export type PackStats = { filesTotal: number; filesIncluded: number; filesSkipped: number; bytesTotal: number; 
+/**
+ * Token count under the user-selected tokenizer (`opts.tokenizer_model`),
+ * summed across all included files. `None` when `count_tokens` is off.
+ */
+tokensTotal: number | null; 
+/**
+ * Per-model token counts of the joined pack content, computed via the
+ * authentic tokenizer of each model family (with cl100k as a proxy for
+ * Claude/Gemini, which don't ship public tokenizers). Surfaced in the
+ * AI compatibility table on the result screen. `None` when
+ * `count_tokens` is off, mirroring `tokens_total`.
+ */
+tokensPerModel: TokensPerModel | null; secretsFound: number; durationMs: number }
 export type PackTarget = { kind: "folder"; value: string } | { kind: "github"; value: string }
 export type PackWarning = { kind: WarningKind; path: string | null; message: string }
 export type PlanError = { code: string; message: string }
@@ -108,15 +121,24 @@ export type Theme = "dark" | "light"
 /**
  * Tokenizer family selector for the typed API.
  * 
- * Wire mapping (Phase 2 T1):
+ * Wire mapping:
  * - `Gpt4o`, `Claude` → `cl100k_base` (Anthropic's tokenizer behaves close
  * enough to cl100k that we share the encoder).
  * - `GeminiApprox` → `cl100k_base` count multiplied by 1.05 and rounded up;
  * Gemini ships no public tokenizer so this is a deliberate over-estimate.
- * - `Llama3`, `Qwen2_5`, `DeepSeek`, `Mistral` → currently return
- * [`CoreError::TokenizerUnavailable`]; HF JSON tokenizers land in T2.
+ * - `Llama3`, `Qwen2_5`, `DeepSeek`, `Mistral` → vendored HuggingFace
+ * `tokenizer.json` blobs, parsed lazily on first use (Phase 2 T2).
  */
 export type TokenModel = "gpt4o" | "claude" | "llama3" | "qwen2_5" | "deepSeek" | "mistral" | "geminiApprox"
+/**
+ * All seven per-model token counts for a single input.
+ * 
+ * Returned by [`count_all`]; mirrors the rows in the AI compatibility table.
+ * The wire-format field names match [`TokenModel`]'s variant strings so
+ * frontends can subscript with `tokensPerModel[tokenModel]` at type-check
+ * time. See `frontend/src/routes/Pack.tsx` for the consumer side.
+ */
+export type TokensPerModel = { gpt4o: number; claude: number; llama3: number; qwen2_5: number; deepSeek: number; mistral: number; geminiApprox: number }
 export type WarningKind = { kind: "fileSkipped" } | { kind: "treeSitterFailed" } | { kind: "gitLogMissing" } | { kind: "encodingFallback" } | { kind: "secretScanFailed" }
 export type XmlSchema = "cxml" | "legacy"
 
