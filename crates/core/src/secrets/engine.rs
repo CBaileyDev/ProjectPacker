@@ -69,6 +69,10 @@ struct KeywordIndex {
     /// Rules with no keywords — these always run regardless of the
     /// pre-filter.
     always_run: Vec<usize>,
+    /// Cached maximum rule index across `pattern_to_rule` and
+    /// `always_run`, computed once at build time. `None` when no rules
+    /// reference this index (i.e. an empty ruleset).
+    max_rule_idx: Option<usize>,
 }
 
 impl KeywordIndex {
@@ -105,10 +109,17 @@ impl KeywordIndex {
             )
         };
 
+        let max_rule_idx = pattern_to_rule
+            .iter()
+            .copied()
+            .chain(always_run.iter().copied())
+            .max();
+
         Self {
             automaton,
             pattern_to_rule,
             always_run,
+            max_rule_idx,
         }
     }
 
@@ -116,15 +127,9 @@ impl KeywordIndex {
     /// `content`. Rules whose keywords don't appear are excluded.
     fn candidates(&self, content: &str) -> Vec<usize> {
         // Use a bitset-style Vec<bool> of bounded size for de-dup; we
-        // don't know the rule count without it, so size by the maximum
-        // rule index seen.
-        let max_idx = self
-            .pattern_to_rule
-            .iter()
-            .copied()
-            .chain(self.always_run.iter().copied())
-            .max();
-        let Some(max_idx) = max_idx else {
+        // size by the maximum rule index seen at build time (cached on
+        // `self.max_rule_idx`) so this is a constant-time lookup.
+        let Some(max_idx) = self.max_rule_idx else {
             return Vec::new();
         };
         let mut seen = vec![false; max_idx + 1];
@@ -192,19 +197,22 @@ struct RawMatch {
     byte_end: usize,
 }
 
+/// Rule IDs whose matches lose to more specific rules in overlap resolution.
+///
+/// `generic-api-key` is gitleaks's catch-all and would otherwise shadow
+/// specific-credential rules whose match starts later in the line. Without
+/// this demotion, the generic rule's earlier `byte_start` would shadow the
+/// specific rule (e.g. `key = AKIA...` would match wholesale instead of just
+/// the `AKIA...` substring claimed by `aws-access-token`).
+const DEMOTED_RULE_IDS: &[&str] = &["generic-api-key"];
+
 /// Rule-id specificity rank used during overlap resolution. Lower is
 /// "more specific" and wins when two matches overlap.
 ///
-/// Gitleaks ships a single fallback rule (`generic-api-key`) whose
-/// permissive regex frequently swallows a more specific match (e.g. it
-/// will match `key = AKIA...` in its entirety, starting before the
-/// `aws-access-token` rule's substring). Without this demotion, the
-/// generic rule's earlier `byte_start` would shadow the specific rule.
-///
-/// All other rules tie at rank 0; among them, ties break on byte_start
-/// then on length (longer wins).
+/// All non-demoted rules tie at rank 0; among them, ties break on
+/// byte_start then on length (longer wins).
 fn rule_specificity_rank(rule_id: &str) -> u32 {
-    if rule_id == "generic-api-key" {
+    if DEMOTED_RULE_IDS.contains(&rule_id) {
         1
     } else {
         0
@@ -319,6 +327,8 @@ pub fn scan_and_redact(content: &str, ruleset: &RuleSet) -> ScanResult {
                 line += 1;
             }
         }
+        // Gitleaks rule IDs are kebab-case ASCII (no `]`, no whitespace), so
+        // this marker is unambiguous to downstream parsers.
         redacted_content.push_str("[REDACTED:");
         redacted_content.push_str(&rule.id);
         redacted_content.push(']');
@@ -536,6 +546,27 @@ keywords = ["aaaa"]
         assert_eq!(r.byte_offset, 4);
         // And the matched_excerpt should be redacted (4+4 with ***).
         assert!(r.matched_excerpt.contains("***"));
+    }
+
+    #[test]
+    fn keyword_prefilter_is_ascii_case_insensitive() {
+        // The vendored AWS rule keyword is "akia" (lowercase) but real keys use "AKIA".
+        // This locks down the AhoCorasick `ascii_case_insensitive(true)` setting against
+        // accidental flips during future refactors.
+        let result = scan_and_redact("AKIAIOSFODNN7EXAMPLE\n", crate::secrets::ruleset::vendored());
+        assert_eq!(result.redactions.len(), 1, "exactly one redaction");
+        assert_eq!(result.redactions[0].rule_id, "aws-access-token");
+    }
+
+    #[test]
+    fn byte_offset_lands_on_utf8_boundary_with_multibyte_prefix() {
+        // The regex crate guarantees match positions are at codepoint boundaries.
+        // Pin this for any tooling that walks redaction offsets in mixed-script content.
+        let content = "日本 AKIAIOSFODNN7EXAMPLE\n"; // "日本 " is 7 bytes (3+3+1)
+        let result = scan_and_redact(content, crate::secrets::ruleset::vendored());
+        assert_eq!(result.redactions.len(), 1);
+        let offset = result.redactions[0].byte_offset as usize;
+        assert!(content.is_char_boundary(offset), "byte_offset {offset} must land on a UTF-8 boundary");
     }
 
     // -----------------------------------------------------------------
