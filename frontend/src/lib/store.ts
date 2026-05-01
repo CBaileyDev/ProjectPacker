@@ -1,5 +1,7 @@
 import { create } from "zustand";
+import { createJSONStorage, persist } from "zustand/middleware";
 import type { PackOptions, PackResult, ProgressEvent } from "./api";
+import { tauriStoreAdapter } from "./persist-adapter";
 
 type PackingStatus = "idle" | "running" | "done" | "error";
 
@@ -33,18 +35,35 @@ const defaultOptions: PackOptions = {
   xmlSchema: "cxml",
 };
 
-export const useApp = create<AppState>((set) => ({
-  jobId: null,
-  status: "idle",
-  events: [],
-  result: null,
-  options: defaultOptions,
-  setJob: (id) => set({ jobId: id, status: "running", events: [], result: null }),
-  pushEvent: (e) => set((s) => ({
-    events: [...s.events, e],
-    status: e.kind === "done" ? "done" : e.kind === "error" ? "error" : s.status,
-  })),
-  setResult: (r) => set({ result: r }),
-  reset: () => set({ jobId: null, status: "idle", events: [], result: null }),
-  setOptions: (o) => set({ options: o }),
-}));
+export const useApp = create<AppState>()(
+  persist(
+    (set) => ({
+      jobId: null,
+      status: "idle",
+      events: [],
+      result: null,
+      options: defaultOptions,
+      setJob: (id) =>
+        set({ jobId: id, status: "running", events: [], result: null }),
+      pushEvent: (e) =>
+        set((s) => ({
+          events: [...s.events, e],
+          status:
+            e.kind === "done"
+              ? "done"
+              : e.kind === "error"
+                ? "error"
+                : s.status,
+        })),
+      setResult: (r) => set({ result: r }),
+      reset: () =>
+        set({ jobId: null, status: "idle", events: [], result: null }),
+      setOptions: (o) => set({ options: o }),
+    }),
+    {
+      name: "app-state",
+      storage: createJSONStorage(() => tauriStoreAdapter),
+      partialize: (state) => ({ options: state.options }),
+    },
+  ),
+);
