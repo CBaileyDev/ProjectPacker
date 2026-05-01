@@ -63,7 +63,7 @@ pub fn pack(
         .par_iter()
         .map(|f| {
             let abs = root.join(&f.path);
-            let raw = read_text(&abs).unwrap_or_default();
+            let raw = read_text_with_fallback(&abs).map(|(s, _)| s).unwrap_or_default();
 
             // Step 1: strip comments if requested (tree-sitter languages only).
             let after_comments = if opts.remove_comments {
@@ -173,18 +173,40 @@ pub fn pack(
     })
 }
 
-fn read_text(path: &Path) -> CoreResult<String> {
+/// Read a file as text, returning `(content, used_non_utf8_fallback)`.
+///
+/// Detection order:
+///   1. UTF-8 (with optional BOM stripped)
+///   2. UTF-16 LE (BOM `FF FE`)
+///   3. UTF-16 BE (BOM `FE FF`)
+///   4. Windows-1252 (final fallback; always succeeds)
+fn read_text_with_fallback(path: &Path) -> CoreResult<(String, bool)> {
     let bytes = std::fs::read(path).map_err(|e| CoreError::FileIo {
         path: path.to_path_buf(),
         source: e,
     })?;
-    Ok(match String::from_utf8(bytes.clone()) {
-        Ok(s) => s,
-        Err(_) => {
-            let (cow, _, _) = encoding_rs::UTF_16LE.decode(&bytes);
-            cow.into_owned()
-        }
-    })
+
+    // 1. UTF-8 with optional BOM
+    let without_bom = bytes.strip_prefix(b"\xEF\xBB\xBF").unwrap_or(&bytes);
+    if let Ok(s) = std::str::from_utf8(without_bom) {
+        return Ok((s.to_string(), false));
+    }
+
+    // 2. UTF-16 LE BOM
+    if bytes.starts_with(b"\xFF\xFE") {
+        let (cow, _, _) = encoding_rs::UTF_16LE.decode(&bytes);
+        return Ok((cow.into_owned(), true));
+    }
+
+    // 3. UTF-16 BE BOM
+    if bytes.starts_with(b"\xFE\xFF") {
+        let (cow, _, _) = encoding_rs::UTF_16BE.decode(&bytes);
+        return Ok((cow.into_owned(), true));
+    }
+
+    // 4. Final fallback: Windows-1252 (always succeeds)
+    let (cow, _, _) = encoding_rs::WINDOWS_1252.decode(&bytes);
+    Ok((cow.into_owned(), true))
 }
 
 #[cfg(test)]
@@ -245,5 +267,71 @@ mod tests {
         assert_eq!(events.first(), Some(&"started"));
         assert_eq!(events.last(), Some(&"done"));
         assert!(events.contains(&"building"));
+    }
+
+    #[test]
+    fn read_text_with_fallback_handles_plain_utf8() {
+        let d = tempdir().unwrap();
+        let p = d.path().join("a.txt");
+        fs::write(&p, "hello world").unwrap();
+        let (s, fallback) = read_text_with_fallback(&p).unwrap();
+        assert_eq!(s, "hello world");
+        assert!(!fallback);
+    }
+
+    #[test]
+    fn read_text_with_fallback_strips_utf8_bom() {
+        let d = tempdir().unwrap();
+        let p = d.path().join("a.txt");
+        let mut bytes = vec![0xEF, 0xBB, 0xBF];
+        bytes.extend_from_slice(b"hello");
+        fs::write(&p, &bytes).unwrap();
+        let (s, fallback) = read_text_with_fallback(&p).unwrap();
+        assert_eq!(s, "hello");
+        assert!(!fallback);
+    }
+
+    #[test]
+    fn read_text_with_fallback_decodes_utf16_le() {
+        let d = tempdir().unwrap();
+        let p = d.path().join("a.txt");
+        // UTF-16 LE BOM + "hi"
+        let bytes: [u8; 6] = [0xFF, 0xFE, 0x68, 0x00, 0x69, 0x00];
+        fs::write(&p, bytes).unwrap();
+        let (s, fallback) = read_text_with_fallback(&p).unwrap();
+        assert_eq!(s, "hi");
+        assert!(fallback);
+    }
+
+    #[test]
+    fn read_text_with_fallback_decodes_utf16_be() {
+        let d = tempdir().unwrap();
+        let p = d.path().join("a.txt");
+        // UTF-16 BE BOM + "hi"
+        let bytes: [u8; 6] = [0xFE, 0xFF, 0x00, 0x68, 0x00, 0x69];
+        fs::write(&p, bytes).unwrap();
+        let (s, fallback) = read_text_with_fallback(&p).unwrap();
+        assert_eq!(s, "hi");
+        assert!(fallback);
+    }
+
+    #[test]
+    fn read_text_with_fallback_decodes_windows_1252() {
+        let d = tempdir().unwrap();
+        let p = d.path().join("a.txt");
+        // 'h' + 'é' (0xE9 in Windows-1252; invalid as UTF-8 start byte)
+        let bytes: [u8; 2] = [0x68, 0xE9];
+        fs::write(&p, bytes).unwrap();
+        let (s, fallback) = read_text_with_fallback(&p).unwrap();
+        assert_eq!(s, "hé");
+        assert!(fallback);
+    }
+
+    #[test]
+    fn read_text_with_fallback_errors_on_missing_file() {
+        let result = read_text_with_fallback(std::path::Path::new(
+            "/definitely/does/not/exist/xyz.txt",
+        ));
+        assert!(matches!(result, Err(CoreError::FileIo { .. })));
     }
 }
