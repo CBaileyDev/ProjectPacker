@@ -12,11 +12,18 @@ All notable changes to ProjectPacker are documented in this file. The format fol
 - AI context window compatibility table in the frontend showing which major models (GPT-4o, Claude, Gemini, Grok, o1/o3, DeepSeek, Llama) can handle the packed token count.
 - Format selector (XML / Markdown / Plain Text) with format-aware copy button labels.
 - Full options panel: compress skeleton, remove comments, respect gitignore, secret scan, count tokens, max file size.
+- Public GitHub URL packing — `pack()` now accepts `PackTarget::GitHub(url)`, shallow-clones the repo into a temp dir (auto-cleaned), and packs it like any folder. Emits a `Cloning` progress event before the walk.
+- BOM-aware encoding fallback chain in `read_text_with_fallback`: UTF-8 (with optional BOM) → UTF-16 LE → UTF-16 BE → Windows-1252.
+- `PackWarning` collection wired through the pack pipeline. Emits `EncodingFallback` on non-UTF-8 decode and `FileSkipped` on file-read failure. Warnings appear in the result and the existing UI Warnings panel.
+- Fatal-error surfacing — orchestrator failures now emit `ProgressEvent::Error { fatal: true }` instead of being silently dropped.
+- Frontend target-mode toggle (Folder / GitHub URL) with GitHub URL validation.
 
 ### Changed
 - `PackResult.xml` renamed to `PackResult.output` throughout Rust core and TypeScript bindings.
 - Frontend redesigned as a single-screen packing tool; removed multi-tab routing (Bridge, Home, Result routes deleted, `react-router-dom` removed).
 - Orchestrator now branches on `PackFormat` to dispatch the correct emitter.
+- `pack()` signature changed from `pack(root: &Path, ...)` to `pack(target: &PackTarget, ...)`. Target resolution (including GitHub clone) now lives in core.
+- `ProgressEvent::BuildingXml` renamed to `ProgressEvent::BuildingOutput` (now correct for all 3 output formats).
 
 ## [0.1.0] - 2026-04-30
 
