@@ -247,13 +247,23 @@ pub fn pack(
         entries.extend(non_pinned);
     }
     // ── End pin reorder ───────────────────────────────────────────────────────
+
     // pinned_count: how many entries at the front of `entries` are pinned files.
     // Passed to markdown/plain renderers so they can keep the pinned segment in
     // declaration order while sorting the non-pinned tail alphabetically.
+    //
+    // Relies on the invariant that the pin reorder block above produces a
+    // contiguous pinned-then-non-pinned layout. The debug_assert below catches
+    // any future refactor that breaks that contiguity.
     let pinned_count = entries
         .iter()
         .take_while(|e| pinned_set.contains(&e.path))
         .count();
+    debug_assert_eq!(
+        pinned_count,
+        entries.iter().filter(|e| pinned_set.contains(&e.path)).count(),
+        "pin reorder must produce a contiguous pinned prefix",
+    );
 
     let mut secrets_found = 0u32;
     if opts.secret_scan {
@@ -278,6 +288,17 @@ pub fn pack(
         }
     }
 
+    // files_total accounting:
+    //   included = files we kept (walker matches + force-included pins)
+    //   skipped  = files we explicitly excluded (after pin pre-pass removed
+    //              any pinned-but-skipped entries from this list)
+    //   total    = included + skipped
+    //
+    // The pin pre-pass mutates outcome.included (push) and outcome.skipped
+    // (retain), keeping the invariant `total = included + skipped` stable
+    // across pinning. A pinned file that wasn't visited by the walker is a
+    // net-add to total (it's a new file we wouldn't have counted otherwise),
+    // which is correct.
     let stats = PackStats {
         files_total: (outcome.included.len() + outcome.skipped.len()) as u32,
         files_included: entries.len() as u32,

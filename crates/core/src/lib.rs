@@ -4,6 +4,7 @@ pub mod detect;
 pub mod error;
 pub mod github;
 pub mod ignore;
+pub mod lang;
 pub mod pack;
 pub mod protocol;
 pub mod secrets;

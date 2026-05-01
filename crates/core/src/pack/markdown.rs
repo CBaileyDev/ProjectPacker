@@ -80,34 +80,8 @@ pub fn render(
     out
 }
 
-fn ext_fence_lang(path: &str) -> &str {
-    match path.rsplit('.').next().unwrap_or("") {
-        "rs" => "rust",
-        "py" => "python",
-        "js" | "mjs" => "javascript",
-        "ts" => "typescript",
-        "tsx" => "tsx",
-        "jsx" => "jsx",
-        "json" => "json",
-        "toml" => "toml",
-        "yaml" | "yml" => "yaml",
-        "md" => "markdown",
-        "sh" | "bash" => "bash",
-        "css" => "css",
-        "html" | "htm" => "html",
-        "sql" => "sql",
-        "go" => "go",
-        "java" => "java",
-        "cpp" | "cc" | "cxx" => "cpp",
-        "c" => "c",
-        "cs" => "csharp",
-        "rb" => "ruby",
-        "php" => "php",
-        "swift" => "swift",
-        "kt" | "kts" => "kotlin",
-        "scala" => "scala",
-        _ => "",
-    }
+fn ext_fence_lang(path: &str) -> &'static str {
+    crate::lang::detect_from_path(path).unwrap_or("")
 }
 
 #[cfg(test)]

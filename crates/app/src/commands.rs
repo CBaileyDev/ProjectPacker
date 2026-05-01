@@ -66,11 +66,18 @@ pub async fn pack_start(
     let cancel = CancellationToken::new();
     let cancel_for_task = cancel.clone();
 
-    let handle = tokio::task::spawn_blocking(move || {
+    // Register BEFORE spawning so a fast-completing task can't race past
+    // the registration and leak its token entry.
+    registry_arc.register(&job_id, cancel);
+
+    tokio::task::spawn_blocking(move || {
         let tx_for_err = tx.clone();
         match pack::pack(&opts.target, &opts, tx, &id_for_task, cancel_for_task) {
             Ok(result) => registry_for_task.store_result(&id_for_task, result),
             Err(e) => {
+                // Evict the token entry too — store_result would have done
+                // this, but the error path needs to clean up explicitly.
+                registry_for_task.discard(&id_for_task);
                 let _ = tx_for_err.send(ProgressEvent::Error {
                     message: e.to_string(),
                     fatal: true,
@@ -79,7 +86,6 @@ pub async fn pack_start(
         }
     });
 
-    registry_arc.register(&job_id, handle, cancel);
     Ok(job_id)
 }
 

@@ -7,7 +7,7 @@
     "dialog:default",
     "clipboard-manager:default",
     "fs:default",
-    "shell:default",
+    "shell:allow-open",
     "store:default",
     "log:default"
   ]

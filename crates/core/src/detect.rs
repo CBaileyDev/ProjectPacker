@@ -227,11 +227,10 @@ fn infer_layer(path: &Path) -> Option<bool> {
 ///
 /// `file_format::Kind` has no `Text` variant (v0.29), so binary-indicating kinds
 /// are explicitly enumerated. Intentionally omitted as text-permissive:
-///   - `Kind::Other`     — unknown formats; default to text rather than guess.
-///   - `Kind::Playlist`  — M3U/XSPF/MPD are text-based.
-///   - `Kind::Subtitle`  — SRT/VTT/TTML are text-based; binary subtitle formats
-///                         (MatroskaSubtitles etc.) are inside binary containers
-///                         that Layer 3 catches via NUL bytes.
+///   - `Kind::Other` — unknown formats; default to text rather than guess.
+///   - `Kind::Playlist` — M3U/XSPF/MPD are text-based.
+///   - `Kind::Subtitle` — SRT/VTT/TTML are text-based; binary subtitle formats
+///     (MatroskaSubtitles etc.) sit inside binary containers Layer 3 catches via NUL bytes.
 fn file_format_layer(path: &Path) -> bool {
     use file_format::{FileFormat, Kind};
 

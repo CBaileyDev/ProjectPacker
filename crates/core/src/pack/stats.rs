@@ -57,46 +57,9 @@ impl StatsBlock {
     }
 }
 
-/// Map a file extension to a canonical language name.
-/// Unknowns are returned as `None` so the caller can group them under "other".
-fn ext_to_lang(ext: &str) -> Option<&'static str> {
-    match ext {
-        "rs" => Some("rust"),
-        "py" => Some("python"),
-        "js" | "mjs" => Some("javascript"),
-        "ts" => Some("typescript"),
-        "tsx" => Some("tsx"),
-        "jsx" => Some("jsx"),
-        "json" => Some("json"),
-        "toml" => Some("toml"),
-        "yaml" | "yml" => Some("yaml"),
-        "md" | "markdown" => Some("markdown"),
-        "sh" | "bash" => Some("sh"),
-        "css" => Some("css"),
-        "html" | "htm" => Some("html"),
-        "sql" => Some("sql"),
-        "go" => Some("go"),
-        "java" => Some("java"),
-        "cpp" | "cc" | "cxx" => Some("cpp"),
-        "c" => Some("c"),
-        "cs" => Some("csharp"),
-        "rb" => Some("ruby"),
-        "php" => Some("php"),
-        "swift" => Some("swift"),
-        "kt" | "kts" => Some("kotlin"),
-        "scala" => Some("scala"),
-        "dart" => Some("dart"),
-        "lua" => Some("lua"),
-        "r" => Some("r"),
-        "proto" => Some("proto"),
-        "graphql" | "gql" => Some("graphql"),
-        "xml" => Some("xml"),
-        _ => None,
-    }
-}
-
 /// Count files by detected language, take top 5, sorted descending by count
-/// with alphabetical tie-breaking.
+/// with alphabetical tie-breaking. Uses the shared `crate::lang::detect`
+/// so this map stays in sync with the markdown emitter's fence-language map.
 fn compute_language_breakdown(entries: &[FileEntry]) -> Vec<(String, u32)> {
     if entries.is_empty() {
         return Vec::new();
@@ -104,9 +67,8 @@ fn compute_language_breakdown(entries: &[FileEntry]) -> Vec<(String, u32)> {
 
     let mut counts: std::collections::HashMap<String, u32> = std::collections::HashMap::new();
     for entry in entries {
-        let ext = entry.path.rsplit('.').next().unwrap_or("").to_lowercase();
-        let lang = ext_to_lang(&ext)
-            .map(|s| s.to_string())
+        let lang = crate::lang::detect_from_path(&entry.path)
+            .map(str::to_string)
             .unwrap_or_else(|| "other".to_string());
         *counts.entry(lang).or_insert(0) += 1;
     }
