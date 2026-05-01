@@ -1,4 +1,4 @@
-# Built-in ProjectPacker ignore defaults — combined with .gitignore + .codeparserignore
+# Built-in ProjectPacker ignore defaults — Tier 1; layered with project (.gitignore + .git/info/exclude) and user (.repomixignore + custom_patterns) tiers
 
 # Version control
 .git/
