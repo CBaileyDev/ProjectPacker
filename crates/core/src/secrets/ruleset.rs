@@ -25,6 +25,12 @@
 use regex::Regex;
 use std::sync::OnceLock;
 
+/// Per-rule compiled-DFA cap. Default `regex` crate limit is 10 MiB;
+/// gitleaks rules `generic-api-key` and `vault-batch-token` need ~32 MiB.
+/// `pypi-upload-token` exceeds even this cap and is the only rule
+/// expected to skip on the currently vendored ruleset.
+const RULE_REGEX_SIZE_LIMIT: usize = 32 * 1024 * 1024;
+
 /// A compiled gitleaks rule.
 #[derive(Debug, Clone)]
 pub struct Rule {
@@ -109,7 +115,7 @@ pub fn from_toml(input: &str) -> Result<RuleSet, RuleSetError> {
             continue;
         };
         match regex::RegexBuilder::new(regex_src)
-            .size_limit(32 * 1024 * 1024) // 32 MiB; 10 MiB default chokes on generic-api-key et al.
+            .size_limit(RULE_REGEX_SIZE_LIMIT)
             .build()
         {
             Ok(regex) => rules.push(Rule {
@@ -174,11 +180,11 @@ mod tests {
     #[test]
     fn vendored_skipped_count_is_bounded() {
         let rs = vendored();
-        assert!(
-            rs.skipped_count() <= 5,
-            "expected <= 5 skipped rules, got {}",
-            rs.skipped_count()
-        );
+        let skipped = rs.skipped_count();
+        // Tight bound: only `pypi-upload-token` is expected to skip on the current
+        // vendored ruleset. The +1 of headroom catches transient upstream churn
+        // without absorbing real regressions silently.
+        assert!(skipped <= 2, "skipped count {skipped} exceeds expected 2");
     }
 
     /// Sanity check that a recognisable AWS rule survived parsing.
