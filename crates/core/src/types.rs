@@ -44,6 +44,9 @@ pub struct PackOptions {
     pub custom_ignore_patterns: Vec<String>,
     pub protocol_version: String,
     pub format: PackFormat,
+    /// Defaulted via `serde(default)` so v0.1 settings missing this field
+    /// deserialize cleanly to `XmlSchema::Cxml` (the new default).
+    #[serde(default)]
     pub xml_schema: XmlSchema,
 }
 

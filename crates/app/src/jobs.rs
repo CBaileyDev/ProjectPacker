@@ -41,6 +41,9 @@ impl JobRegistry {
     }
 
     pub fn store_result(&self, job_id: &str, result: PackResult) {
+        // Evict the (handle, token) pair — the job is finished, holding them
+        // would leak both per completed pack.
+        self.jobs.remove(job_id);
         self.results.insert(job_id.to_string(), result);
     }
 
