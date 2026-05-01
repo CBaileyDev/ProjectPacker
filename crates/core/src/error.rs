@@ -28,6 +28,9 @@ pub enum CoreError {
     #[error("tokenizer not available for model: {0}")]
     TokenizerUnavailable(String),
 
+    #[error("tokenizer encode failed: {0}")]
+    TokenizerEncodeFailed(String),
+
     #[error("plan validation failed: {errors:?}")]
     PlanInvalid { errors: Vec<String> },
 
