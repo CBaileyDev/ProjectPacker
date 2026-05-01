@@ -37,17 +37,54 @@ use tokenizers::Tokenizer;
 static O200K_BASE: OnceLock<CoreBPE> = OnceLock::new();
 static CL100K_BASE: OnceLock<CoreBPE> = OnceLock::new();
 
-// Vendored HuggingFace `tokenizer.json` blobs. Sources are documented in the
-// commit that landed Phase 2 T2; ungated public mirrors only.
-static LLAMA_3_BYTES: &[u8] = include_bytes!("../assets/tokenizers/llama-3.json");
-static QWEN_2_5_BYTES: &[u8] = include_bytes!("../assets/tokenizers/qwen-2.5.json");
-static DEEPSEEK_BYTES: &[u8] = include_bytes!("../assets/tokenizers/deepseek.json");
-static MISTRAL_BYTES: &[u8] = include_bytes!("../assets/tokenizers/mistral.json");
+// Vendored HuggingFace `tokenizer.json` blobs paired with their lazy parse
+// slots. Sources are documented in the commit that landed Phase 2 T2;
+// ungated public mirrors only. Pairing the bytes with the slot in a single
+// struct prevents the copy-paste foot-gun where a model could route the
+// wrong bytes into the wrong slot.
+struct VendoredHfTokenizer {
+    name: &'static str,
+    bytes: &'static [u8],
+    slot: OnceLock<Tokenizer>,
+}
 
-static LLAMA_3_TOK: OnceLock<Tokenizer> = OnceLock::new();
-static QWEN_2_5_TOK: OnceLock<Tokenizer> = OnceLock::new();
-static DEEPSEEK_TOK: OnceLock<Tokenizer> = OnceLock::new();
-static MISTRAL_TOK: OnceLock<Tokenizer> = OnceLock::new();
+impl VendoredHfTokenizer {
+    const fn new(name: &'static str, bytes: &'static [u8]) -> Self {
+        Self {
+            name,
+            bytes,
+            slot: OnceLock::new(),
+        }
+    }
+
+    /// Lazily parse the vendored `tokenizer.json` and encode `text`.
+    ///
+    /// The first call parses the JSON (tens of milliseconds for ~1–9 MiB
+    /// inputs); subsequent calls hit the cached `Tokenizer`. We do not
+    /// pre-warm at startup — a user who never switches to an HF model
+    /// never pays this cost.
+    fn count(&'static self, text: &str) -> CoreResult<u32> {
+        let tok = self.slot.get_or_init(|| {
+            Tokenizer::from_bytes(self.bytes).unwrap_or_else(|e| {
+                panic!("vendored {} tokenizer.json must parse: {e}", self.name)
+            })
+        });
+        // `false` = no BOS/EOS — we count raw content tokens, not after-templating.
+        let encoded = tok
+            .encode(text, false)
+            .map_err(|e| CoreError::TokenizerEncodeFailed(e.to_string()))?;
+        Ok(encoded.get_ids().len() as u32)
+    }
+}
+
+static LLAMA_3: VendoredHfTokenizer =
+    VendoredHfTokenizer::new("llama-3", include_bytes!("../assets/tokenizers/llama-3.json"));
+static QWEN_2_5: VendoredHfTokenizer =
+    VendoredHfTokenizer::new("qwen-2.5", include_bytes!("../assets/tokenizers/qwen-2.5.json"));
+static DEEPSEEK: VendoredHfTokenizer =
+    VendoredHfTokenizer::new("deepseek", include_bytes!("../assets/tokenizers/deepseek.json"));
+static MISTRAL: VendoredHfTokenizer =
+    VendoredHfTokenizer::new("mistral", include_bytes!("../assets/tokenizers/mistral.json"));
 
 /// Tokenizer family selector for the typed API.
 ///
@@ -93,31 +130,11 @@ pub fn count(text: &str, model: TokenModel) -> CoreResult<u32> {
             let scaled = (u64::from(base) * 105).div_ceil(100);
             Ok(scaled as u32)
         }
-        TokenModel::Llama3 => hf_count(LLAMA_3_BYTES, &LLAMA_3_TOK, text),
-        TokenModel::Qwen2_5 => hf_count(QWEN_2_5_BYTES, &QWEN_2_5_TOK, text),
-        TokenModel::DeepSeek => hf_count(DEEPSEEK_BYTES, &DEEPSEEK_TOK, text),
-        TokenModel::Mistral => hf_count(MISTRAL_BYTES, &MISTRAL_TOK, text),
+        TokenModel::Llama3 => LLAMA_3.count(text),
+        TokenModel::Qwen2_5 => QWEN_2_5.count(text),
+        TokenModel::DeepSeek => DEEPSEEK.count(text),
+        TokenModel::Mistral => MISTRAL.count(text),
     }
-}
-
-/// Lazily parse a vendored HuggingFace `tokenizer.json` and encode `text`.
-///
-/// The first call for a given `slot` parses the JSON (tens of milliseconds
-/// for ~1–9 MiB inputs); subsequent calls hit the cached `Tokenizer`. We do
-/// not pre-warm at startup — a user who never switches to an HF model never
-/// pays this cost.
-fn hf_count(
-    bytes: &'static [u8],
-    slot: &'static OnceLock<Tokenizer>,
-    text: &str,
-) -> CoreResult<u32> {
-    let tok = slot.get_or_init(|| {
-        Tokenizer::from_bytes(bytes).expect("vendored tokenizer.json must parse")
-    });
-    let encoded = tok
-        .encode(text, false)
-        .map_err(|e| CoreError::TokenizerEncodeFailed(e.to_string()))?;
-    Ok(encoded.get_ids().len() as u32)
 }
 
 /// Legacy string-keyed wrapper. Preserved so existing orchestrator callers
