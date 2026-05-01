@@ -10,6 +10,7 @@ repository.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 tokio.workspace = true
+tokio-util.workspace = true
 specta.workspace = true
 
 ignore = "0.4"
@@ -24,7 +25,6 @@ quick-xml = { version = "0.37", features = ["serialize"] }
 regex = "1"
 rayon = "1.10"
 blake3 = { version = "1.8", features = ["rayon", "mmap"] }
-tokio-util = { version = "0.7.18", features = ["rt"] }
 uuid = { version = "1", features = ["v7"] }
 encoding_rs = "0.8"
 walkdir = "2"

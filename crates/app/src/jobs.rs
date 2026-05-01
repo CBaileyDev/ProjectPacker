@@ -8,7 +8,7 @@ use tokio_util::sync::CancellationToken;
 struct JobEntry {
     /// Retained for future await-on-completion semantics; cancellation goes via `token`.
     #[allow(dead_code)]
-    handle: Option<JoinHandle<()>>,
+    handle: JoinHandle<()>,
     token: CancellationToken,
 }
 
@@ -26,10 +26,7 @@ impl JobRegistry {
     pub fn register(&self, job_id: &str, handle: JoinHandle<()>, token: CancellationToken) {
         self.jobs.insert(
             job_id.to_string(),
-            Arc::new(Mutex::new(JobEntry {
-                handle: Some(handle),
-                token,
-            })),
+            Arc::new(Mutex::new(JobEntry { handle, token })),
         );
     }
 
