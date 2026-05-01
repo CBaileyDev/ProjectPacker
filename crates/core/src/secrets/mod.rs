@@ -1,3 +1,5 @@
+pub mod ruleset;
+
 use regex::Regex;
 use serde::Serialize;
 use specta::Type;
