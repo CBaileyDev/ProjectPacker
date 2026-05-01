@@ -139,7 +139,7 @@ pub enum ProgressEvent {
     Compressing {
         progress_pct: u8,
     },
-    BuildingXml,
+    BuildingOutput,
     Done {
         stats: PackStats,
     },

@@ -59,7 +59,7 @@ pub fn pack(
         });
     }
 
-    let _ = tx.send(ProgressEvent::BuildingXml);
+    let _ = tx.send(ProgressEvent::BuildingOutput);
 
     let results: Vec<(FileEntry, Vec<PackWarning>)> = outcome
         .included
@@ -309,7 +309,7 @@ mod tests {
                 ProgressEvent::Walking { .. } => "walking",
                 ProgressEvent::FileFoundBatch { .. } => "batch",
                 ProgressEvent::FileSkipped { .. } => "skipped",
-                ProgressEvent::BuildingXml => "building",
+                ProgressEvent::BuildingOutput => "building",
                 ProgressEvent::Done { .. } => "done",
                 _ => "other",
             });
