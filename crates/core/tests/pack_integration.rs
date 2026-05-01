@@ -1,6 +1,7 @@
 use projectpacker_core::pack;
 use projectpacker_core::types::*;
 use std::path::PathBuf;
+use tokio_util::sync::CancellationToken;
 
 fn fixture_path(name: &str) -> PathBuf {
     let crate_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
@@ -21,7 +22,7 @@ fn tiny_fixture_packs_with_expected_files() {
         ..PackOptions::default()
     };
     let (tx, _rx) = std::sync::mpsc::channel();
-    let result = pack::pack(&PackTarget::Folder(root.clone()), &opts, tx, "test-job").unwrap();
+    let result = pack::pack(&PackTarget::Folder(root.clone()), &opts, tx, "test-job", CancellationToken::new()).unwrap();
 
     assert!(result.output.contains("README.md"));
     assert!(result.output.contains("src/main.rs"));
@@ -41,7 +42,7 @@ fn tiny_fixture_detects_secret() {
         ..PackOptions::default()
     };
     let (tx, _rx) = std::sync::mpsc::channel();
-    let result = pack::pack(&PackTarget::Folder(root.clone()), &opts, tx, "test-job").unwrap();
+    let result = pack::pack(&PackTarget::Folder(root.clone()), &opts, tx, "test-job", CancellationToken::new()).unwrap();
     assert!(
         result.stats.secrets_found >= 1,
         "expected at least one secret hit"
@@ -56,7 +57,7 @@ fn tiny_fixture_includes_protocol_block() {
         ..PackOptions::default()
     };
     let (tx, _rx) = std::sync::mpsc::channel();
-    let result = pack::pack(&PackTarget::Folder(root.clone()), &opts, tx, "test-job").unwrap();
+    let result = pack::pack(&PackTarget::Folder(root.clone()), &opts, tx, "test-job", CancellationToken::new()).unwrap();
     assert!(result.output.contains("<protocol version=\"grok-to-cc-v1\">"));
     assert!(result.output.contains("<user_task>"));
     assert!(result.output.contains("Add docs"));

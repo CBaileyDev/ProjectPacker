@@ -9,6 +9,7 @@ use specta::Type;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter, Manager, State};
+use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Type)]
@@ -64,9 +65,12 @@ pub async fn pack_start(
         }
     });
 
+    let cancel = CancellationToken::new();
+    let cancel_for_task = cancel.clone();
+
     let handle = tokio::task::spawn_blocking(move || {
         let tx_for_err = tx.clone();
-        match pack::pack(&opts.target, &opts, tx, &id_for_task) {
+        match pack::pack(&opts.target, &opts, tx, &id_for_task, cancel_for_task) {
             Ok(result) => registry_for_task.store_result(&id_for_task, result),
             Err(e) => {
                 let _ = tx_for_err.send(ProgressEvent::Error {
@@ -77,7 +81,7 @@ pub async fn pack_start(
         }
     });
 
-    registry_arc.register(&job_id, handle);
+    registry_arc.register(&job_id, handle, cancel);
     Ok(job_id)
 }
 
