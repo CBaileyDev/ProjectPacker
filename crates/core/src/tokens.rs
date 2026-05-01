@@ -65,11 +65,11 @@ pub fn count(text: &str, model: TokenModel) -> CoreResult<u32> {
             let scaled = (u64::from(base) * 105).div_ceil(100);
             Ok(scaled as u32)
         }
-        // TODO(phase-2-t2): wire HF tokenizers
         TokenModel::Llama3 | TokenModel::Qwen2_5 | TokenModel::DeepSeek | TokenModel::Mistral => {
-            Err(CoreError::TokenizerUnavailable(
-                "model not yet wired".into(),
-            ))
+            // TODO(phase-2-t2): wire HF tokenizers
+            Err(CoreError::TokenizerUnavailable(format!(
+                "{model:?} not yet implemented"
+            )))
         }
     }
 }
@@ -185,10 +185,30 @@ mod tests {
             TokenModel::Mistral,
         ] {
             let err = count("hello", model).unwrap_err();
-            assert!(
-                matches!(err, CoreError::TokenizerUnavailable(_)),
-                "expected TokenizerUnavailable for {model:?}, got {err:?}"
-            );
+            let needle = format!("{model:?}");
+            if let CoreError::TokenizerUnavailable(s) = &err {
+                assert!(
+                    s.contains(&needle),
+                    "expected error string to contain {needle:?}, got {s:?}"
+                );
+            } else {
+                panic!("expected TokenizerUnavailable for {model:?}, got {err:?}");
+            }
         }
+    }
+
+    #[test]
+    fn token_model_wire_strings_are_stable() {
+        use serde_json::to_string;
+        assert_eq!(to_string(&TokenModel::Gpt4o).unwrap(),        "\"gpt4o\"");
+        assert_eq!(to_string(&TokenModel::Claude).unwrap(),       "\"claude\"");
+        assert_eq!(to_string(&TokenModel::Llama3).unwrap(),       "\"llama3\"");
+        assert_eq!(to_string(&TokenModel::Qwen2_5).unwrap(),      "\"qwen2_5\"");
+        assert_eq!(to_string(&TokenModel::DeepSeek).unwrap(),     "\"deepSeek\"");
+        assert_eq!(to_string(&TokenModel::Mistral).unwrap(),      "\"mistral\"");
+        assert_eq!(to_string(&TokenModel::GeminiApprox).unwrap(), "\"geminiApprox\"");
+        // round-trip
+        assert_eq!(serde_json::from_str::<TokenModel>("\"gpt4o\"").unwrap(),    TokenModel::Gpt4o);
+        assert_eq!(serde_json::from_str::<TokenModel>("\"qwen2_5\"").unwrap(),  TokenModel::Qwen2_5);
     }
 }
