@@ -71,7 +71,8 @@ export type ProgressEvent =
   | { kind: "secretScanning"; progress_pct: number }
   | { kind: "secretHit"; path: string; secret_kind: string; line: number }
   | { kind: "compressing"; progress_pct: number }
-  | { kind: "buildingXml" }
+  | { kind: "cloning"; progress_pct: number }
+  | { kind: "buildingOutput" }
   | { kind: "done"; stats: PackStats }
   | { kind: "error"; message: string; fatal: boolean }
 export type Recent = { label: string; target: string; lastUsedIso: string }

@@ -243,7 +243,7 @@ export default function Pack() {
       }
       if (e.kind === "error" && e.fatal) {
         setErrorMsg(e.message);
-        unlisten();
+        void unlisten();
       }
     });
   }
