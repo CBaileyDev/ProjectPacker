@@ -27,6 +27,8 @@ pub fn pack(
     let start = Instant::now();
     let mut warnings: Vec<PackWarning> = Vec::new();
 
+    // _clone_guard keeps the GitHub TempDir alive for the duration of pack();
+    // dropping it at end-of-fn cleans up the cloned repo. None for Folder targets.
     let (root, label, _clone_guard) = resolve_target(target, job_id, &tx)?;
 
     let _ = tx.send(ProgressEvent::Started {
