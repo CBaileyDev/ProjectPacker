@@ -108,7 +108,50 @@ impl XmlBuilder {
         self
     }
 
-    pub fn files(&mut self, files: &[FileEntry]) -> &mut Self {
+    /// Emit the Anthropic cxml `<documents>` schema (default).
+    ///
+    /// The orchestrator's output is the canonical tail-priority ordering:
+    /// pinned entries first (in declaration order), then non-pinned (walk order).
+    /// Phase 5 (Map Mode) will substitute relevance-based ordering for the
+    /// non-pinned segment — this emitter leaves the ordering it receives intact.
+    ///
+    /// Schema:
+    /// ```xml
+    /// <documents>
+    ///   <document index="1">
+    ///     <source>path/to/file</source>
+    ///     <tokens>42</tokens>        <!-- omitted when None -->
+    ///     <hash>abc123</hash>
+    ///     <document_content>…</document_content>
+    ///   </document>
+    /// </documents>
+    /// ```
+    pub fn documents(&mut self, files: &[FileEntry]) -> &mut Self {
+        self.out.push_str("<documents>\n");
+        for (idx, f) in files.iter().enumerate() {
+            let _ = writeln!(self.out, "<document index=\"{}\">", idx + 1);
+            let _ = writeln!(self.out, "  <source>{}</source>", escape_text(&f.path));
+            if let Some(t) = f.tokens {
+                let _ = writeln!(self.out, "  <tokens>{t}</tokens>");
+            }
+            let _ = writeln!(self.out, "  <hash>{}</hash>", escape_text(&f.hash));
+            self.out.push_str("  <document_content>");
+            self.out.push_str(&escape_text(&f.content));
+            if !f.content.ends_with('\n') {
+                self.out.push('\n');
+            }
+            self.out.push_str("  </document_content>\n");
+            self.out.push_str("</document>\n");
+        }
+        self.out.push_str("</documents>\n");
+        self
+    }
+
+    /// Emit the legacy `<files>/<file>` schema.
+    ///
+    /// Called by the orchestrator when `xml_legacy_schema` is true (or
+    /// `XmlSchema::Legacy`). Retained for backwards compatibility only.
+    pub(crate) fn files_legacy(&mut self, files: &[FileEntry]) -> &mut Self {
         self.out.push_str("<files>\n");
         for f in files {
             let tokens_attr = match f.tokens {
@@ -129,6 +172,13 @@ impl XmlBuilder {
         }
         self.out.push_str("</files>\n");
         self
+    }
+
+    /// Legacy alias kept so existing tests that call `builder.files(…)` still compile.
+    /// Delegates to `files_legacy`.
+    #[cfg(test)]
+    pub fn files(&mut self, files: &[FileEntry]) -> &mut Self {
+        self.files_legacy(files)
     }
 
     pub fn git_logs(&mut self, body: &str) -> &mut Self {
@@ -163,6 +213,16 @@ fn escape_text(s: &str) -> String {
 mod tests {
     use super::*;
     use crate::types::PackStats;
+
+    fn make_entry(path: &str, content: &str, tokens: Option<u32>) -> FileEntry {
+        FileEntry {
+            path: path.into(),
+            content: content.into(),
+            bytes: content.len() as u64,
+            tokens,
+            hash: "deadbeef".into(),
+        }
+    }
 
     #[test]
     fn empty_repository_brackets() {
@@ -244,5 +304,99 @@ mod tests {
         assert!(s.contains("<files>included=1 total=2 skipped=1</files>"));
         assert!(s.contains("<tokens model=\"gpt-4o-mini\">100</tokens>"));
         assert!(s.contains("</stats>"));
+    }
+
+    // ── Task F1 tests ─────────────────────────────────────────────────────────
+
+    /// F1-1: `documents()` emits Anthropic cxml schema tags; legacy tags absent.
+    #[test]
+    fn documents_block_uses_anthropic_cxml_schema() {
+        let entries = vec![
+            make_entry("src/main.rs", "fn main() {}\n", Some(3)),
+            make_entry("src/lib.rs", "pub fn foo() {}\n", None),
+        ];
+        let mut b = XmlBuilder::new();
+        b.documents(&entries);
+        let s = b.finish();
+
+        assert!(s.contains("<documents>"), "must contain <documents>");
+        assert!(s.contains("<document index=\"1\">"), "must contain index=1");
+        assert!(s.contains("<source>src/main.rs</source>"), "must contain <source>");
+        assert!(s.contains("<document_content>"), "must contain <document_content>");
+        assert!(s.contains("<document index=\"2\">"), "must contain index=2");
+        // Legacy tags must NOT appear.
+        assert!(!s.contains("<files>"), "must NOT contain legacy <files>");
+        assert!(!s.contains("<file path="), "must NOT contain legacy <file path=");
+    }
+
+    /// F1-2: index attribute is 1-based and monotonically increasing.
+    #[test]
+    fn documents_index_attribute_is_one_based_and_monotonic() {
+        let entries = vec![
+            make_entry("a.rs", "a\n", None),
+            make_entry("b.rs", "b\n", None),
+            make_entry("c.rs", "c\n", None),
+        ];
+        let mut b = XmlBuilder::new();
+        b.documents(&entries);
+        let s = b.finish();
+
+        let pos1 = s.find("index=\"1\"").expect("index=1 missing");
+        let pos2 = s.find("index=\"2\"").expect("index=2 missing");
+        let pos3 = s.find("index=\"3\"").expect("index=3 missing");
+        assert!(pos1 < pos2, "index=1 must come before index=2");
+        assert!(pos2 < pos3, "index=2 must come before index=3");
+    }
+
+    /// F1-3: `<tokens>` element emitted only when tokens is Some.
+    #[test]
+    fn documents_emits_tokens_only_when_present() {
+        let entries = vec![
+            make_entry("a.rs", "fn main() {}\n", Some(5)),
+            make_entry("b.rs", "fn foo() {}\n", None),
+        ];
+        let mut b = XmlBuilder::new();
+        b.documents(&entries);
+        let s = b.finish();
+
+        // doc 1 must have <tokens>5</tokens>
+        assert!(s.contains("<tokens>5</tokens>"), "doc 1 must contain <tokens>5</tokens>");
+
+        // doc 2 must NOT have any <tokens> child element.
+        // Find the second document block and check within it.
+        let doc2_start = s.find("index=\"2\"").expect("index=2 missing");
+        let doc2_end = s.find("</document>").and_then(|p| {
+            // find the second </document>
+            s[p + 1..].find("</document>").map(|q| p + 1 + q)
+        }).unwrap_or(s.len());
+        let doc2_text = &s[doc2_start..doc2_end];
+        assert!(
+            !doc2_text.contains("<tokens>"),
+            "doc 2 must NOT contain <tokens> element, got: {doc2_text}"
+        );
+    }
+
+    /// F1-4: XML special characters in content are escaped inside `<document_content>`.
+    #[test]
+    fn documents_escapes_xml_special_chars_in_content() {
+        let entries = vec![make_entry("a.txt", "a < b & c\n", None)];
+        let mut b = XmlBuilder::new();
+        b.documents(&entries);
+        let s = b.finish();
+        assert!(
+            s.contains("a &lt; b &amp; c"),
+            "content must be XML-escaped, got: {s}"
+        );
+    }
+
+    /// F1-5: legacy schema path emits `<files>` and `<file path=` when called.
+    #[test]
+    fn legacy_schema_path_emits_files_when_xml_legacy_schema_true() {
+        let entries = vec![make_entry("src/main.rs", "fn main() {}\n", Some(3))];
+        let mut b = XmlBuilder::new();
+        b.files_legacy(&entries);
+        let s = b.finish();
+        assert!(s.contains("<files>"), "legacy must contain <files>");
+        assert!(s.contains("<file path="), "legacy must contain <file path=");
     }
 }

@@ -4,7 +4,7 @@ use crate::pack::pin;
 use crate::pack::xml::XmlBuilder;
 use crate::pack::{markdown, plain};
 use crate::pack::FileEntry;
-use crate::types::PackFormat;
+use crate::types::{PackFormat, XmlSchema};
 use crate::protocol;
 use crate::secrets;
 use crate::tokens;
@@ -247,6 +247,13 @@ pub fn pack(
         entries.extend(non_pinned);
     }
     // ── End pin reorder ───────────────────────────────────────────────────────
+    // pinned_count: how many entries at the front of `entries` are pinned files.
+    // Passed to markdown/plain renderers so they can keep the pinned segment in
+    // declaration order while sorting the non-pinned tail alphabetically.
+    let pinned_count = entries
+        .iter()
+        .take_while(|e| pinned_set.contains(&e.path))
+        .count();
 
     let mut secrets_found = 0u32;
     if opts.secret_scan {
@@ -291,13 +298,17 @@ pub fn pack(
                 .open_repository()
                 .raw_block(&protocol_block)
                 .stats_block(&label, opts, &stats, &entries)
-                .directory_structure(&dir_paths)
-                .files(&entries)
-                .close_repository();
+                .directory_structure(&dir_paths);
+            // Route to the Anthropic cxml schema (default) or the legacy schema.
+            match opts.xml_schema {
+                XmlSchema::Cxml => { builder.documents(&entries); }
+                XmlSchema::Legacy => { builder.files_legacy(&entries); }
+            }
+            builder.close_repository();
             builder.finish()
         }
-        PackFormat::Markdown => markdown::render(&label, opts, &stats, &entries),
-        PackFormat::PlainText => plain::render(&label, opts, &stats, &entries),
+        PackFormat::Markdown => markdown::render(&label, opts, &stats, &entries, pinned_count),
+        PackFormat::PlainText => plain::render(&label, opts, &stats, &entries, pinned_count),
     };
 
     let claude_code_prompt = protocol::claude_code_prompt(&opts.protocol_version)?;
@@ -427,7 +438,8 @@ mod tests {
         let (tx, _rx) = std::sync::mpsc::channel();
         let result = pack(&PackTarget::Folder(d.path().to_path_buf()), &opts, tx, "job-test", CancellationToken::new()).unwrap();
         assert!(result.output.contains("<protocol version=\"grok-to-cc-v1\">"));
-        assert!(result.output.contains("<files>"));
+        assert!(result.output.contains("<documents>"));
+        assert!(result.output.contains("<document "));
         assert!(result.output.contains("README.md"));
         assert!(result.output.contains("a.rs"));
         assert_eq!(result.stats.files_included, 2);

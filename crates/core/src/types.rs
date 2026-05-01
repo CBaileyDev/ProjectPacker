@@ -20,6 +20,14 @@ pub enum PackFormat {
     PlainText,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, Default)]
+#[serde(rename_all = "camelCase")]
+pub enum XmlSchema {
+    #[default]
+    Cxml,   // Anthropic <documents> shape — new default
+    Legacy, // <files><file path="..."> shape — kept for backwards compat
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct PackOptions {
@@ -36,6 +44,7 @@ pub struct PackOptions {
     pub custom_ignore_patterns: Vec<String>,
     pub protocol_version: String,
     pub format: PackFormat,
+    pub xml_schema: XmlSchema,
 }
 
 impl Default for PackOptions {
@@ -54,6 +63,7 @@ impl Default for PackOptions {
             custom_ignore_patterns: Vec::new(),
             protocol_version: "grok-to-cc-v1".into(),
             format: PackFormat::Xml,
+            xml_schema: XmlSchema::Cxml,
         }
     }
 }
