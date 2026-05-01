@@ -87,7 +87,12 @@ export type AppError = { code: string; message: string; details: string | null }
 export type FileFound = { path: string; bytes: number }
 export type GoalTemplate = { name: string; body: string }
 export type PackFormat = "xml" | "markdown" | "plainText"
-export type PackOptions = { target: PackTarget; goal: string; includeGitHistory: boolean; countTokens: boolean; tokenizerModel: string; secretScan: boolean; compress: boolean; removeComments: boolean; maxFileSizeKb: number; respectGitignore: boolean; customIgnorePatterns: string[]; protocolVersion: string; format: PackFormat; xmlSchema: XmlSchema }
+export type PackOptions = { target: PackTarget; goal: string; includeGitHistory: boolean; countTokens: boolean; tokenizerModel: string; secretScan: boolean; compress: boolean; removeComments: boolean; maxFileSizeKb: number; respectGitignore: boolean; customIgnorePatterns: string[]; protocolVersion: string; format: PackFormat; 
+/**
+ * Defaulted via `serde(default)` so v0.1 settings missing this field
+ * deserialize cleanly to `XmlSchema::Cxml` (the new default).
+ */
+xmlSchema?: XmlSchema }
 export type PackResult = { output: string; claudeCodePrompt: string; stats: PackStats; warnings: PackWarning[] }
 export type PackStats = { filesTotal: number; filesIncluded: number; filesSkipped: number; bytesTotal: number; tokensTotal: number | null; secretsFound: number; durationMs: number }
 export type PackTarget = { kind: "folder"; value: string } | { kind: "github"; value: string }
@@ -100,6 +105,18 @@ export type Recent = { label: string; target: string; lastUsedIso: string }
 export type Settings = { theme: Theme; defaultProtocolVersion: string; defaultTokenizerModel: string; recents: Recent[]; goalTemplates: GoalTemplate[]; presets: Preset[] }
 export type SkipReason = { kind: "ignored" } | { kind: "tooLarge" } | { kind: "binary" } | { kind: "inaccessible" } | { kind: "encodingFailed" }
 export type Theme = "dark" | "light"
+/**
+ * Tokenizer family selector for the typed API.
+ * 
+ * Wire mapping (Phase 2 T1):
+ * - `Gpt4o`, `Claude` → `cl100k_base` (Anthropic's tokenizer behaves close
+ * enough to cl100k that we share the encoder).
+ * - `GeminiApprox` → `cl100k_base` count multiplied by 1.05 and rounded up;
+ * Gemini ships no public tokenizer so this is a deliberate over-estimate.
+ * - `Llama3`, `Qwen2_5`, `DeepSeek`, `Mistral` → currently return
+ * [`CoreError::TokenizerUnavailable`]; HF JSON tokenizers land in T2.
+ */
+export type TokenModel = "gpt4o" | "claude" | "llama3" | "qwen2_5" | "deepSeek" | "mistral" | "geminiApprox"
 export type WarningKind = { kind: "fileSkipped" } | { kind: "treeSitterFailed" } | { kind: "gitLogMissing" } | { kind: "encodingFallback" } | { kind: "secretScanFailed" }
 export type XmlSchema = "cxml" | "legacy"
 

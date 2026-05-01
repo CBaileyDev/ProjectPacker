@@ -16,6 +16,11 @@ specta.workspace = true
 ignore = "0.4"
 gix = { version = "0.66", default-features = false, features = ["blocking-network-client", "blocking-http-transport-reqwest", "max-performance-safe", "worktree-mutation"] }
 tiktoken-rs = "0.6"
+# `unstable_wasm` is a misnomer: it swaps the default `onig` (C dep) regex
+# backend for a pure-Rust one, which means Tauri Windows cross-compiles work
+# without bundling a C toolchain. Nothing about it is wasm-specific.
+tokenizers = { version = "0.23", default-features = false, features = ["unstable_wasm"] }
+toml = "0.8"
 tree-sitter = "0.25"
 tree-sitter-rust = "0.24"
 tree-sitter-python = "0.25"

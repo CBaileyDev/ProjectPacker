@@ -15,7 +15,8 @@ fn main() {
             projectpacker_app_lib::commands::save_settings,
             projectpacker_app_lib::commands::save_to_file,
         ])
-        .typ::<projectpacker_core::types::ProgressEvent>();
+        .typ::<projectpacker_core::types::ProgressEvent>()
+        .typ::<projectpacker_core::tokens::TokenModel>();
 
     builder
         .export(
