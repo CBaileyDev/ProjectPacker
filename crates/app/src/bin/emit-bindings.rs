@@ -18,7 +18,11 @@ fn main() {
         .typ::<projectpacker_core::types::ProgressEvent>()
         .typ::<projectpacker_core::tokens::TokenModel>()
         .typ::<projectpacker_core::tokens::TokensPerModel>()
-        .typ::<projectpacker_core::secrets::Redaction>()
+        // The engine-level `Redaction` (with `matched_excerpt`) is internal
+        // to `secrets::engine`; the pack surface uses `PackRedaction` (no
+        // excerpt by design — excerpts would echo the very secret we just
+        // redacted into the security report). Don't expose `Redaction` to
+        // TS to keep the wire surface tight.
         .typ::<projectpacker_core::types::PackRedaction>();
 
     builder

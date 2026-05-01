@@ -504,7 +504,7 @@ export default function Pack() {
             />
             <Toggle
               label="Count tokens"
-              hint="gpt-4o-mini tokenizer"
+              hint="counts via 7 model tokenizers (see AI table)"
               checked={options.countTokens}
               onChange={(v) => setOptions({ ...options, countTokens: v })}
             />

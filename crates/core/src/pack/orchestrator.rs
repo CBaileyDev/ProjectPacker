@@ -181,12 +181,10 @@ pub fn pack(
                 after_comments
             };
 
-            let tokens = if opts.count_tokens {
-                tokens::count_by_name(&opts.tokenizer_model, &content).ok()
-            } else {
-                None
-            };
-
+            // Per-file `tokens` is computed AFTER the secret-scan loop so
+            // it describes the same (post-redaction) content as
+            // `tokens_total` and `tokens_per_model`. See the post-redaction
+            // pass below.
             let hash = hash_content(raw.as_bytes(), &abs);
 
             (
@@ -194,7 +192,7 @@ pub fn pack(
                     path: f.path.clone(),
                     content,
                     bytes: f.bytes,
-                    tokens,
+                    tokens: None,
                     hash,
                 },
                 file_warnings,
@@ -296,6 +294,18 @@ pub fn pack(
         }
     }
 
+    // Per-file token counts run AFTER the secret-scan loop so each entry's
+    // `tokens` reflects the same (post-redaction) content as `tokens_total`
+    // (summed below) and `tokens_per_model`. Sequential pass — content is
+    // already in memory and `count_by_name` is fast (~5ms per file with a
+    // hot tokenizer cache); the parallelism win is negligible vs. the
+    // correctness win of unified post-redaction semantics.
+    if opts.count_tokens {
+        for e in entries.iter_mut() {
+            e.tokens = tokens::count_by_name(&opts.tokenizer_model, &e.content).ok();
+        }
+    }
+
     let mut bytes_total = 0u64;
     let mut tokens_total: u32 = 0;
     for e in &entries {
@@ -361,7 +371,7 @@ pub fn pack(
             builder
                 .open_repository()
                 .raw_block(&protocol_block)
-                .stats_block(&label, opts, &stats, &entries)
+                .stats_block(&label, opts, &stats, &entries, &all_redactions)
                 .security_report_block(&all_redactions)
                 .directory_structure(&dir_paths);
             // Route to the Anthropic cxml schema (default) or the legacy schema.

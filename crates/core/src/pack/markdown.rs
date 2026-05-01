@@ -11,7 +11,7 @@ pub fn render(
     pinned_count: usize,
     redactions: &[PackRedaction],
 ) -> String {
-    let block = StatsBlock::from(root_label, opts, stats, entries);
+    let block = StatsBlock::from(root_label, opts, stats, entries, redactions);
     let mut out = String::new();
 
     out.push_str("# Repository Pack\n\n");
@@ -36,7 +36,7 @@ pub fn render(
     if !block.languages.is_empty() {
         out.push_str(&format!("| Languages | {} |\n", block.languages_display()));
     }
-    out.push_str(&format!("| Redacted bytes | {} |\n", block.redacted_bytes));
+    out.push_str(&format!("| Redactions | {} |\n", block.redacted_bytes));
     out.push_str(&format!("| Cache hits | {} |\n", block.cache_hits));
     out.push_str(&format!("| Duration | {}ms |\n\n", block.duration_ms));
 
@@ -193,8 +193,31 @@ mod tests {
         // Also verify key stats fields are present (and we haven't accidentally emitted XML tags).
         assert!(!out.contains("<pack_target>"), "MD output must not contain XML tags");
         assert!(out.contains("| Target |"));
-        assert!(out.contains("| Redacted bytes |"));
+        assert!(out.contains("| Redactions |"));
         assert!(out.contains("| Cache hits |"));
+        // Empty redactions slice → row reads "| Redactions | 0 |".
+        assert!(out.contains("| Redactions | 0 |"));
+    }
+
+    /// Markdown stats row reflects the redactions slice length, not a constant.
+    #[test]
+    fn markdown_redactions_row_reflects_slice_length() {
+        let redactions = vec![
+            PackRedaction {
+                file: "a.rs".into(),
+                rule_id: "aws-access-token".into(),
+                line: 1,
+                byte_offset: 10,
+            },
+            PackRedaction {
+                file: "a.rs".into(),
+                rule_id: "github-pat".into(),
+                line: 4,
+                byte_offset: 80,
+            },
+        ];
+        let out = render("repo", &opts(), &stats(), &[], 0, &redactions);
+        assert!(out.contains("| Redactions | 2 |"));
     }
 
     // ── Task F2 tests ─────────────────────────────────────────────────────────

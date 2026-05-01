@@ -11,7 +11,7 @@ pub fn render(
     pinned_count: usize,
     redactions: &[PackRedaction],
 ) -> String {
-    let block = StatsBlock::from(root_label, opts, stats, entries);
+    let block = StatsBlock::from(root_label, opts, stats, entries, redactions);
     let mut out = String::new();
 
     out.push_str("=== STATS ===\n");
@@ -33,8 +33,10 @@ pub fn render(
     if !block.languages.is_empty() {
         out.push_str(&format!("Languages: {}\n", block.languages_display()));
     }
-    // Phase 2 (secret redaction) will populate redacted_bytes
-    out.push_str(&format!("Redacted bytes: {}\n", block.redacted_bytes));
+    // Field name on StatsBlock is `redacted_bytes` (kept for wire-format
+    // stability), but it semantically holds the redaction *count*; emit it
+    // as "Redactions" in the user-visible label.
+    out.push_str(&format!("Redactions: {}\n", block.redacted_bytes));
     // Phase 3 (content-addressed cache) will populate cache_hits
     out.push_str(&format!("Cache hits: {}\n", block.cache_hits));
     out.push_str(&format!("Duration: {}ms\n", block.duration_ms));
@@ -171,6 +173,22 @@ mod tests {
         );
         // Verify it does NOT use the old REPOSITORY PACK header at the top
         assert!(!out.starts_with("=== REPOSITORY PACK ==="));
+        // Empty redactions slice → "Redactions: 0".
+        assert!(out.contains("Redactions: 0"));
+        assert!(!out.contains("Redacted bytes:"));
+    }
+
+    /// Plain stats line reflects the redactions slice length.
+    #[test]
+    fn plain_redactions_line_reflects_slice_length() {
+        let redactions = vec![PackRedaction {
+            file: "a.rs".into(),
+            rule_id: "aws-access-token".into(),
+            line: 1,
+            byte_offset: 10,
+        }];
+        let out = render("repo", &opts(), &stats(), &[], 0, &redactions);
+        assert!(out.contains("Redactions: 1"));
     }
 
     // ── Task F2 tests ─────────────────────────────────────────────────────────

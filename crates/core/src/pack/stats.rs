@@ -1,5 +1,5 @@
 use crate::pack::FileEntry;
-use crate::types::{PackOptions, PackStats};
+use crate::types::{PackOptions, PackRedaction, PackStats};
 
 /// A rich stats block computed from PackStats + entries + options.
 /// Emitted at the very top of every pack output to prime the LLM
@@ -15,7 +15,15 @@ pub struct StatsBlock {
     pub tokenizer_model: String,
     /// Top 5 languages by file count, sorted descending; ties broken alphabetically.
     pub languages: Vec<(String, u32)>,
-    /// Phase 2 placeholder (secret redaction) — always 0 today.
+    /// Number of secret redactions applied during the pack pipeline.
+    ///
+    /// The pack content shipped `[REDACTED:<rule-id>]` markers in place of the
+    /// original secrets. Reporting `redactions.len()` (count) is more honest
+    /// than "bytes saved" since (a) we don't track original secret length
+    /// post-substitution and (b) the LLM cares about how many redactions
+    /// happened, not their byte cost. The field name is retained for wire-
+    /// format stability; the user-visible label in textual emitters reads
+    /// "Redactions".
     pub redacted_bytes: u64,
     /// Phase 3 placeholder (content-addressed cache) — always 0 today.
     pub cache_hits: u32,
@@ -23,12 +31,13 @@ pub struct StatsBlock {
 }
 
 impl StatsBlock {
-    /// Compute a StatsBlock from PackStats + entries + options.
+    /// Compute a StatsBlock from PackStats + entries + options + redactions.
     pub fn from(
         target_label: &str,
         opts: &PackOptions,
         stats: &PackStats,
         entries: &[FileEntry],
+        redactions: &[PackRedaction],
     ) -> Self {
         let languages = compute_language_breakdown(entries);
         Self {
@@ -41,7 +50,10 @@ impl StatsBlock {
             tokens_total: stats.tokens_total,
             tokenizer_model: opts.tokenizer_model.clone(),
             languages,
-            redacted_bytes: 0, // Phase 2 (secret redaction) will populate this
+            // Semantically a redaction *count*; field name retained for wire-
+            // format stability (renaming would churn TS bindings + the
+            // emitted XML tag without functional benefit).
+            redacted_bytes: redactions.len() as u64,
             cache_hits: 0,     // Phase 3 (content-addressed cache) will populate this
             duration_ms: stats.duration_ms,
         }
@@ -128,7 +140,7 @@ mod tests {
             make_entry("e.py"),
             make_entry("f.json"),
         ];
-        let block = StatsBlock::from("target", &make_opts(), &make_stats(), &entries);
+        let block = StatsBlock::from("target", &make_opts(), &make_stats(), &entries, &[]);
         // Expected: python: 3, rust: 2, json: 1
         assert_eq!(block.languages[0], ("python".to_string(), 3));
         assert_eq!(block.languages[1], ("rust".to_string(), 2));
@@ -147,7 +159,7 @@ mod tests {
             make_entry("f.java"),
             make_entry("g.rb"),
         ];
-        let block = StatsBlock::from("target", &make_opts(), &make_stats(), &entries);
+        let block = StatsBlock::from("target", &make_opts(), &make_stats(), &entries, &[]);
         assert_eq!(block.languages.len(), 5);
     }
 
@@ -159,7 +171,7 @@ mod tests {
             make_entry("b.weird"),
             make_entry("c.strange"),
         ];
-        let block = StatsBlock::from("target", &make_opts(), &make_stats(), &entries);
+        let block = StatsBlock::from("target", &make_opts(), &make_stats(), &entries, &[]);
         // All unknowns go to "other"
         assert_eq!(block.languages.len(), 1);
         assert_eq!(block.languages[0].0, "other");
@@ -169,8 +181,40 @@ mod tests {
     // Test 4: Empty entries produces empty languages.
     #[test]
     fn language_breakdown_empty_when_no_entries() {
-        let block = StatsBlock::from("target", &make_opts(), &make_stats(), &[]);
+        let block = StatsBlock::from("target", &make_opts(), &make_stats(), &[], &[]);
         assert!(block.languages.is_empty());
+    }
+
+    // Test 6: redactions slice length is reflected in `redacted_bytes` field.
+    // (Field name is retained for wire-format stability; semantics is "count".)
+    #[test]
+    fn redactions_slice_populates_redacted_bytes_count() {
+        let redactions = vec![
+            PackRedaction {
+                file: "a.rs".into(),
+                rule_id: "aws-access-token".into(),
+                line: 12,
+                byte_offset: 100,
+            },
+            PackRedaction {
+                file: "b.rs".into(),
+                rule_id: "github-pat".into(),
+                line: 4,
+                byte_offset: 50,
+            },
+            PackRedaction {
+                file: "b.rs".into(),
+                rule_id: "github-pat".into(),
+                line: 9,
+                byte_offset: 220,
+            },
+        ];
+        let block = StatsBlock::from("target", &make_opts(), &make_stats(), &[], &redactions);
+        assert_eq!(block.redacted_bytes, 3);
+
+        // Empty slice → 0.
+        let block_empty = StatsBlock::from("target", &make_opts(), &make_stats(), &[], &[]);
+        assert_eq!(block_empty.redacted_bytes, 0);
     }
 
     // Test 5: Ties are broken alphabetically (ascending).
@@ -185,7 +229,7 @@ mod tests {
             make_entry("e.py"),
             make_entry("f.py"),
         ];
-        let block = StatsBlock::from("target", &make_opts(), &make_stats(), &entries);
+        let block = StatsBlock::from("target", &make_opts(), &make_stats(), &entries, &[]);
         assert_eq!(block.languages.len(), 2);
         assert_eq!(block.languages[0].0, "python");
         assert_eq!(block.languages[1].0, "rust");

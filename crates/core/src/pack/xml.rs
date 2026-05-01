@@ -46,8 +46,9 @@ impl XmlBuilder {
         opts: &PackOptions,
         stats: &PackStats,
         entries: &[FileEntry],
+        redactions: &[PackRedaction],
     ) -> &mut Self {
-        let block = StatsBlock::from(target_label, opts, stats, entries);
+        let block = StatsBlock::from(target_label, opts, stats, entries, redactions);
         let _ = writeln!(self.out, "<stats>");
         let _ = writeln!(
             self.out,
@@ -81,9 +82,12 @@ impl XmlBuilder {
                 block.languages_display()
             );
         }
+        // Field name retained for wire-format stability; semantically a
+        // redaction *count*. The visible tag stays `<redacted_bytes>` to
+        // avoid churning downstream consumers (TS bindings + LLM prompts).
         let _ = writeln!(
             self.out,
-            "  <redacted_bytes>{}</redacted_bytes>",
+            "  <redactions>{}</redactions>",
             block.redacted_bytes
         );
         let _ = writeln!(
@@ -300,7 +304,7 @@ mod tests {
 
         let mut b = XmlBuilder::new();
         b.open_repository()
-            .stats_block("my-target", &opts, &stats, &entries)
+            .stats_block("my-target", &opts, &stats, &entries, &[])
             .close_repository();
         let s = b.finish();
 
@@ -310,7 +314,49 @@ mod tests {
         assert!(s.contains("<goal>test</goal>"));
         assert!(s.contains("<files>included=1 total=2 skipped=1</files>"));
         assert!(s.contains("<tokens model=\"gpt-4o-mini\">100</tokens>"));
+        // Empty redactions slice → "<redactions>0</redactions>".
+        assert!(s.contains("<redactions>0</redactions>"));
+        assert!(!s.contains("<redacted_bytes>"));
         assert!(s.contains("</stats>"));
+    }
+
+    /// XML stats `<redactions>` tag reflects the redactions slice length.
+    #[test]
+    fn xml_stats_block_redactions_tag_reflects_slice_length() {
+        use crate::types::PackFormat;
+        let opts = PackOptions {
+            goal: "x".into(),
+            format: PackFormat::Xml,
+            ..PackOptions::default()
+        };
+        let stats = PackStats {
+            files_total: 0,
+            files_included: 0,
+            files_skipped: 0,
+            bytes_total: 0,
+            tokens_total: None,
+            tokens_per_model: None,
+            secrets_found: 0,
+            duration_ms: 0,
+        };
+        let redactions = vec![
+            PackRedaction {
+                file: "a.rs".into(),
+                rule_id: "aws-access-token".into(),
+                line: 1,
+                byte_offset: 10,
+            },
+            PackRedaction {
+                file: "a.rs".into(),
+                rule_id: "github-pat".into(),
+                line: 5,
+                byte_offset: 90,
+            },
+        ];
+        let mut b = XmlBuilder::new();
+        b.stats_block("t", &opts, &stats, &[], &redactions);
+        let s = b.finish();
+        assert!(s.contains("<redactions>2</redactions>"));
     }
 
     // ── Task F1 tests ─────────────────────────────────────────────────────────
