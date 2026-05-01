@@ -165,7 +165,8 @@ function ProgressLog({ events }: { events: ProgressEvent[] }) {
       if (e.kind === "tokenizing") return `  Tokenizing… ${e.progress_pct}%`;
       if (e.kind === "secretScanning") return `  Secret scan… ${e.progress_pct}%`;
       if (e.kind === "compressing") return `  Compressing… ${e.progress_pct}%`;
-      if (e.kind === "buildingXml") return `  Building output…`;
+      if (e.kind === "buildingOutput") return `  Building output…`;
+      if (e.kind === "cloning") return `  Cloning repository… ${e.progress_pct}%`;
       if (e.kind === "secretHit") return `  ⚠ Secret in ${e.path} (line ${e.line})`;
       if (e.kind === "done") return `✓ Done`;
       if (e.kind === "error") return `✗ Error: ${e.message}`;
@@ -247,7 +248,20 @@ export default function Pack() {
     });
   }
 
-  const targetVal = options.target.kind === "folder" ? options.target.value : "";
+  const targetMode = options.target.kind;
+  const targetVal = options.target.value;
+
+  const githubUrlPattern =
+    /^(https?:\/\/github\.com\/|git@github\.com:|github\.com\/)[^/\s]+\/[^/\s]+\/?$/;
+
+  const isValidTarget =
+    targetMode === "folder"
+      ? targetVal.length > 0
+      : githubUrlPattern.test(targetVal);
+
+  function setTargetMode(mode: "folder" | "github") {
+    setOptions({ ...options, target: { kind: mode, value: "" } });
+  }
   const isRunning = status === "running";
   const isDone = status === "done";
 
@@ -263,27 +277,74 @@ export default function Pack() {
           </p>
         </div>
 
-        {/* ── Target folder ── */}
+        {/* ── Target ── */}
         <section className="space-y-2">
           <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500">
-            Target Folder
+            Target
           </label>
           <div className="flex gap-2">
-            <input
-              className="flex-1 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
-              value={targetVal}
-              placeholder="/path/to/project"
-              onChange={(e) =>
-                setOptions({ ...options, target: { kind: "folder", value: e.target.value } })
-              }
-            />
             <button
-              className="rounded border border-zinc-600 bg-zinc-700 px-3 py-2 text-sm hover:bg-zinc-600"
-              onClick={pickFolder}
+              type="button"
+              onClick={() => setTargetMode("folder")}
+              className={`rounded px-3 py-1 text-sm transition-colors ${
+                targetMode === "folder"
+                  ? "bg-emerald-700 text-white"
+                  : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+              }`}
             >
-              Browse…
+              Folder
+            </button>
+            <button
+              type="button"
+              onClick={() => setTargetMode("github")}
+              className={`rounded px-3 py-1 text-sm transition-colors ${
+                targetMode === "github"
+                  ? "bg-emerald-700 text-white"
+                  : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+              }`}
+            >
+              GitHub URL
             </button>
           </div>
+
+          {targetMode === "folder" ? (
+            <div className="flex gap-2">
+              <input
+                className="flex-1 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
+                value={targetVal}
+                placeholder="/path/to/project"
+                onChange={(e) =>
+                  setOptions({ ...options, target: { kind: "folder", value: e.target.value } })
+                }
+              />
+              <button
+                className="rounded border border-zinc-600 bg-zinc-700 px-3 py-2 text-sm hover:bg-zinc-600"
+                onClick={pickFolder}
+              >
+                Browse…
+              </button>
+            </div>
+          ) : (
+            <div>
+              <input
+                className={`w-full rounded border bg-zinc-800 px-3 py-2 text-sm focus:outline-none ${
+                  targetVal && !isValidTarget
+                    ? "border-red-600 focus:border-red-500"
+                    : "border-zinc-700 focus:border-zinc-500"
+                }`}
+                value={targetVal}
+                placeholder="https://github.com/owner/repo"
+                onChange={(e) =>
+                  setOptions({ ...options, target: { kind: "github", value: e.target.value } })
+                }
+              />
+              {targetVal && !isValidTarget && (
+                <div className="mt-1 text-xs text-red-400">
+                  Enter a valid GitHub repo URL (https://github.com/owner/repo)
+                </div>
+              )}
+            </div>
+          )}
         </section>
 
         {/* ── Goal ── */}
@@ -377,7 +438,7 @@ export default function Pack() {
         <button
           className="w-full rounded bg-emerald-700 py-3 text-sm font-semibold transition-colors hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-40"
           onClick={runPack}
-          disabled={isRunning || !targetVal}
+          disabled={isRunning || !isValidTarget}
         >
           {isRunning ? "Packing…" : "Pack"}
         </button>
