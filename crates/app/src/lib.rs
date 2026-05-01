@@ -46,9 +46,8 @@ pub fn run() {
 fn init_tracing() {
     let env_filter = tracing_subscriber::EnvFilter::from_default_env();
 
-    // Use indented HierarchicalLayer in debug builds or when RUST_LOG_TREE=1 is set.
-    let use_tree = cfg!(debug_assertions)
-        || std::env::var("RUST_LOG_TREE").as_deref() == Ok("1");
+    // Use indented HierarchicalLayer in debug builds or when RUST_LOG_TREE is set (any value).
+    let use_tree = cfg!(debug_assertions) || std::env::var("RUST_LOG_TREE").is_ok();
 
     if use_tree {
         tracing_subscriber::registry()
