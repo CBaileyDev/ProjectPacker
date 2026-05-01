@@ -121,7 +121,7 @@ pub enum TokenModel {
 /// The wire-format field names match [`TokenModel`]'s variant strings so
 /// frontends can subscript with `tokensPerModel[tokenModel]` at type-check
 /// time. See `frontend/src/routes/Pack.tsx` for the consumer side.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct TokensPerModel {
     #[serde(rename = "gpt4o")]

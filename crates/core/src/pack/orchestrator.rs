@@ -288,18 +288,27 @@ pub fn pack(
         }
     }
 
-    // Per-model token counts: encode the joined pack content once per
-    // tokenizer family. Costs ~5-50ms cold (HF lazy parse) + ~5ms × 4 hot
-    // for a typical pack. `.ok()` mirrors the defensive pattern used for
-    // `tokens_total`: if a single tokenizer fails (extremely unlikely),
-    // we drop the whole field rather than failing the pack.
+    // Per-model token counts on the joined per-file content. We always emit
+    // `Some(...)` when `count_tokens` is on so the UI can distinguish
+    // "count_tokens disabled" from "count_tokens enabled but a tokenizer
+    // hiccupped" — the latter falls through to a zero-filled struct
+    // (effectively unreachable: source content is UTF-8 validated upstream
+    // and every encoder accepts arbitrary UTF-8). Costs ~5-50ms cold (HF
+    // lazy parse) + ~5ms × 4 hot for a typical pack.
+    //
+    // Note: `tokens_per_model` (and `tokens_total` above) reflect joined
+    // per-file content, NOT the final emitted output. Pack overhead (XML/MD
+    // wrappers, stats block, protocol envelope) typically adds 5–15% on top.
+    // The numbers shown in the AI compatibility table are therefore a slight
+    // under-estimate vs. what the LLM actually receives. Keeping this
+    // consistent with `tokens_total`'s existing semantics from v0.2.0.
     let tokens_per_model = if opts.count_tokens {
         let joined: String = entries
             .iter()
             .map(|e| e.content.as_str())
             .collect::<Vec<_>>()
             .join("\n\n");
-        tokens::count_all(&joined).ok()
+        Some(tokens::count_all(&joined).unwrap_or_default())
     } else {
         None
     };
@@ -717,6 +726,47 @@ mod tests {
         assert!(tpm.gemini_approx >= tpm.gpt4o);
         // gpt4o and claude share the cl100k encoder.
         assert_eq!(tpm.gpt4o, tpm.claude);
+    }
+
+    /// `tokens_per_model` must remain `Some(_)` when count_tokens=true even
+    /// if every file is filtered out — `None` is reserved for "count_tokens
+    /// is off". A zero-filled struct is the correct shape for the empty case.
+    #[test]
+    fn pack_emits_tokens_per_model_even_when_all_files_excluded() {
+        let d = tempdir().unwrap();
+        fs::write(d.path().join("only.rs"), "fn main() {}\n").unwrap();
+
+        let opts = PackOptions {
+            goal: "x".into(),
+            count_tokens: true,
+            secret_scan: false,
+            respect_gitignore: false,
+            custom_ignore_patterns: vec!["only.rs".into()],
+            ..PackOptions::default()
+        };
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let result = pack(
+            &PackTarget::Folder(d.path().to_path_buf()),
+            &opts,
+            tx,
+            "job-tokens-per-model-empty",
+            CancellationToken::new(),
+        )
+        .unwrap();
+
+        assert_eq!(result.stats.files_included, 0);
+        let tpm = result
+            .stats
+            .tokens_per_model
+            .expect("tokens_per_model must be Some when count_tokens=true, even with zero entries");
+        // Empty joined content → all-zero counts.
+        assert_eq!(tpm.gpt4o, 0);
+        assert_eq!(tpm.claude, 0);
+        assert_eq!(tpm.llama3, 0);
+        assert_eq!(tpm.qwen2_5, 0);
+        assert_eq!(tpm.deep_seek, 0);
+        assert_eq!(tpm.mistral, 0);
+        assert_eq!(tpm.gemini_approx, 0);
     }
 
     /// `tokens_per_model` must be `None` when count_tokens=false.
