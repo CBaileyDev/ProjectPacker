@@ -225,8 +225,13 @@ fn infer_layer(path: &Path) -> Option<bool> {
 /// Layer 5 helper: use `file-format` crate for ~700 format recognition.
 /// Returns `false` on I/O error (be permissive).
 ///
-/// `file_format::Kind` has no `Text` variant (v0.29). Binary-indicating kinds are
-/// explicitly enumerated; anything else (Other, unknown) is treated as text.
+/// `file_format::Kind` has no `Text` variant (v0.29), so binary-indicating kinds
+/// are explicitly enumerated. Intentionally omitted as text-permissive:
+///   - `Kind::Other`     — unknown formats; default to text rather than guess.
+///   - `Kind::Playlist`  — M3U/XSPF/MPD are text-based.
+///   - `Kind::Subtitle`  — SRT/VTT/TTML are text-based; binary subtitle formats
+///                         (MatroskaSubtitles etc.) are inside binary containers
+///                         that Layer 3 catches via NUL bytes.
 fn file_format_layer(path: &Path) -> bool {
     use file_format::{FileFormat, Kind};
 
@@ -237,12 +242,16 @@ fn file_format_layer(path: &Path) -> bool {
                 | Kind::Audio
                 | Kind::Compressed
                 | Kind::Database
+                | Kind::Diagram
                 | Kind::Disk
                 | Kind::Document
                 | Kind::Ebook
                 | Kind::Executable
                 | Kind::Font
+                | Kind::Formula
+                | Kind::Geospatial
                 | Kind::Image
+                | Kind::Metadata
                 | Kind::Model
                 | Kind::Package
                 | Kind::Presentation
