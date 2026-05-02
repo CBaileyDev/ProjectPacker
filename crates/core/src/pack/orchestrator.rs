@@ -691,6 +691,63 @@ mod tests {
         assert!(matches!(result, Err(CoreError::FileIo { .. })));
     }
 
+    #[test]
+    fn pack_populates_per_phase_timing_fields_when_all_enabled() {
+        let d = fixture();
+        let opts = PackOptions {
+            goal: "x".into(),
+            secret_scan: true,
+            count_tokens: true,
+            ..PackOptions::default()
+        };
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let result = pack(
+            &PackTarget::Folder(d.path().to_path_buf()),
+            &opts, tx, "job-test", CancellationToken::new(),
+        ).unwrap();
+        let _: u32 = result.stats.walk_ms;
+        let _: u32 = result.stats.process_ms;
+        let _: u32 = result.stats.emit_ms;
+        assert!(result.stats.secret_scan_ms.is_some(), "secret_scan_ms must be Some when enabled, got None");
+        assert!(result.stats.tokenize_ms.is_some(), "tokenize_ms must be Some when enabled, got None");
+    }
+
+    #[test]
+    fn pack_omits_secret_scan_ms_when_secret_scan_disabled() {
+        let d = fixture();
+        let opts = PackOptions {
+            goal: "x".into(),
+            secret_scan: false,
+            count_tokens: true,
+            ..PackOptions::default()
+        };
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let result = pack(
+            &PackTarget::Folder(d.path().to_path_buf()),
+            &opts, tx, "job-test", CancellationToken::new(),
+        ).unwrap();
+        assert!(result.stats.secret_scan_ms.is_none(), "secret_scan_ms must be None when disabled, got {:?}", result.stats.secret_scan_ms);
+        assert!(result.stats.tokenize_ms.is_some());
+    }
+
+    #[test]
+    fn pack_omits_tokenize_ms_when_count_tokens_disabled() {
+        let d = fixture();
+        let opts = PackOptions {
+            goal: "x".into(),
+            secret_scan: true,
+            count_tokens: false,
+            ..PackOptions::default()
+        };
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let result = pack(
+            &PackTarget::Folder(d.path().to_path_buf()),
+            &opts, tx, "job-test", CancellationToken::new(),
+        ).unwrap();
+        assert!(result.stats.tokenize_ms.is_none(), "tokenize_ms must be None when disabled, got {:?}", result.stats.tokenize_ms);
+        assert!(result.stats.secret_scan_ms.is_some());
+    }
+
     /// Verify that a pre-cancelled token causes pack() to return Err(Cancelled)
     /// immediately, without processing any files.
     #[test]
