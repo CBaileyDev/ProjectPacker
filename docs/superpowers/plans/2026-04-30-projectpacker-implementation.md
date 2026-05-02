@@ -779,7 +779,7 @@ Stop and confirm with the user that the push succeeded before continuing to Phas
 - Create: `crates/core/src/types.rs`
 - Create: `crates/core/src/types/tests.rs` (inline `#[cfg(test)]` instead — single file)
 
-- [ ] **Step 1: Write the test for serde round-tripping**
+- [x] **Step 1: Write the test for serde round-tripping**
 
 Create `crates/core/src/types.rs`:
 
@@ -961,7 +961,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Run the tests to verify they fail (file doesn't compile yet — `error` module is missing)**
+- [x] **Step 2: Run the tests to verify they fail (file doesn't compile yet — `error` module is missing)**
 
 ```bash
 cargo test -p projectpacker-core types::tests
@@ -981,7 +981,7 @@ pub mod types;
 // pub mod protocol; — added in Phase 3
 ```
 
-- [ ] **Step 3: Re-run the tests; expect PASS**
+- [x] **Step 3: Re-run the tests; expect PASS**
 
 ```bash
 cargo test -p projectpacker-core types::tests
@@ -989,7 +989,7 @@ cargo test -p projectpacker-core types::tests
 
 Expected: `test result: ok. 4 passed`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add crates/core/src/types.rs crates/core/src/lib.rs
@@ -1004,7 +1004,7 @@ git commit -m "feat(core): add shared types module with PackOptions/PackResult/P
 - Create: `crates/core/src/error.rs`
 - Modify: `crates/core/src/lib.rs`
 
-- [ ] **Step 1: Write the test**
+- [x] **Step 1: Write the test**
 
 Append to a new file `crates/core/src/error.rs`:
 
@@ -1073,7 +1073,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Re-enable the `error` module in `lib.rs`**
+- [x] **Step 2: Re-enable the `error` module in `lib.rs`**
 
 ```rust
 pub mod types;
@@ -1083,7 +1083,7 @@ pub mod error;
 // pub mod protocol; — added in Phase 3
 ```
 
-- [ ] **Step 3: Run the tests, expect PASS**
+- [x] **Step 3: Run the tests, expect PASS**
 
 ```bash
 cargo test -p projectpacker-core error::tests
@@ -1091,7 +1091,7 @@ cargo test -p projectpacker-core error::tests
 
 Expected: `test result: ok. 3 passed`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add crates/core/src/error.rs crates/core/src/lib.rs
@@ -1107,7 +1107,7 @@ git commit -m "feat(core): add CoreError enum with thiserror"
 - Create: `crates/core/src/ignore_defaults.txt`
 - Modify: `crates/core/src/lib.rs`
 
-- [ ] **Step 1: Create the built-in defaults file**
+- [x] **Step 1: Create the built-in defaults file**
 
 Create `crates/core/src/ignore_defaults.txt`:
 
@@ -1199,7 +1199,7 @@ go.sum
 logs/
 ```
 
-- [ ] **Step 2: Write the test, then implementation**
+- [x] **Step 2: Write the test, then implementation**
 
 Create `crates/core/src/ignore.rs`:
 
@@ -1340,7 +1340,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 3: Re-enable the module in `lib.rs`**
+- [x] **Step 3: Re-enable the module in `lib.rs`**
 
 ```rust
 pub mod types;
@@ -1350,7 +1350,7 @@ pub mod ignore;
 // pub mod protocol; — added in Phase 3
 ```
 
-- [ ] **Step 4: Run the tests; expect PASS**
+- [x] **Step 4: Run the tests; expect PASS**
 
 ```bash
 cargo test -p projectpacker-core ignore::tests
@@ -1358,7 +1358,7 @@ cargo test -p projectpacker-core ignore::tests
 
 Expected: `test result: ok. 7 passed` (the dummy test is included).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/core/src/ignore.rs crates/core/src/ignore_defaults.txt crates/core/src/lib.rs
@@ -1373,7 +1373,7 @@ git commit -m "feat(core): add IgnoreMatcher with builtin + project + custom lay
 - Create: `crates/core/src/walker.rs`
 - Modify: `crates/core/src/lib.rs`
 
-- [ ] **Step 1: Write the test + implementation**
+- [x] **Step 1: Write the test + implementation**
 
 Create `crates/core/src/walker.rs`:
 
@@ -1495,7 +1495,7 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Re-enable the module in `lib.rs`**
+- [x] **Step 2: Re-enable the module in `lib.rs`**
 
 ```rust
 pub mod types;
@@ -1505,7 +1505,7 @@ pub mod walker;
 // pub mod protocol; — added in Phase 3
 ```
 
-- [ ] **Step 3: Run the tests; expect PASS**
+- [x] **Step 3: Run the tests; expect PASS**
 
 ```bash
 cargo test -p projectpacker-core walker::tests
@@ -1513,7 +1513,7 @@ cargo test -p projectpacker-core walker::tests
 
 Expected: 3 passed.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add crates/core/src/walker.rs crates/core/src/lib.rs
@@ -1532,7 +1532,7 @@ git commit -m "feat(core): add synchronous file walker with skip-reason classifi
 - Create: `crates/core/src/tokens.rs`
 - Modify: `crates/core/src/lib.rs` (add `pub mod tokens;`)
 
-- [ ] **Step 1: Write the test + implementation**
+- [x] **Step 1: Write the test + implementation**
 
 Create `crates/core/src/tokens.rs`:
 
@@ -1590,9 +1590,9 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Add `pub mod tokens;` to `lib.rs`**
+- [x] **Step 2: Add `pub mod tokens;` to `lib.rs`**
 
-- [ ] **Step 3: Run tests; expect PASS**
+- [x] **Step 3: Run tests; expect PASS**
 
 ```bash
 cargo test -p projectpacker-core tokens::tests
@@ -1600,7 +1600,7 @@ cargo test -p projectpacker-core tokens::tests
 
 Expected: 4 passed.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add crates/core/src/tokens.rs crates/core/src/lib.rs
@@ -1615,7 +1615,7 @@ git commit -m "feat(core): add tiktoken-based token counter"
 - Create: `crates/core/src/secrets.rs`
 - Modify: `crates/core/src/lib.rs`
 
-- [ ] **Step 1: Write the test + implementation**
+- [x] **Step 1: Write the test + implementation**
 
 Create `crates/core/src/secrets.rs`:
 
@@ -1722,9 +1722,9 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Add `pub mod secrets;` to `lib.rs`**
+- [x] **Step 2: Add `pub mod secrets;` to `lib.rs`**
 
-- [ ] **Step 3: Run tests; expect PASS**
+- [x] **Step 3: Run tests; expect PASS**
 
 ```bash
 cargo test -p projectpacker-core secrets::tests
@@ -1732,7 +1732,7 @@ cargo test -p projectpacker-core secrets::tests
 
 Expected: 5 passed.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add crates/core/src/secrets.rs crates/core/src/lib.rs
@@ -1748,7 +1748,7 @@ git commit -m "feat(core): add secret scanner with gitleaks-style rule patterns"
 - Modify: `crates/core/Cargo.toml` (add language grammars)
 - Modify: `crates/core/src/lib.rs`
 
-- [ ] **Step 1: Add tree-sitter grammar dependencies**
+- [x] **Step 1: Add tree-sitter grammar dependencies**
 
 Add to `crates/core/Cargo.toml` `[dependencies]`:
 
@@ -1759,7 +1759,7 @@ tree-sitter-javascript = "0.23"
 tree-sitter-typescript = "0.23"
 ```
 
-- [ ] **Step 2: Write the test + implementation**
+- [x] **Step 2: Write the test + implementation**
 
 Create `crates/core/src/tree_sitter_compress.rs`:
 
@@ -1860,9 +1860,9 @@ mod tests {
 
 > Tree-sitter API note: `set_language` takes `&LanguageRef` in 0.25+; the syntax `tree_sitter_rust::LANGUAGE.into()` produces a `Language`. If your grammar crate version doesn't expose `LANGUAGE`, fall back to the `language()` function (older API). Adjust as needed.
 
-- [ ] **Step 3: Add `pub mod tree_sitter_compress;` to `lib.rs`**
+- [x] **Step 3: Add `pub mod tree_sitter_compress;` to `lib.rs`**
 
-- [ ] **Step 4: Run tests; expect PASS**
+- [x] **Step 4: Run tests; expect PASS**
 
 ```bash
 cargo test -p projectpacker-core tree_sitter_compress::tests
@@ -1870,7 +1870,7 @@ cargo test -p projectpacker-core tree_sitter_compress::tests
 
 Expected: 4 passed. If any fail because the tree-sitter API doesn't match exactly, adjust the call site to whatever the version on docs.rs requires; the test contract is what matters (skeleton keeps signatures, drops bodies).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add crates/core/src/tree_sitter_compress.rs crates/core/Cargo.toml crates/core/src/lib.rs Cargo.lock
@@ -1885,7 +1885,7 @@ git commit -m "feat(core): add tree-sitter skeleton compressor for rust/python/j
 - Create: `crates/core/src/github.rs`
 - Modify: `crates/core/src/lib.rs`
 
-- [ ] **Step 1: Write the test + implementation**
+- [x] **Step 1: Write the test + implementation**
 
 Create `crates/core/src/github.rs`:
 
@@ -1989,9 +1989,9 @@ mod tests {
 }
 ```
 
-- [ ] **Step 2: Add `pub mod github;` to `lib.rs`**
+- [x] **Step 2: Add `pub mod github;` to `lib.rs`**
 
-- [ ] **Step 3: Run tests; expect PASS** (only URL-parse tests run; no network)
+- [x] **Step 3: Run tests; expect PASS** (only URL-parse tests run; no network)
 
 ```bash
 cargo test -p projectpacker-core github::tests
@@ -1999,7 +1999,7 @@ cargo test -p projectpacker-core github::tests
 
 Expected: 5 passed.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add crates/core/src/github.rs crates/core/src/lib.rs Cargo.lock
