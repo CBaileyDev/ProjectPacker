@@ -11,6 +11,7 @@ import type {
 import { commands } from "../bindings";
 import { createPackProgressChannel } from "../lib/events";
 import { useApp } from "../lib/store";
+import { useDragDrop } from "../lib/use-drag-drop";
 
 // ---------------------------------------------------------------------------
 // AI context-window compatibility data (as of mid-2025)
@@ -105,6 +106,21 @@ function Toggle({
         {hint && <span className="ml-1.5 text-xs text-zinc-500">{hint}</span>}
       </span>
     </label>
+  );
+}
+
+function DropOverlay({ visible }: { visible: boolean }) {
+  if (!visible) return null;
+  return (
+    <div
+      // pointer-events-none lets the underlying webview still receive the
+      // drop event; the overlay is purely visual.
+      className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-emerald-500/10 backdrop-blur-sm"
+    >
+      <div className="rounded-lg border-2 border-dashed border-emerald-400 bg-zinc-900/90 px-8 py-6 text-lg font-semibold text-emerald-300 shadow-2xl">
+        Drop folder to pack
+      </div>
+    </div>
   );
 }
 
@@ -314,6 +330,16 @@ export default function Pack() {
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  const { isDragging } = useDragDrop({
+    onDrop: (folderPath: string) => {
+      // Auto-switch from GitHub mode to Folder mode if needed, then set value.
+      setOptions({
+        ...options,
+        target: { kind: "folder", value: folderPath },
+      });
+    },
+  });
+
   async function pickFolder() {
     const path = await open({ directory: true });
     if (typeof path === "string") {
@@ -374,6 +400,7 @@ export default function Pack() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
+      <DropOverlay visible={isDragging} />
       <div className="mx-auto max-w-2xl space-y-6 p-6">
         {/* ── Header ── */}
         <div>
