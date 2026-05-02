@@ -304,18 +304,31 @@ pub fn pack(
 
     // Per-file token counts run AFTER the secret-scan loop so each entry's
     // `tokens` reflects the same (post-redaction) content as `tokens_total`
-    // (summed below) and `tokens_per_model`. Sequential pass — content is
-    // already in memory and `count_by_name` is fast (~5ms per file with a
-    // hot tokenizer cache); the parallelism win is negligible vs. the
-    // correctness win of unified post-redaction semantics.
-    let tokenize_ms: Option<u32> = if opts.count_tokens {
+    // and `tokens_per_model`. Sequential pass — `count_by_name` is fast
+    // (~5ms per file with a hot tokenizer cache); the parallelism win is
+    // negligible vs. the correctness win of unified post-redaction semantics.
+    //
+    // `tokens_per_model` is always `Some(_)` when `count_tokens` is on so
+    // the UI can distinguish "count_tokens disabled" from "count_tokens
+    // enabled but a tokenizer hiccupped" — the latter falls through to a
+    // zero-filled struct (effectively unreachable in practice). Both
+    // `tokens_per_model` and `tokens_total` reflect joined per-file content,
+    // NOT the final emitted output: pack overhead (XML/MD wrappers, stats
+    // block, protocol envelope) typically adds 5–15% on top.
+    let (tokens_per_model, tokenize_ms) = if opts.count_tokens {
         let tokenize_start = Instant::now();
         for e in entries.iter_mut() {
             e.tokens = tokens::count_by_name(&opts.tokenizer_model, &e.content).ok();
         }
-        Some(tokenize_start.elapsed().as_millis() as u32)
+        let joined: String = entries
+            .iter()
+            .map(|e| e.content.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let per_model = Some(tokens::count_all(&joined).unwrap_or_default());
+        (per_model, Some(tokenize_start.elapsed().as_millis() as u32))
     } else {
-        None
+        (None, None)
     };
 
     let mut bytes_total = 0u64;
@@ -326,35 +339,6 @@ pub fn pack(
             tokens_total += t;
         }
     }
-
-    // Per-model token counts on the joined per-file content. We always emit
-    // `Some(...)` when `count_tokens` is on so the UI can distinguish
-    // "count_tokens disabled" from "count_tokens enabled but a tokenizer
-    // hiccupped" — the latter falls through to a zero-filled struct
-    // (effectively unreachable: source content is UTF-8 validated upstream
-    // and every encoder accepts arbitrary UTF-8). Costs ~5-50ms cold (HF
-    // lazy parse) + ~5ms × 4 hot for a typical pack.
-    //
-    // Note: `tokens_per_model` (and `tokens_total` above) reflect joined
-    // per-file content, NOT the final emitted output. Pack overhead (XML/MD
-    // wrappers, stats block, protocol envelope) typically adds 5–15% on top.
-    // The numbers shown in the AI compatibility table are therefore a slight
-    // under-estimate vs. what the LLM actually receives. Keeping this
-    // consistent with `tokens_total`'s existing semantics from v0.2.0.
-    let (tokens_per_model, tokenize_ms) = if opts.count_tokens {
-        let per_model_start = Instant::now();
-        let joined: String = entries
-            .iter()
-            .map(|e| e.content.as_str())
-            .collect::<Vec<_>>()
-            .join("\n\n");
-        let per_model = Some(tokens::count_all(&joined).unwrap_or_default());
-        let extra = per_model_start.elapsed().as_millis() as u32;
-        let total = tokenize_ms.map(|prev| prev + extra).unwrap_or(extra);
-        (per_model, Some(total))
-    } else {
-        (None, None)
-    };
 
     // files_total accounting:
     //   included = files we kept (walker matches + force-included pins)
