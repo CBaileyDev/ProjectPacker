@@ -116,7 +116,15 @@ tokensTotal: number | null;
  * AI compatibility table on the result screen. `None` when
  * `count_tokens` is off, mirroring `tokens_total`.
  */
-tokensPerModel: TokensPerModel | null; secretsFound: number; durationMs: number }
+tokensPerModel: TokensPerModel | null; secretsFound: number; durationMs: number; 
+/**
+ * Per-phase wall-clock elapsed time. Always populated; `Option` variants
+ * are `None` when the phase is skipped via `PackOptions` (e.g.
+ * `secret_scan_ms` is `None` when `opts.secret_scan == false`). Use
+ * `None` (not `Some(0)`) so the UI can render skipped phases as `—`
+ * rather than misleading "0ms".
+ */
+walkMs: number; processMs: number; secretScanMs: number | null; tokenizeMs: number | null; emitMs: number }
 export type PackTarget = { kind: "folder"; value: string } | { kind: "github"; value: string }
 export type PackWarning = { kind: WarningKind; path: string | null; message: string }
 export type PlanError = { code: string; message: string }
