@@ -360,6 +360,11 @@ pub fn pack(
         tokens_per_model,
         secrets_found,
         duration_ms: start.elapsed().as_millis() as u32,
+        walk_ms: 0,
+        process_ms: 0,
+        secret_scan_ms: None,
+        tokenize_ms: None,
+        emit_ms: 0,
     };
 
     let dir_paths: Vec<String> = entries.iter().map(|e| e.path.clone()).collect();

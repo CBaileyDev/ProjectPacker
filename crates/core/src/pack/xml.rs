@@ -293,6 +293,11 @@ mod tests {
             tokens_per_model: None,
             secrets_found: 0,
             duration_ms: 42,
+            walk_ms: 0,
+            process_ms: 0,
+            secret_scan_ms: None,
+            tokenize_ms: None,
+            emit_ms: 0,
         };
         let entries = vec![FileEntry {
             path: "a.rs".into(),
@@ -338,6 +343,11 @@ mod tests {
             tokens_per_model: None,
             secrets_found: 0,
             duration_ms: 0,
+            walk_ms: 0,
+            process_ms: 0,
+            secret_scan_ms: None,
+            tokenize_ms: None,
+            emit_ms: 0,
         };
         let redactions = vec![
             PackRedaction {

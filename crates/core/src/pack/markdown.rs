@@ -116,6 +116,11 @@ mod tests {
             tokens_per_model: None,
             secrets_found: 0,
             duration_ms: 10,
+            walk_ms: 0,
+            process_ms: 0,
+            secret_scan_ms: None,
+            tokenize_ms: Some(50),
+            emit_ms: 0,
         }
     }
 
