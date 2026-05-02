@@ -2,6 +2,15 @@
 
 All notable changes to ProjectPacker are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Drag-and-drop folder selection — drop a folder anywhere on the app window to set it as the pack target. Files are resolved to their parent directory; multi-drop takes the first.
+- Per-phase timing in `PackStats`: `walk_ms`, `process_ms`, `secret_scan_ms` (optional), `tokenize_ms` (optional), `emit_ms`. Surfaced as an inline breakdown row in the result panel; gives evidence for future perf decisions without doing premature optimization.
+
+### Changed
+- Pack screen auto-switches from GitHub URL mode to Folder mode when a folder is dropped onto the window.
+
 ## [0.3.0] - 2026-05-01
 
 ### Added
