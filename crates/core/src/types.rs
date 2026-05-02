@@ -90,6 +90,16 @@ pub struct PackStats {
     pub tokens_per_model: Option<TokensPerModel>,
     pub secrets_found: u32,
     pub duration_ms: u32,
+    /// Per-phase wall-clock elapsed time. Always populated; `Option` variants
+    /// are `None` when the phase is skipped via `PackOptions` (e.g.
+    /// `secret_scan_ms` is `None` when `opts.secret_scan == false`). Use
+    /// `None` (not `Some(0)`) so the UI can render skipped phases as `—`
+    /// rather than misleading "0ms".
+    pub walk_ms: u32,
+    pub process_ms: u32,
+    pub secret_scan_ms: Option<u32>,
+    pub tokenize_ms: Option<u32>,
+    pub emit_ms: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -244,6 +254,11 @@ mod tests {
                 tokens_per_model: None,
                 secrets_found: 0,
                 duration_ms: 200,
+                walk_ms: 5,
+                process_ms: 100,
+                secret_scan_ms: Some(20),
+                tokenize_ms: Some(50),
+                emit_ms: 25,
             },
         };
         let s = serde_json::to_string(&ev).unwrap();
