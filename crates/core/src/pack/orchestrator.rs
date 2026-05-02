@@ -39,6 +39,7 @@ pub fn pack(
         target_label: label.clone(),
     });
 
+    let walk_start = Instant::now();
     let matcher = IgnoreMatcher::new(&root, &opts.custom_ignore_patterns, opts.respect_gitignore);
     let mut outcome = walker::walk(
         &root,
@@ -95,6 +96,7 @@ pub fn pack(
         already_included.insert(pinned_path.clone());
     }
     // ── End pin pre-pass ──────────────────────────────────────────────────────
+    let walk_ms = walk_start.elapsed().as_millis() as u32;
 
     let _ = tx.send(ProgressEvent::Walking {
         files_scanned: outcome.included.len() as u32,
@@ -117,6 +119,7 @@ pub fn pack(
 
     let _ = tx.send(ProgressEvent::BuildingOutput);
 
+    let process_start = Instant::now();
     let results: Vec<(FileEntry, Vec<PackWarning>)> = outcome
         .included
         .par_iter()
@@ -199,6 +202,7 @@ pub fn pack(
             )
         })
         .collect();
+    let process_ms = process_start.elapsed().as_millis() as u32;
 
     // Checkpoint 2: after process loop.
     if cancel.is_cancelled() {
@@ -265,7 +269,8 @@ pub fn pack(
 
     let mut secrets_found = 0u32;
     let mut all_redactions: Vec<PackRedaction> = Vec::new();
-    if opts.secret_scan {
+    let secret_scan_ms: Option<u32> = if opts.secret_scan {
+        let secret_scan_start = Instant::now();
         // This loop has two responsibilities:
         //   (1) Build `all_redactions` for the security_report block + PackResult.
         //   (2) Mutate each entry's `content` to its redacted form so the pack
@@ -292,7 +297,10 @@ pub fn pack(
             // output ships the redacted version, not the secrets.
             e.content = result.redacted_content;
         }
-    }
+        Some(secret_scan_start.elapsed().as_millis() as u32)
+    } else {
+        None
+    };
 
     // Per-file token counts run AFTER the secret-scan loop so each entry's
     // `tokens` reflects the same (post-redaction) content as `tokens_total`
@@ -300,11 +308,15 @@ pub fn pack(
     // already in memory and `count_by_name` is fast (~5ms per file with a
     // hot tokenizer cache); the parallelism win is negligible vs. the
     // correctness win of unified post-redaction semantics.
-    if opts.count_tokens {
+    let tokenize_ms: Option<u32> = if opts.count_tokens {
+        let tokenize_start = Instant::now();
         for e in entries.iter_mut() {
             e.tokens = tokens::count_by_name(&opts.tokenizer_model, &e.content).ok();
         }
-    }
+        Some(tokenize_start.elapsed().as_millis() as u32)
+    } else {
+        None
+    };
 
     let mut bytes_total = 0u64;
     let mut tokens_total: u32 = 0;
@@ -329,15 +341,19 @@ pub fn pack(
     // The numbers shown in the AI compatibility table are therefore a slight
     // under-estimate vs. what the LLM actually receives. Keeping this
     // consistent with `tokens_total`'s existing semantics from v0.2.0.
-    let tokens_per_model = if opts.count_tokens {
+    let (tokens_per_model, tokenize_ms) = if opts.count_tokens {
+        let per_model_start = Instant::now();
         let joined: String = entries
             .iter()
             .map(|e| e.content.as_str())
             .collect::<Vec<_>>()
             .join("\n\n");
-        Some(tokens::count_all(&joined).unwrap_or_default())
+        let per_model = Some(tokens::count_all(&joined).unwrap_or_default());
+        let extra = per_model_start.elapsed().as_millis() as u32;
+        let total = tokenize_ms.map(|prev| prev + extra).unwrap_or(extra);
+        (per_model, Some(total))
     } else {
-        None
+        (None, None)
     };
 
     // files_total accounting:
@@ -351,6 +367,14 @@ pub fn pack(
     // across pinning. A pinned file that wasn't visited by the walker is a
     // net-add to total (it's a new file we wouldn't have counted otherwise),
     // which is correct.
+    // First construction: real per-phase fields are known, but `emit_ms` cannot
+    // be measured until after the renderer runs below. We use `emit_ms: 0` and
+    // then refresh `stats` with the real `emit_ms` (and an updated total
+    // `duration_ms`) immediately after the emit match. Both `duration_ms` and
+    // `emit_ms` therefore reflect the post-emit wall clock in the final stats
+    // shipped to the renderer's `<security_report>`/UI; the renderer only sees
+    // the pre-emit version, but its `emit_ms` is never serialized into the
+    // pack output (renderers don't read that field today).
     let stats = PackStats {
         files_total: (outcome.included.len() + outcome.skipped.len()) as u32,
         files_included: entries.len() as u32,
@@ -360,15 +384,16 @@ pub fn pack(
         tokens_per_model,
         secrets_found,
         duration_ms: start.elapsed().as_millis() as u32,
-        walk_ms: 0,
-        process_ms: 0,
-        secret_scan_ms: None,
-        tokenize_ms: None,
+        walk_ms,
+        process_ms,
+        secret_scan_ms,
+        tokenize_ms,
         emit_ms: 0,
     };
 
     let dir_paths: Vec<String> = entries.iter().map(|e| e.path.clone()).collect();
 
+    let emit_start = Instant::now();
     let output = match opts.format {
         PackFormat::Xml => {
             let protocol_block = protocol::block_for_pack(&opts.goal, &opts.protocol_version)?;
@@ -393,6 +418,14 @@ pub fn pack(
         PackFormat::PlainText => {
             plain::render(&label, opts, &stats, &entries, pinned_count, &all_redactions)
         }
+    };
+    let emit_ms = emit_start.elapsed().as_millis() as u32;
+
+    // Refresh stats with real emit_ms and updated total duration_ms.
+    let stats = PackStats {
+        emit_ms,
+        duration_ms: start.elapsed().as_millis() as u32,
+        ..stats
     };
 
     let claude_code_prompt = protocol::claude_code_prompt(&opts.protocol_version)?;
