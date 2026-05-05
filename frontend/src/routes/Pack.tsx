@@ -1,6 +1,7 @@
+import type { Channel } from "@tauri-apps/api/core";
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { open } from "@tauri-apps/plugin-dialog";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   PackFormat,
   PackStats,
@@ -335,7 +336,7 @@ const COPY_BUTTON_LABELS: Record<PackFormat, string> = {
 export default function Pack() {
   const {
     options,
-    setOptions,
+    patchOptions,
     status,
     events,
     setJob,
@@ -347,55 +348,96 @@ export default function Pack() {
 
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
+  // Single Channel for the component lifetime. Tauri's `Channel` registers
+  // an internal IPC handler; reassigning `onmessage` to a no-op on `done`
+  // does NOT unregister it. Reusing one channel across runs prevents the
+  // O(packs run) handler leak. The channel is created lazily on first
+  // `runPack` because `new Channel()` allocates a wire id even before any
+  // command attaches it. Cleanup runs on unmount.
+  const channelRef = useRef<Channel<ProgressEvent> | null>(null);
+  const isRunning = status === "running";
+  const isRunningRef = useRef(isRunning);
+  isRunningRef.current = isRunning;
+
+  useEffect(() => {
+    return () => {
+      // Drop the channel reference so the Tauri side can GC its handler.
+      // No explicit close API; setting onmessage to a no-op + dropping the
+      // reference is the best we can do.
+      if (channelRef.current) {
+        channelRef.current.onmessage = () => {};
+        channelRef.current = null;
+      }
+    };
+  }, []);
+
   const { isDragging } = useDragDrop({
     onDrop: (folderPath: string) => {
-      // Auto-switch from GitHub mode to Folder mode if needed, then set value.
-      setOptions({
-        ...options,
-        target: { kind: "folder", value: folderPath },
-      });
+      // Ignore drops while a pack is in flight — clobbering options.target
+      // mid-pack confuses the UI (in-flight pack uses server-captured target;
+      // the UI would show a different one with no way to reconcile).
+      if (isRunningRef.current) return;
+      patchOptions({ target: { kind: "folder", value: folderPath } });
     },
   });
 
   async function pickFolder() {
     const path = await open({ directory: true });
     if (typeof path === "string") {
-      setOptions({ ...options, target: { kind: "folder", value: path } });
+      patchOptions({ target: { kind: "folder", value: path } });
     }
   }
 
   async function runPack() {
+    if (isRunningRef.current) return; // double-click / pre-await reentry guard
     setErrorMsg(null);
     reset();
 
-    // Channel is created before packStart so Tauri can wire it up on the Rust
-    // side. We update onmessage after we have the jobId (events only arrive
-    // after the job is registered, so there is no race).
-    const channel = createPackProgressChannel(() => {});
+    // Lazily create the channel once. Subsequent runs reuse it — `onmessage`
+    // is reassigned each pack to capture the fresh closure (jobId, etc.)
+    // but the underlying Tauri IPC subscription stays the same.
+    if (channelRef.current === null) {
+      channelRef.current = createPackProgressChannel(() => {});
+    }
+    const channel = channelRef.current;
+
+    // Install the real handler BEFORE awaiting packStart. Otherwise an
+    // event emitted between packStart returning (server side) and the JS
+    // continuation reassigning onmessage would be silently swallowed by
+    // the no-op handler. The `Started` event carries `job_id`, so we can
+    // capture it from inside the handler instead of waiting for
+    // packStart's return value.
+    let capturedJobId: string | null = null;
+    channel.onmessage = (e) => {
+      pushEvent(e);
+      if (e.kind === "started") {
+        capturedJobId = e.job_id;
+      }
+      if (e.kind === "done") {
+        const id = capturedJobId;
+        if (!id) {
+          // Shouldn't happen — `started` always precedes `done`. Fall back
+          // to a useful error rather than swallowing.
+          setErrorMsg("internal: done without started");
+          return;
+        }
+        (async () => {
+          const r = await commands.packGetResult(id);
+          if (r.status === "ok") setResult(r.data);
+          else setErrorMsg(r.error.message);
+        })();
+      }
+      if (e.kind === "error" && e.fatal) {
+        setErrorMsg(e.message);
+      }
+    };
 
     const startRes = await commands.packStart(options, channel);
     if (startRes.status !== "ok") {
       setErrorMsg(startRes.error.message);
       return;
     }
-    const jobId = startRes.data;
-    setJob(jobId);
-
-    channel.onmessage = (e) => {
-      pushEvent(e);
-      if (e.kind === "done") {
-        (async () => {
-          const r = await commands.packGetResult(jobId);
-          if (r.status === "ok") setResult(r.data);
-          else setErrorMsg(r.error.message);
-          channel.onmessage = () => {};
-        })();
-      }
-      if (e.kind === "error" && e.fatal) {
-        setErrorMsg(e.message);
-        channel.onmessage = () => {};
-      }
-    };
+    setJob(startRes.data);
   }
 
   const targetMode = options.target.kind;
@@ -410,9 +452,8 @@ export default function Pack() {
       : githubUrlPattern.test(targetVal);
 
   function setTargetMode(mode: "folder" | "github") {
-    setOptions({ ...options, target: { kind: mode, value: "" } });
+    patchOptions({ target: { kind: mode, value: "" } });
   }
-  const isRunning = status === "running";
   const isDone = status === "done";
 
   return (
@@ -464,8 +505,7 @@ export default function Pack() {
                 value={targetVal}
                 placeholder="/path/to/project"
                 onChange={(e) =>
-                  setOptions({
-                    ...options,
+                  patchOptions({
                     target: { kind: "folder", value: e.target.value },
                   })
                 }
@@ -489,8 +529,7 @@ export default function Pack() {
                 value={targetVal}
                 placeholder="https://github.com/owner/repo"
                 onChange={(e) =>
-                  setOptions({
-                    ...options,
+                  patchOptions({
                     target: { kind: "github", value: e.target.value },
                   })
                 }
@@ -513,7 +552,7 @@ export default function Pack() {
             className="h-20 w-full resize-none rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm focus:border-zinc-500 focus:outline-none"
             value={options.goal}
             placeholder="Describe what you want to build or fix…"
-            onChange={(e) => setOptions({ ...options, goal: e.target.value })}
+            onChange={(e) => patchOptions({ goal: e.target.value })}
           />
         </section>
 
@@ -528,29 +567,29 @@ export default function Pack() {
               label="Compress to skeleton"
               hint="strips bodies, keeps signatures"
               checked={options.compress}
-              onChange={(v) => setOptions({ ...options, compress: v })}
+              onChange={(v) => patchOptions({ compress: v })}
             />
             <Toggle
               label="Remove comments"
               hint="tree-sitter: Rust/Py/JS/TS"
               checked={options.removeComments}
-              onChange={(v) => setOptions({ ...options, removeComments: v })}
+              onChange={(v) => patchOptions({ removeComments: v })}
             />
             <Toggle
               label="Respect .gitignore"
               checked={options.respectGitignore}
-              onChange={(v) => setOptions({ ...options, respectGitignore: v })}
+              onChange={(v) => patchOptions({ respectGitignore: v })}
             />
             <Toggle
               label="Scan for secrets"
               checked={options.secretScan}
-              onChange={(v) => setOptions({ ...options, secretScan: v })}
+              onChange={(v) => patchOptions({ secretScan: v })}
             />
             <Toggle
               label="Count tokens"
               hint="counts via 7 model tokenizers (see AI table)"
               checked={options.countTokens}
-              onChange={(v) => setOptions({ ...options, countTokens: v })}
+              onChange={(v) => patchOptions({ countTokens: v })}
             />
           </div>
 
@@ -563,10 +602,7 @@ export default function Pack() {
                 className="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm focus:border-zinc-500 focus:outline-none"
                 value={options.format}
                 onChange={(e) =>
-                  setOptions({
-                    ...options,
-                    format: e.target.value as PackFormat,
-                  })
+                  patchOptions({ format: e.target.value as PackFormat })
                 }
               >
                 {(Object.keys(FORMAT_LABELS) as PackFormat[]).map((f) => (
@@ -587,12 +623,15 @@ export default function Pack() {
                 max={102_400}
                 className="w-20 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm focus:border-zinc-500 focus:outline-none"
                 value={options.maxFileSizeKb}
-                onChange={(e) =>
-                  setOptions({
-                    ...options,
-                    maxFileSizeKb: Number(e.target.value),
-                  })
-                }
+                onChange={(e) => {
+                  // `Number("")` is NaN; coerce to a sane minimum so we don't
+                  // serialize NaN into the persisted store (it round-trips to
+                  // null and breaks the backend on the next pack).
+                  const parsed = Number(e.target.value);
+                  patchOptions({
+                    maxFileSizeKb: Number.isFinite(parsed) && parsed > 0 ? parsed : 1,
+                  });
+                }}
               />
               <span className="text-xs text-zinc-500">KB</span>
             </label>

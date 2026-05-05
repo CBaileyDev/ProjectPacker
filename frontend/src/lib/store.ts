@@ -16,6 +16,11 @@ interface AppState {
   setResult: (r: PackResult) => void;
   reset: () => void;
   setOptions: (o: PackOptions) => void;
+  /** Merge a partial update into options, reading current state at call
+   * time. Use this from async handlers (pickFolder, drop) so a slow
+   * dialog doesn't capture stale `options` and overwrite a recent edit
+   * to a different field on save. */
+  patchOptions: (patch: Partial<PackOptions>) => void;
 }
 
 const defaultOptions: PackOptions = {
@@ -59,6 +64,8 @@ export const useApp = create<AppState>()(
       reset: () =>
         set({ jobId: null, status: "idle", events: [], result: null }),
       setOptions: (o) => set({ options: o }),
+      patchOptions: (patch) =>
+        set((s) => ({ options: { ...s.options, ...patch } })),
     }),
     {
       name: "app-state",
