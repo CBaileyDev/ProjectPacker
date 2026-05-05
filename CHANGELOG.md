@@ -2,14 +2,31 @@
 
 All notable changes to ProjectPacker are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-05-05
 
 ### Added
 - Drag-and-drop folder selection — drop a folder anywhere on the app window to set it as the pack target. Files are resolved to their parent directory; multi-drop takes the first.
 - Per-phase timing in `PackStats`: `walk_ms`, `process_ms`, `secret_scan_ms` (optional), `tokenize_ms` (optional), `emit_ms`. Surfaced as an inline breakdown row in the result panel; gives evidence for future perf decisions without doing premature optimization.
+- `WarningKind::TokenizeFailed` — per-file tokenizer errors (e.g. an unknown `tokenizer_model`) now surface as `PackWarning`s instead of being silently swallowed. `tokens_total` undercount is no longer invisible.
+- `patchOptions(partial)` Zustand store action — merges a partial update into options using a functional setter. Used by all option callsites in `Pack.tsx` so async handlers (folder picker, drag-drop) can't capture stale `options` and overwrite a recent edit to a different field.
+- Integration tests for `PackFormat::Markdown` and `PackFormat::PlainText` (previously only `Xml` was end-to-end tested).
+- Settings save now atomic via write-tmp-then-rename; two new regression tests pin the behaviour.
 
 ### Changed
 - Pack screen auto-switches from GitHub URL mode to Folder mode when a folder is dropped onto the window.
+- `TokenModel::Gpt4o` now uses `o200k_base` (the actual GPT-4o tokenizer) instead of `cl100k_base`. This aligns the typed API's `gpt4o` count with the legacy `count_by_name("gpt-4o-mini")` count, so per-file `tokens_total` and `tokens_per_model.gpt4o` finally agree on encoder. `TokenModel::GeminiApprox` follows (now `o200k_base × 1.05`). `TokenModel::Claude` continues to use `cl100k_base` (Anthropic ships no public tokenizer; cl100k is the closest public proxy). Observable token counts for `Gpt4o`/`GeminiApprox` will shift slightly vs. v0.3.0 — they're now correct for GPT-4o.
+- Per-file `tokens_total` is accumulated as `u64` and saturated to `u32` only at the cast site. Multi-billion-token packs no longer wrap.
+- `useDragDrop` registers its IPC listener once per mount (was once per render); `setIsDragging(true)` only fires on the leading edge of a drag.
+- The pack screen's Channel is now reused across runs via `useRef` (was a fresh Channel per pack — Tauri's IPC handler map leaked one entry per run).
+
+### Fixed
+- **Security:** `save_to_file` removed and replaced with `save_pack_output(suggested_filename, contents)`. The new command shows the OS save dialog from the Rust side, so a compromised renderer can't supply an arbitrary write path.
+- **Frontend race:** the pack-progress Channel handler is now installed before `await commands.packStart(...)` (was after). Events fired between the await resolving and the JS continuation reassigning `onmessage` are no longer dropped — `jobId` is captured from the `Started` event payload instead of the await's return value.
+- Settings `save()` is now atomic (write-tmp-then-rename) — a power-loss mid-write no longer produces a 0-byte settings.json that silently loses the user's recents/presets/theme on next load.
+- `*.bad-<N>` quarantine suffix uses nanosecond resolution (was 1-second), preventing rename collisions on two near-simultaneous corrupt-recovery paths.
+- `Number("")` (empty `maxFileSizeKb` input) is no longer serialized as `NaN` (which round-tripped to `null` through the persisted store).
+- Tighter capabilities — dropped the unused `fs:default` scope (the frontend doesn't call any `@tauri-apps/plugin-fs` API).
+- The 3 v0.4 per-phase timing tests now actually verify timing correctness (sum of phases ≤ duration_ms + slack, each phase ≤ duration_ms). Previously they only type-asserted that the fields existed.
 
 ## [0.3.0] - 2026-05-01
 
