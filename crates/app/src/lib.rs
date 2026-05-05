@@ -42,7 +42,7 @@ pub fn run() {
             commands::build_combined_prompt,
             commands::get_settings,
             commands::save_settings,
-            commands::save_to_file,
+            commands::save_pack_output,
         ])
         .setup(|app| {
             log::info!(

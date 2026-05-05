@@ -9,6 +9,7 @@ use specta::Type;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tauri::{AppHandle, Manager, State};
+use tauri_plugin_dialog::DialogExt;
 use tokio_util::sync::CancellationToken;
 use uuid::Uuid;
 
@@ -138,14 +139,44 @@ pub async fn save_settings(app: AppHandle, settings: Settings) -> CmdResult<Sett
     Ok(settings)
 }
 
+/// Show a save dialog and write `contents` to the user-chosen path.
+///
+/// The path comes from the OS save dialog, not the renderer — a compromised
+/// renderer cannot supply an arbitrary path. Returns `Some(path)` on success
+/// or `None` if the user cancelled.
 #[tauri::command]
 #[specta::specta]
-pub async fn save_to_file(path: PathBuf, contents: String) -> CmdResult<()> {
+pub async fn save_pack_output(
+    app: AppHandle,
+    suggested_filename: String,
+    contents: String,
+) -> CmdResult<Option<String>> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_file_name(&suggested_filename)
+        .save_file(move |path| {
+            let _ = tx.send(path);
+        });
+    let chosen = rx.await.map_err(|e| AppError {
+        code: "dialog_failed".into(),
+        message: e.to_string(),
+        details: None,
+    })?;
+    let Some(file_path) = chosen else {
+        return Ok(None);
+    };
+    let path: PathBuf = file_path.into_path().map_err(|e| AppError {
+        code: "invalid_path".into(),
+        message: e.to_string(),
+        details: None,
+    })?;
     std::fs::write(&path, contents).map_err(|e| AppError {
         code: "save_failed".into(),
         message: e.to_string(),
         details: None,
-    })
+    })?;
+    Ok(Some(path.display().to_string()))
 }
 
 fn settings_path(app: &AppHandle) -> PathBuf {

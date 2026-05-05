@@ -13,7 +13,7 @@ fn main() {
             projectpacker_app_lib::commands::build_combined_prompt,
             projectpacker_app_lib::commands::get_settings,
             projectpacker_app_lib::commands::save_settings,
-            projectpacker_app_lib::commands::save_to_file,
+            projectpacker_app_lib::commands::save_pack_output,
         ])
         .typ::<projectpacker_core::types::ProgressEvent>()
         .typ::<projectpacker_core::tokens::TokenModel>()
