@@ -318,7 +318,17 @@ pub fn pack(
     let (tokens_per_model, tokenize_ms) = if opts.count_tokens {
         let tokenize_start = Instant::now();
         for e in entries.iter_mut() {
-            e.tokens = tokens::count_by_name(&opts.tokenizer_model, &e.content).ok();
+            match tokens::count_by_name(&opts.tokenizer_model, &e.content) {
+                Ok(n) => e.tokens = Some(n),
+                Err(err) => {
+                    e.tokens = None;
+                    warnings.push(PackWarning {
+                        kind: WarningKind::TokenizeFailed,
+                        path: Some(e.path.clone()),
+                        message: format!("token count failed: {err}"),
+                    });
+                }
+            }
         }
         let joined: String = entries
             .iter()
@@ -331,14 +341,18 @@ pub fn pack(
         (None, None)
     };
 
+    // Use u64 accumulator — `tokens_total` is u32 on the wire, but a multi-
+    // million-token monorepo pack can wrap a u32 sum mid-loop. Saturate at
+    // the cast site instead of silently wrapping.
     let mut bytes_total = 0u64;
-    let mut tokens_total: u32 = 0;
+    let mut tokens_total: u64 = 0;
     for e in &entries {
         bytes_total += e.bytes;
         if let Some(t) = e.tokens {
-            tokens_total += t;
+            tokens_total += u64::from(t);
         }
     }
+    let tokens_total: u32 = tokens_total.min(u64::from(u32::MAX)) as u32;
 
     // files_total accounting:
     //   included = files we kept (walker matches + force-included pins)

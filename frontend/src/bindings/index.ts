@@ -63,9 +63,16 @@ async saveSettings(settings: Settings) : Promise<Result<Settings, AppError>> {
     else return { status: "error", error: e  as any };
 }
 },
-async saveToFile(path: string, contents: string) : Promise<Result<null, AppError>> {
+/**
+ * Show a save dialog and write `contents` to the user-chosen path.
+ * 
+ * The path comes from the OS save dialog, not the renderer — a compromised
+ * renderer cannot supply an arbitrary path. Returns `Some(path)` on success
+ * or `None` if the user cancelled.
+ */
+async savePackOutput(suggestedFilename: string, contents: string) : Promise<Result<string | null, AppError>> {
     try {
-    return { status: "ok", data: await TAURI_INVOKE("save_to_file", { path, contents }) };
+    return { status: "ok", data: await TAURI_INVOKE("save_pack_output", { suggestedFilename, contents }) };
 } catch (e) {
     if(e instanceof Error) throw e;
     else return { status: "error", error: e  as any };
@@ -139,10 +146,15 @@ export type Theme = "dark" | "light"
  * Tokenizer family selector for the typed API.
  * 
  * Wire mapping:
- * - `Gpt4o`, `Claude` → `cl100k_base` (Anthropic's tokenizer behaves close
- * enough to cl100k that we share the encoder).
- * - `GeminiApprox` → `cl100k_base` count multiplied by 1.05 and rounded up;
- * Gemini ships no public tokenizer so this is a deliberate over-estimate.
+ * - `Gpt4o` → `o200k_base` (the actual GPT-4o tokenizer; matches what
+ * `count_by_name("gpt-4o-mini")` returns, so the per-file `tokens_total`
+ * summed against `gpt-4o-mini` agrees with `tokens_per_model.gpt4o`
+ * modulo the join-overhead between files).
+ * - `Claude` → `cl100k_base` (Anthropic's tokenizer is unpublished;
+ * cl100k is the closest public approximation).
+ * - `GeminiApprox` → `o200k_base` count multiplied by 1.05 and rounded up;
+ * Gemini ships no public tokenizer so this is a deliberate over-estimate
+ * on top of GPT-4o's encoder.
  * - `Llama3`, `Qwen2_5`, `DeepSeek`, `Mistral` → vendored HuggingFace
  * `tokenizer.json` blobs, parsed lazily on first use (Phase 2 T2).
  */
@@ -156,7 +168,7 @@ export type TokenModel = "gpt4o" | "claude" | "llama3" | "qwen2_5" | "deepSeek" 
  * time. See `frontend/src/routes/Pack.tsx` for the consumer side.
  */
 export type TokensPerModel = { gpt4o: number; claude: number; llama3: number; qwen2_5: number; deepSeek: number; mistral: number; geminiApprox: number }
-export type WarningKind = { kind: "fileSkipped" } | { kind: "treeSitterFailed" } | { kind: "gitLogMissing" } | { kind: "encodingFallback" } | { kind: "secretScanFailed" }
+export type WarningKind = { kind: "fileSkipped" } | { kind: "treeSitterFailed" } | { kind: "gitLogMissing" } | { kind: "encodingFallback" } | { kind: "secretScanFailed" } | { kind: "tokenizeFailed" }
 export type XmlSchema = "cxml" | "legacy"
 
 /** tauri-specta globals **/

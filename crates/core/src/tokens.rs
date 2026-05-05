@@ -89,10 +89,15 @@ static MISTRAL: VendoredHfTokenizer =
 /// Tokenizer family selector for the typed API.
 ///
 /// Wire mapping:
-/// - `Gpt4o`, `Claude` → `cl100k_base` (Anthropic's tokenizer behaves close
-///   enough to cl100k that we share the encoder).
-/// - `GeminiApprox` → `cl100k_base` count multiplied by 1.05 and rounded up;
-///   Gemini ships no public tokenizer so this is a deliberate over-estimate.
+/// - `Gpt4o` → `o200k_base` (the actual GPT-4o tokenizer; matches what
+///   `count_by_name("gpt-4o-mini")` returns, so the per-file `tokens_total`
+///   summed against `gpt-4o-mini` agrees with `tokens_per_model.gpt4o`
+///   modulo the join-overhead between files).
+/// - `Claude` → `cl100k_base` (Anthropic's tokenizer is unpublished;
+///   cl100k is the closest public approximation).
+/// - `GeminiApprox` → `o200k_base` count multiplied by 1.05 and rounded up;
+///   Gemini ships no public tokenizer so this is a deliberate over-estimate
+///   on top of GPT-4o's encoder.
 /// - `Llama3`, `Qwen2_5`, `DeepSeek`, `Mistral` → vendored HuggingFace
 ///   `tokenizer.json` blobs, parsed lazily on first use (Phase 2 T2).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
@@ -137,9 +142,8 @@ pub struct TokensPerModel {
 
 /// Tokenize `text` once per model and return the seven counts.
 ///
-/// Internally `Gpt4o`, `Claude`, and `GeminiApprox` all share the cl100k
-/// `OnceLock` encoder, so calling [`count`] three times for those variants
-/// is cheap (one real encode plus two repeated encodes). The four HF
+/// `Gpt4o` and `GeminiApprox` share `o200k_base` (one real encode + one
+/// repeat). `Claude` uses `cl100k_base` (one real encode). The four HF
 /// tokenizers each parse + encode once.
 ///
 /// All counts are computed by routing through [`count`] rather than
@@ -150,10 +154,9 @@ pub struct TokensPerModel {
 /// failure mode is an internal HF tokenizer bug, which orchestrator
 /// callers swallow via `.ok()` to keep packs non-fatal.
 pub fn count_all(text: &str) -> CoreResult<TokensPerModel> {
-    let cl100k = count(text, TokenModel::Gpt4o)?;
     Ok(TokensPerModel {
-        gpt4o: cl100k,
-        claude: cl100k, // shares cl100k via the OnceLock; this is the same number.
+        gpt4o: count(text, TokenModel::Gpt4o)?,
+        claude: count(text, TokenModel::Claude)?,
         gemini_approx: count(text, TokenModel::GeminiApprox)?,
         llama3: count(text, TokenModel::Llama3)?,
         qwen2_5: count(text, TokenModel::Qwen2_5)?,
@@ -165,12 +168,16 @@ pub fn count_all(text: &str) -> CoreResult<TokensPerModel> {
 /// Count tokens for `text` using the encoder family selected by `model`.
 pub fn count(text: &str, model: TokenModel) -> CoreResult<u32> {
     match model {
-        TokenModel::Gpt4o | TokenModel::Claude => {
+        TokenModel::Gpt4o => {
+            let enc = o200k_encoder();
+            Ok(enc.encode_with_special_tokens(text).len() as u32)
+        }
+        TokenModel::Claude => {
             let enc = cl100k_encoder();
             Ok(enc.encode_with_special_tokens(text).len() as u32)
         }
         TokenModel::GeminiApprox => {
-            let enc = cl100k_encoder();
+            let enc = o200k_encoder();
             let base = enc.encode_with_special_tokens(text).len() as u32;
             // +5% rounded up — keep the math in u64 to avoid f64 rounding
             // surprises on long inputs. ceil(base * 1.05) == ceil(base*105/100).
@@ -185,22 +192,24 @@ pub fn count(text: &str, model: TokenModel) -> CoreResult<u32> {
 }
 
 /// Legacy string-keyed wrapper. Preserved so existing orchestrator callers
-/// keep working unchanged. Intentionally does *not* dispatch through
-/// [`count`] / [`TokenModel::Gpt4o`]: it keeps the original `o200k_base`
-/// backend so observable token counts in v0.2.0 snapshots stay
-/// byte-identical. Unknown strings return [`CoreError::TokenizerUnavailable`].
+/// keep working unchanged. Routes `"gpt-4o-mini"`/`"gpt-4o"`/`"gpt-4"` to
+/// `o200k_base` — the same encoder as `TokenModel::Gpt4o` — so a per-file
+/// `tokens_total` summed against `gpt-4o-mini` agrees with
+/// `tokens_per_model.gpt4o`. Unknown strings return
+/// [`CoreError::TokenizerUnavailable`].
 pub fn count_by_name(model: &str, text: &str) -> CoreResult<u32> {
-    let enc = legacy_encoder(model)?;
-    Ok(enc.encode_with_special_tokens(text).len() as u32)
-}
-
-fn legacy_encoder(model: &str) -> CoreResult<&'static CoreBPE> {
     match model {
-        "gpt-4o-mini" | "gpt-4o" | "gpt-4" => Ok(O200K_BASE.get_or_init(|| {
-            tiktoken_rs::o200k_base().expect("o200k_base encoder must initialize")
-        })),
+        "gpt-4o-mini" | "gpt-4o" | "gpt-4" => {
+            Ok(o200k_encoder().encode_with_special_tokens(text).len() as u32)
+        }
         _ => Err(CoreError::TokenizerUnavailable(model.into())),
     }
+}
+
+fn o200k_encoder() -> &'static CoreBPE {
+    O200K_BASE.get_or_init(|| {
+        tiktoken_rs::o200k_base().expect("o200k_base encoder must initialize")
+    })
 }
 
 fn cl100k_encoder() -> &'static CoreBPE {
@@ -262,11 +271,28 @@ mod tests {
     }
 
     #[test]
-    fn claude_uses_same_encoder_as_gpt4o() {
-        let input = "The quick brown fox jumps over the lazy dog. 1234567890.";
+    fn gpt4o_typed_matches_count_by_name_gpt4o_mini() {
+        // The typed Gpt4o variant and the legacy `count_by_name("gpt-4o-mini")`
+        // must use the same encoder so that per-file `tokens_total` (summed
+        // via `count_by_name`) agrees with `tokens_per_model.gpt4o` (computed
+        // via the typed API). Both should hit `o200k_base`.
+        let input = "fn main() { println!(\"hello, world!\"); } // a comment";
+        let typed = count(input, TokenModel::Gpt4o).unwrap();
+        let legacy = count_by_name("gpt-4o-mini", input).unwrap();
+        assert_eq!(typed, legacy, "Gpt4o typed API and gpt-4o-mini legacy API must share o200k_base");
+    }
+
+    #[test]
+    fn claude_uses_a_distinct_encoder_from_gpt4o() {
+        // GPT-4o uses o200k_base (its actual tokenizer). Claude uses cl100k_base
+        // as a public proxy because Anthropic doesn't ship one. They MUST
+        // disagree on at least some realistic input, otherwise we've
+        // misrouted Claude back to o200k.
+        let input = "The quick brown fox jumps over 12 lazy dogs — and 3.14 \
+                     pies, costing $42.99 each. Café résumé naïve façade.";
         let g = count(input, TokenModel::Gpt4o).unwrap();
         let c = count(input, TokenModel::Claude).unwrap();
-        assert_eq!(g, c, "Claude and Gpt4o must share the cl100k encoder");
+        assert_ne!(g, c, "Gpt4o (o200k) and Claude (cl100k) must use distinct encoders");
     }
 
     #[test]
@@ -386,12 +412,16 @@ mod tests {
     }
 
     #[test]
-    fn count_all_gpt4o_equals_claude() {
-        // Both routes share the cl100k encoder, so the counts must match
-        // byte-for-byte regardless of input.
+    fn count_all_gpt4o_matches_legacy_gpt4o_mini() {
+        // count_all's gpt4o slot must use the same encoder as the legacy
+        // `count_by_name("gpt-4o-mini")` so the two numbers reported by the
+        // pack pipeline (per-file summed `tokens_total` vs. joined
+        // `tokens_per_model.gpt4o`) at least agree on the encoder, modulo
+        // the join-overhead that's documented elsewhere.
         let input = "The quick brown fox jumps over the lazy dog. 1234567890.";
         let counts = count_all(input).unwrap();
-        assert_eq!(counts.gpt4o, counts.claude);
+        let legacy = count_by_name("gpt-4o-mini", input).unwrap();
+        assert_eq!(counts.gpt4o, legacy);
     }
 
     #[test]

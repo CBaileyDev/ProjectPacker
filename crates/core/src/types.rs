@@ -120,6 +120,7 @@ pub enum WarningKind {
     GitLogMissing,
     EncodingFallback,
     SecretScanFailed,
+    TokenizeFailed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
