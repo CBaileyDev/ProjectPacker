@@ -61,27 +61,37 @@ pub fn load_or_default(path: &PathBuf) -> Settings {
         if let Ok(s) = serde_json::from_str::<Settings>(&text) {
             return s;
         }
-        let bad = path.with_extension(format!("json.bad-{}", chrono_isoish_now()));
+        // Quarantine the corrupt file so it doesn't keep tripping us. Use a
+        // nanosecond-resolution suffix so two concurrent recoveries can't
+        // collide on the same destination filename (Windows rename to an
+        // existing path fails silently).
+        let bad = path.with_extension(format!("json.bad-{}", unix_nanos_string()));
         let _ = std::fs::rename(path, bad);
     }
     Settings::defaults()
 }
 
+/// Save settings atomically: write to `<path>.tmp` then rename over `<path>`.
+/// On both NTFS and POSIX, same-volume rename is atomic, so a power-loss
+/// or crash mid-write leaves either the previous good file intact or the
+/// new complete file — never a half-written/zero-byte settings.json.
 pub fn save(path: &PathBuf, settings: &Settings) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    let json = serde_json::to_string_pretty(settings).unwrap();
-    std::fs::write(path, json)
+    let json = serde_json::to_string_pretty(settings).map_err(std::io::Error::other)?;
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, json)?;
+    std::fs::rename(&tmp, path)
 }
 
-fn chrono_isoish_now() -> String {
+fn unix_nanos_string() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let secs = SystemTime::now()
+    let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
+        .map(|d| d.as_nanos())
         .unwrap_or(0);
-    format!("{secs}")
+    format!("{nanos}")
 }
 
 #[cfg(test)]
@@ -135,5 +145,37 @@ mod tests {
                     .unwrap()
                     .contains("\"theme\"")
         );
+    }
+
+    #[test]
+    fn save_does_not_leave_tmp_file_behind() {
+        let d = tempdir().unwrap();
+        let path = d.path().join("settings.json");
+        let s = Settings::defaults();
+        save(&path, &s).unwrap();
+        let tmp = path.with_extension("json.tmp");
+        assert!(
+            !tmp.exists(),
+            "atomic save must clean up the .tmp file via rename"
+        );
+        assert!(path.exists(), "save must produce the destination file");
+    }
+
+    #[test]
+    fn back_to_back_saves_do_not_corrupt() {
+        let d = tempdir().unwrap();
+        let path = d.path().join("settings.json");
+        for i in 0..5 {
+            let mut s = Settings::defaults();
+            s.recents.push(Recent {
+                label: format!("run-{i}"),
+                target: format!("/tmp/{i}"),
+                last_used_iso: "now".into(),
+            });
+            save(&path, &s).unwrap();
+            let back = load_or_default(&path);
+            assert_eq!(back.recents.len(), 1, "save iteration {i} dropped data");
+            assert_eq!(back.recents[0].label, format!("run-{i}"));
+        }
     }
 }
