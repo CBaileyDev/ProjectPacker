@@ -150,3 +150,80 @@ fn tiny_fixture_includes_protocol_block() {
     assert!(result.output.contains("<user_task>"));
     assert!(result.output.contains("Add docs"));
 }
+
+/// End-to-end: PackFormat::Markdown produces a Markdown document with the
+/// expected header, file fences, and at least one of the fixture's files.
+#[test]
+fn tiny_fixture_packs_as_markdown() {
+    let root = fixture_path("tiny");
+    let opts = PackOptions {
+        goal: "test".into(),
+        format: PackFormat::Markdown,
+        ..PackOptions::default()
+    };
+    let (tx, _rx) = std::sync::mpsc::channel();
+    let result = pack::pack(
+        &PackTarget::Folder(root.clone()),
+        &opts,
+        tx,
+        "test-job-md",
+        CancellationToken::new(),
+    )
+    .unwrap();
+
+    assert!(
+        result.output.starts_with("# Repository Pack"),
+        "Markdown output must start with '# Repository Pack', got: {:?}",
+        &result.output[..result.output.len().min(120)],
+    );
+    assert!(result.output.contains("## Files"), "missing '## Files' section");
+    assert!(
+        result.output.contains("```rust"),
+        "expected a ```rust fenced code block (src/main.rs is Rust)",
+    );
+    assert!(result.output.contains("README.md"));
+    assert!(result.output.contains("src/main.rs"));
+    // No XML envelopes in Markdown output.
+    assert!(!result.output.contains("<protocol version="));
+    assert!(!result.output.contains("<documents>"));
+}
+
+/// End-to-end: PackFormat::PlainText produces a plain-text document with the
+/// expected separator-style heading and file blocks.
+#[test]
+fn tiny_fixture_packs_as_plain_text() {
+    let root = fixture_path("tiny");
+    let opts = PackOptions {
+        goal: "test".into(),
+        format: PackFormat::PlainText,
+        ..PackOptions::default()
+    };
+    let (tx, _rx) = std::sync::mpsc::channel();
+    let result = pack::pack(
+        &PackTarget::Folder(root.clone()),
+        &opts,
+        tx,
+        "test-job-plain",
+        CancellationToken::new(),
+    )
+    .unwrap();
+
+    assert!(
+        result.output.starts_with("=== STATS ===\n"),
+        "Plain output must start with '=== STATS ===', got: {:?}",
+        &result.output[..result.output.len().min(120)],
+    );
+    assert!(
+        result.output.contains("=== END STATS ==="),
+        "missing '=== END STATS ===' delimiter",
+    );
+    assert!(
+        result.output.contains("=== src/main.rs ==="),
+        "missing per-file '=== <path> ===' separator",
+    );
+    assert!(result.output.contains("README.md"));
+    // No XML or Markdown envelopes in plain output.
+    assert!(!result.output.contains("<protocol version="));
+    assert!(!result.output.contains("```rust"));
+    assert!(!result.output.contains("# Repository Pack"));
+}

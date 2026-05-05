@@ -703,11 +703,37 @@ mod tests {
             &PackTarget::Folder(d.path().to_path_buf()),
             &opts, tx, "job-test", CancellationToken::new(),
         ).unwrap();
-        let _: u32 = result.stats.walk_ms;
-        let _: u32 = result.stats.process_ms;
-        let _: u32 = result.stats.emit_ms;
         assert!(result.stats.secret_scan_ms.is_some(), "secret_scan_ms must be Some when enabled, got None");
         assert!(result.stats.tokenize_ms.is_some(), "tokenize_ms must be Some when enabled, got None");
+
+        // Real timing sanity check: phases run sequentially inside pack(), so
+        // their elapsed-times must sum to no more than the total wall clock
+        // (plus a small slack for stats construction + the brief gap between
+        // phases). A bug that wired all timers to 0 would fail this check
+        // because duration_ms is independently measured.
+        let phase_sum: u32 = result.stats.walk_ms
+            + result.stats.process_ms
+            + result.stats.secret_scan_ms.unwrap_or(0)
+            + result.stats.tokenize_ms.unwrap_or(0)
+            + result.stats.emit_ms;
+        assert!(
+            phase_sum <= result.stats.duration_ms + 100,
+            "phase_sum ({}ms = walk {} + process {} + scan {:?} + tokenize {:?} + emit {}) \
+             must be <= duration_ms ({}ms) + 100ms slack",
+            phase_sum,
+            result.stats.walk_ms,
+            result.stats.process_ms,
+            result.stats.secret_scan_ms,
+            result.stats.tokenize_ms,
+            result.stats.emit_ms,
+            result.stats.duration_ms,
+        );
+        // Each phase elapsed must individually fit within the total. A bug
+        // that left a stale "huge" timer value from a previous run would
+        // trip this.
+        assert!(result.stats.walk_ms <= result.stats.duration_ms);
+        assert!(result.stats.process_ms <= result.stats.duration_ms);
+        assert!(result.stats.emit_ms <= result.stats.duration_ms);
     }
 
     #[test]
