@@ -191,23 +191,6 @@ impl XmlBuilder {
         self
     }
 
-    /// Legacy alias kept so existing tests that call `builder.files(…)` still compile.
-    /// Delegates to `files_legacy`.
-    #[cfg(test)]
-    pub fn files(&mut self, files: &[FileEntry]) -> &mut Self {
-        self.files_legacy(files)
-    }
-
-    pub fn git_logs(&mut self, body: &str) -> &mut Self {
-        self.out.push_str("<git_logs>\n");
-        self.out.push_str(&escape_text(body));
-        if !body.ends_with('\n') {
-            self.out.push('\n');
-        }
-        self.out.push_str("</git_logs>\n");
-        self
-    }
-
     pub fn finish(self) -> String {
         self.out
     }
@@ -253,7 +236,7 @@ mod tests {
             hash: "abc".into(),
         };
         let mut b = XmlBuilder::new();
-        b.files(&[entry]);
+        b.files_legacy(&[entry]);
         let s = b.finish();
         assert!(s.contains(r#"path="a&quot;b.txt""#));
     }
@@ -268,7 +251,7 @@ mod tests {
             hash: "abc".into(),
         };
         let mut b = XmlBuilder::new();
-        b.files(&[entry]);
+        b.files_legacy(&[entry]);
         let s = b.finish();
         assert!(s.contains("&lt;x&gt; &amp; &lt;/x&gt;"));
     }

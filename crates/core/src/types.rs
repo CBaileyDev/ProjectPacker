@@ -34,7 +34,6 @@ pub enum XmlSchema {
 pub struct PackOptions {
     pub target: PackTarget,
     pub goal: String,
-    pub include_git_history: bool,
     pub count_tokens: bool,
     pub tokenizer_model: String,
     pub secret_scan: bool,
@@ -56,7 +55,6 @@ impl Default for PackOptions {
         Self {
             target: PackTarget::Folder(PathBuf::from(".")),
             goal: String::new(),
-            include_git_history: false,
             count_tokens: true,
             tokenizer_model: "gpt-4o-mini".into(),
             secret_scan: true,

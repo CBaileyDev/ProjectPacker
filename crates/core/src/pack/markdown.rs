@@ -2,6 +2,7 @@ use crate::pack::security_report;
 use crate::pack::stats::StatsBlock;
 use crate::pack::FileEntry;
 use crate::types::{PackOptions, PackRedaction, PackStats};
+use std::fmt::Write;
 
 pub fn render(
     root_label: &str,
@@ -18,27 +19,29 @@ pub fn render(
 
     out.push_str("## Stats\n\n");
     out.push_str("| Metric | Value |\n|--------|-------|\n");
-    out.push_str(&format!("| Target | `{}` |\n", block.target_label));
+    let _ = writeln!(out, "| Target | `{}` |", block.target_label);
     if !block.goal.is_empty() {
-        out.push_str(&format!("| Goal | {} |\n", block.goal));
+        let _ = writeln!(out, "| Goal | {} |", block.goal);
     }
-    out.push_str(&format!(
-        "| Files | {} included \\| {} total \\| {} skipped |\n",
+    let _ = writeln!(
+        out,
+        "| Files | {} included \\| {} total \\| {} skipped |",
         block.files_included, block.files_total, block.files_skipped
-    ));
-    out.push_str(&format!("| Bytes | {} |\n", block.bytes_total));
+    );
+    let _ = writeln!(out, "| Bytes | {} |", block.bytes_total);
     if let Some(t) = block.tokens_total {
-        out.push_str(&format!(
-            "| Tokens ({}) | {t} |\n",
+        let _ = writeln!(
+            out,
+            "| Tokens ({}) | {t} |",
             block.tokenizer_model
-        ));
+        );
     }
     if !block.languages.is_empty() {
-        out.push_str(&format!("| Languages | {} |\n", block.languages_display()));
+        let _ = writeln!(out, "| Languages | {} |", block.languages_display());
     }
-    out.push_str(&format!("| Redactions | {} |\n", block.redacted_bytes));
-    out.push_str(&format!("| Cache hits | {} |\n", block.cache_hits));
-    out.push_str(&format!("| Duration | {}ms |\n\n", block.duration_ms));
+    let _ = writeln!(out, "| Redactions | {} |", block.redacted_bytes);
+    let _ = writeln!(out, "| Cache hits | {} |", block.cache_hits);
+    let _ = write!(out, "| Duration | {}ms |\n\n", block.duration_ms);
 
     // Security report (between stats and entries; emitted only when non-empty).
     let sec = security_report::emit_markdown(redactions);
@@ -65,9 +68,9 @@ pub fn render(
     out.push_str("```\n\n## Files\n\n");
 
     for e in pinned {
-        out.push_str(&format!("### `{}`\n\n", e.path));
+        let _ = write!(out, "### `{}`\n\n", e.path);
         let lang = ext_fence_lang(&e.path);
-        out.push_str(&format!("```{lang}\n"));
+        let _ = writeln!(out, "```{lang}");
         out.push_str(&e.content);
         if !e.content.ends_with('\n') {
             out.push('\n');
@@ -75,9 +78,9 @@ pub fn render(
         out.push_str("```\n\n");
     }
     for e in &non_pinned {
-        out.push_str(&format!("### `{}`\n\n", e.path));
+        let _ = write!(out, "### `{}`\n\n", e.path);
         let lang = ext_fence_lang(&e.path);
-        out.push_str(&format!("```{lang}\n"));
+        let _ = writeln!(out, "```{lang}");
         out.push_str(&e.content);
         if !e.content.ends_with('\n') {
             out.push('\n');

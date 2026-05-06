@@ -2,6 +2,7 @@ use crate::pack::security_report;
 use crate::pack::stats::StatsBlock;
 use crate::pack::FileEntry;
 use crate::types::{PackOptions, PackRedaction, PackStats};
+use std::fmt::Write;
 
 pub fn render(
     root_label: &str,
@@ -15,31 +16,33 @@ pub fn render(
     let mut out = String::new();
 
     out.push_str("=== STATS ===\n");
-    out.push_str(&format!("Target: {}\n", block.target_label));
+    let _ = writeln!(out, "Target: {}", block.target_label);
     if !block.goal.is_empty() {
-        out.push_str(&format!("Goal: {}\n", block.goal));
+        let _ = writeln!(out, "Goal: {}", block.goal);
     }
-    out.push_str(&format!(
-        "Files: {} included | {} total | {} skipped\n",
+    let _ = writeln!(
+        out,
+        "Files: {} included | {} total | {} skipped",
         block.files_included, block.files_total, block.files_skipped
-    ));
-    out.push_str(&format!("Bytes: {}\n", block.bytes_total));
+    );
+    let _ = writeln!(out, "Bytes: {}", block.bytes_total);
     if let Some(t) = block.tokens_total {
-        out.push_str(&format!(
-            "Tokens: {t} ({})\n",
+        let _ = writeln!(
+            out,
+            "Tokens: {t} ({})",
             block.tokenizer_model
-        ));
+        );
     }
     if !block.languages.is_empty() {
-        out.push_str(&format!("Languages: {}\n", block.languages_display()));
+        let _ = writeln!(out, "Languages: {}", block.languages_display());
     }
     // Field name on StatsBlock is `redacted_bytes` (kept for wire-format
     // stability), but it semantically holds the redaction *count*; emit it
     // as "Redactions" in the user-visible label.
-    out.push_str(&format!("Redactions: {}\n", block.redacted_bytes));
+    let _ = writeln!(out, "Redactions: {}", block.redacted_bytes);
     // Phase 3 (content-addressed cache) will populate cache_hits
-    out.push_str(&format!("Cache hits: {}\n", block.cache_hits));
-    out.push_str(&format!("Duration: {}ms\n", block.duration_ms));
+    let _ = writeln!(out, "Cache hits: {}", block.cache_hits);
+    let _ = writeln!(out, "Duration: {}ms", block.duration_ms);
     out.push_str("=== END STATS ===\n\n");
 
     // Security report (between stats and entries; emitted only when non-empty).
@@ -56,7 +59,7 @@ pub fn render(
     non_pinned.sort_by(|a, b| a.path.cmp(&b.path));
 
     for e in pinned {
-        out.push_str(&format!("=== {} ===\n", e.path));
+        let _ = writeln!(out, "=== {} ===", e.path);
         out.push_str(&e.content);
         if !e.content.ends_with('\n') {
             out.push('\n');
@@ -64,7 +67,7 @@ pub fn render(
         out.push('\n');
     }
     for e in &non_pinned {
-        out.push_str(&format!("=== {} ===\n", e.path));
+        let _ = writeln!(out, "=== {} ===", e.path);
         out.push_str(&e.content);
         if !e.content.ends_with('\n') {
             out.push('\n');

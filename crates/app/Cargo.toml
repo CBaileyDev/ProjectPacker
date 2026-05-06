@@ -23,7 +23,6 @@ tokio.workspace = true
 tokio-util.workspace = true
 specta.workspace = true
 specta-typescript.workspace = true
-anyhow.workspace = true
 log = "0.4"
 
 tauri = { version = "2", features = [] }
@@ -36,9 +35,7 @@ tauri-plugin-store = "2"
 tauri-plugin-window-state = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-log = "2"
-arboard = "3"
 dashmap = "6"
-parking_lot = "0.12"
 uuid = { version = "1", features = ["v7"] }
 
 [dev-dependencies]

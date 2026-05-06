@@ -40,6 +40,5 @@ file-format = "0.29"
 
 [dev-dependencies]
 insta = { version = "1", features = ["yaml"] }
-proptest = "1"
 tokio = { workspace = true, features = ["rt", "macros"] }
 serde_json = { workspace = true }

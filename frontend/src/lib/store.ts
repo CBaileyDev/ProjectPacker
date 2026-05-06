@@ -26,7 +26,6 @@ interface AppState {
 const defaultOptions: PackOptions = {
   target: { kind: "folder", value: "" },
   goal: "",
-  includeGitHistory: false,
   countTokens: true,
   tokenizerModel: "gpt-4o-mini",
   secretScan: true,

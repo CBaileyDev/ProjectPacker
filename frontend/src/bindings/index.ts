@@ -94,7 +94,7 @@ export type AppError = { code: string; message: string; details: string | null }
 export type FileFound = { path: string; bytes: number }
 export type GoalTemplate = { name: string; body: string }
 export type PackFormat = "xml" | "markdown" | "plainText"
-export type PackOptions = { target: PackTarget; goal: string; includeGitHistory: boolean; countTokens: boolean; tokenizerModel: string; secretScan: boolean; compress: boolean; removeComments: boolean; maxFileSizeKb: number; respectGitignore: boolean; customIgnorePatterns: string[]; protocolVersion: string; format: PackFormat; 
+export type PackOptions = { target: PackTarget; goal: string; countTokens: boolean; tokenizerModel: string; secretScan: boolean; compress: boolean; removeComments: boolean; maxFileSizeKb: number; respectGitignore: boolean; customIgnorePatterns: string[]; protocolVersion: string; format: PackFormat; 
 /**
  * Defaulted via `serde(default)` so v0.1 settings missing this field
  * deserialize cleanly to `XmlSchema::Cxml` (the new default).
