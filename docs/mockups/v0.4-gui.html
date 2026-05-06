@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ProjectPacker v0.4 — GUI mockup</title>
+  <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+  <style>
+    body { background: #050507; }
+    /* shadcn-ish accents from the real Tailwind v4 @theme */
+    .accent-emerald-500 { accent-color: #10b981; }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<!-- ────────────────────────────────────────────────────────────────── -->
+<!-- Two side-by-side states so you can compare:                        -->
+<!--   1) Pre-pack (idle)                                                -->
+<!--   2) Post-pack (results visible, including v0.4 PhaseBreakdown)     -->
+<!-- ────────────────────────────────────────────────────────────────── -->
+<div class="grid lg:grid-cols-2 gap-8 p-8">
+
+<!-- ════════════════════════════ PANEL 1: IDLE ════════════════════════════ -->
+<div>
+  <div class="mb-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">State 1 — Idle (just opened the app)</div>
+  <div class="min-h-screen bg-zinc-950 text-zinc-100 rounded-xl shadow-2xl border border-zinc-800 overflow-hidden">
+    <div class="mx-auto max-w-2xl space-y-6 p-6">
+
+      <!-- Header -->
+      <div>
+        <h1 class="text-2xl font-bold tracking-tight">ProjectPacker</h1>
+        <p class="mt-1 text-sm text-zinc-400">Pack a codebase into a single file for AI consumption.</p>
+      </div>
+
+      <!-- Target -->
+      <section class="space-y-2">
+        <h3 class="block text-xs font-semibold uppercase tracking-wide text-zinc-500">Target</h3>
+        <div class="flex gap-2">
+          <button class="rounded px-3 py-1 text-sm bg-emerald-700 text-white">Folder</button>
+          <button class="rounded px-3 py-1 text-sm bg-zinc-800 text-zinc-300 hover:bg-zinc-700">GitHub URL</button>
+        </div>
+        <div class="flex gap-2">
+          <input class="flex-1 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm" value="" placeholder="/path/to/project" />
+          <button class="rounded border border-zinc-600 bg-zinc-700 px-3 py-2 text-sm hover:bg-zinc-600">Browse…</button>
+        </div>
+      </section>
+
+      <!-- Goal -->
+      <section class="space-y-2">
+        <h3 class="block text-xs font-semibold uppercase tracking-wide text-zinc-500">Goal / Task Description</h3>
+        <textarea class="h-20 w-full resize-none rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm" placeholder="Describe what you want to build or fix…"></textarea>
+      </section>
+
+      <!-- Options -->
+      <section class="space-y-4">
+        <div class="text-xs font-semibold uppercase tracking-wide text-zinc-500">Options</div>
+        <div class="grid grid-cols-2 gap-x-8 gap-y-3">
+          <label class="flex items-start gap-2 cursor-pointer group">
+            <input type="checkbox" class="mt-0.5 h-4 w-4 shrink-0 rounded accent-emerald-500" />
+            <span><span class="text-sm text-zinc-200 group-hover:text-white">Compress to skeleton</span><span class="ml-1.5 text-xs text-zinc-500">strips bodies, keeps signatures</span></span>
+          </label>
+          <label class="flex items-start gap-2 cursor-pointer group">
+            <input type="checkbox" class="mt-0.5 h-4 w-4 shrink-0 rounded accent-emerald-500" />
+            <span><span class="text-sm text-zinc-200 group-hover:text-white">Remove comments</span><span class="ml-1.5 text-xs text-zinc-500">tree-sitter: Rust/Py/JS/TS</span></span>
+          </label>
+          <label class="flex items-start gap-2 cursor-pointer group">
+            <input type="checkbox" class="mt-0.5 h-4 w-4 shrink-0 rounded accent-emerald-500" checked />
+            <span><span class="text-sm text-zinc-200 group-hover:text-white">Respect .gitignore</span></span>
+          </label>
+          <label class="flex items-start gap-2 cursor-pointer group">
+            <input type="checkbox" class="mt-0.5 h-4 w-4 shrink-0 rounded accent-emerald-500" checked />
+            <span><span class="text-sm text-zinc-200 group-hover:text-white">Scan for secrets</span></span>
+          </label>
+          <label class="flex items-start gap-2 cursor-pointer group">
+            <input type="checkbox" class="mt-0.5 h-4 w-4 shrink-0 rounded accent-emerald-500" checked />
+            <span><span class="text-sm text-zinc-200 group-hover:text-white">Count tokens</span><span class="ml-1.5 text-xs text-zinc-500">counts via 7 model tokenizers (see AI table)</span></span>
+          </label>
+        </div>
+        <div class="flex flex-wrap items-center gap-6">
+          <label class="flex items-center gap-2">
+            <span class="text-xs font-semibold uppercase tracking-wide text-zinc-500">Output Format</span>
+            <select class="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm">
+              <option>XML  (Claude Code / Grok)</option><option>Markdown</option><option>Plain Text</option>
+            </select>
+          </label>
+          <label class="flex items-center gap-2">
+            <span class="text-xs font-semibold uppercase tracking-wide text-zinc-500">Max File Size</span>
+            <input type="number" class="w-20 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm" value="1024" />
+            <span class="text-xs text-zinc-500">KB</span>
+          </label>
+        </div>
+      </section>
+
+      <!-- Pack button (disabled — empty target) -->
+      <button class="w-full rounded bg-emerald-700 py-3 text-sm font-semibold opacity-40 cursor-not-allowed">Pack</button>
+
+    </div>
+  </div>
+</div>
+
+<!-- ════════════════════════════ PANEL 2: POST-PACK ════════════════════════════ -->
+<div>
+  <div class="mb-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">State 2 — Just packed a folder (results, with v0.4 phase breakdown)</div>
+  <div class="min-h-screen bg-zinc-950 text-zinc-100 rounded-xl shadow-2xl border border-zinc-800 overflow-hidden">
+    <div class="mx-auto max-w-2xl space-y-6 p-6">
+
+      <!-- Header -->
+      <div>
+        <h1 class="text-2xl font-bold tracking-tight">ProjectPacker</h1>
+        <p class="mt-1 text-sm text-zinc-400">Pack a codebase into a single file for AI consumption.</p>
+      </div>
+
+      <!-- Target -->
+      <section class="space-y-2">
+        <h3 class="block text-xs font-semibold uppercase tracking-wide text-zinc-500">Target</h3>
+        <div class="flex gap-2">
+          <button class="rounded px-3 py-1 text-sm bg-emerald-700 text-white">Folder</button>
+          <button class="rounded px-3 py-1 text-sm bg-zinc-800 text-zinc-300 hover:bg-zinc-700">GitHub URL</button>
+        </div>
+        <div class="flex gap-2">
+          <input class="flex-1 rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm" value="C:\Users\Carte\OneDrive\Desktop\ProjectPacker" />
+          <button class="rounded border border-zinc-600 bg-zinc-700 px-3 py-2 text-sm hover:bg-zinc-600">Browse…</button>
+        </div>
+      </section>
+
+      <!-- Goal -->
+      <section class="space-y-2">
+        <h3 class="block text-xs font-semibold uppercase tracking-wide text-zinc-500">Goal / Task Description</h3>
+        <textarea class="h-20 w-full resize-none rounded border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm">Add a "Save pack to file" button that calls save_pack_output.</textarea>
+      </section>
+
+      <!-- Options -->
+      <section class="space-y-4">
+        <div class="text-xs font-semibold uppercase tracking-wide text-zinc-500">Options</div>
+        <div class="grid grid-cols-2 gap-x-8 gap-y-3">
+          <label class="flex items-start gap-2 group">
+            <input type="checkbox" class="mt-0.5 h-4 w-4 shrink-0 rounded accent-emerald-500" />
+            <span><span class="text-sm text-zinc-200">Compress to skeleton</span><span class="ml-1.5 text-xs text-zinc-500">strips bodies, keeps signatures</span></span>
+          </label>
+          <label class="flex items-start gap-2 group">
+            <input type="checkbox" class="mt-0.5 h-4 w-4 shrink-0 rounded accent-emerald-500" />
+            <span><span class="text-sm text-zinc-200">Remove comments</span><span class="ml-1.5 text-xs text-zinc-500">tree-sitter: Rust/Py/JS/TS</span></span>
+          </label>
+          <label class="flex items-start gap-2 group">
+            <input type="checkbox" class="mt-0.5 h-4 w-4 shrink-0 rounded accent-emerald-500" checked />
+            <span><span class="text-sm text-zinc-200">Respect .gitignore</span></span>
+          </label>
+          <label class="flex items-start gap-2 group">
+            <input type="checkbox" class="mt-0.5 h-4 w-4 shrink-0 rounded accent-emerald-500" checked />
+            <span><span class="text-sm text-zinc-200">Scan for secrets</span></span>
+          </label>
+          <label class="flex items-start gap-2 group">
+            <input type="checkbox" class="mt-0.5 h-4 w-4 shrink-0 rounded accent-emerald-500" checked />
+            <span><span class="text-sm text-zinc-200">Count tokens</span><span class="ml-1.5 text-xs text-zinc-500">counts via 7 model tokenizers (see AI table)</span></span>
+          </label>
+        </div>
+        <div class="flex flex-wrap items-center gap-6">
+          <label class="flex items-center gap-2">
+            <span class="text-xs font-semibold uppercase tracking-wide text-zinc-500">Output Format</span>
+            <select class="rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm">
+              <option>XML  (Claude Code / Grok)</option><option>Markdown</option><option>Plain Text</option>
+            </select>
+          </label>
+          <label class="flex items-center gap-2">
+            <span class="text-xs font-semibold uppercase tracking-wide text-zinc-500">Max File Size</span>
+            <input type="number" class="w-20 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm" value="1024" />
+            <span class="text-xs text-zinc-500">KB</span>
+          </label>
+        </div>
+      </section>
+
+      <!-- Pack button -->
+      <button class="w-full rounded bg-emerald-700 py-3 text-sm font-semibold hover:bg-emerald-600">Pack</button>
+
+      <!-- ── Result ── -->
+      <div class="space-y-4">
+        <div class="text-xs font-semibold uppercase tracking-wide text-zinc-500">Result</div>
+
+        <!-- StatsBar -->
+        <div class="flex flex-wrap gap-x-6 gap-y-2 rounded border border-zinc-700 bg-zinc-800/50 px-4 py-3 text-sm">
+          <span><span class="text-zinc-400">Files </span><span class="font-medium text-zinc-100">142</span><span class="text-zinc-500"> / 198</span></span>
+          <span><span class="text-zinc-400">Skipped </span><span class="font-medium text-zinc-100">56</span></span>
+          <span><span class="text-zinc-400">Size </span><span class="font-medium text-zinc-100">1.2 MB</span></span>
+          <span><span class="text-zinc-400">Tokens </span><span class="font-medium text-zinc-100">87,420</span></span>
+          <span class="font-medium text-amber-400">⚠ 2 secrets detected</span>
+          <span><span class="text-zinc-400">Time </span><span class="font-medium text-zinc-100">412ms</span></span>
+        </div>
+
+        <!-- ✦ NEW IN v0.4: PhaseBreakdown row -->
+        <div class="-mt-2 flex flex-wrap gap-x-3 gap-y-1 px-1 text-xs font-mono text-zinc-500">
+          <span>walk 8ms</span>
+          <span>· process 213ms</span>
+          <span>· secret-scan 48ms</span>
+          <span>· tokenize 117ms</span>
+          <span>· emit 26ms</span>
+        </div>
+
+        <!-- Action buttons -->
+        <div class="flex flex-wrap gap-2">
+          <button class="rounded border border-zinc-600 bg-zinc-800 px-4 py-2 text-sm hover:bg-zinc-700">Copy Pack XML</button>
+          <button class="rounded border border-zinc-600 bg-zinc-800 px-4 py-2 text-sm hover:bg-zinc-700">Copy Claude Code Prompt</button>
+          <button class="rounded border border-zinc-600 bg-zinc-800 px-4 py-2 text-sm hover:bg-zinc-700">New Pack</button>
+        </div>
+
+        <!-- Warnings -->
+        <div class="rounded border border-amber-700 bg-amber-950/30 px-4 py-3 text-sm">
+          <div class="mb-1 font-semibold text-amber-400">Warnings</div>
+          <div class="text-xs text-amber-300">[encoding-fallback] note.txt — Decoded as non-UTF-8 (UTF-16 or Windows-1252)</div>
+          <div class="text-xs text-amber-300">[secret-scan] redacted 2 entries; see security_report block in output</div>
+        </div>
+
+        <!-- AI Context Table -->
+        <div class="overflow-hidden rounded border border-zinc-700">
+          <div class="border-b border-zinc-700 bg-zinc-800 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+            AI Context Window Compatibility — 87,420 tokens packed
+          </div>
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b border-zinc-700 text-xs text-zinc-500">
+                <th class="px-3 py-2 text-left font-normal">Model</th>
+                <th class="px-3 py-2 text-right font-normal">Tokens</th>
+                <th class="px-3 py-2 text-right font-normal">Context</th>
+                <th class="px-3 py-2 text-center font-normal">Fits?</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border-b border-zinc-800"><td class="px-3 py-2 text-zinc-200">GPT-4o / GPT-4o mini</td><td class="px-3 py-2 text-right text-zinc-300">87,420</td><td class="px-3 py-2 text-right text-zinc-400">128,000</td><td class="px-3 py-2 text-center"><span class="font-medium text-emerald-400">✓ 68%</span></td></tr>
+              <tr class="border-b border-zinc-800"><td class="px-3 py-2 text-zinc-200">Claude 3.x / Claude 4.x <span class="ml-1 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">approx</span></td><td class="px-3 py-2 text-right text-zinc-300">81,212</td><td class="px-3 py-2 text-right text-zinc-400">200,000</td><td class="px-3 py-2 text-center"><span class="font-medium text-emerald-400">✓ 41%</span></td></tr>
+              <tr class="border-b border-zinc-800"><td class="px-3 py-2 text-zinc-200">o1 / o3</td><td class="px-3 py-2 text-right text-zinc-300">87,420</td><td class="px-3 py-2 text-right text-zinc-400">200,000</td><td class="px-3 py-2 text-center"><span class="font-medium text-emerald-400">✓ 44%</span></td></tr>
+              <tr class="border-b border-zinc-800"><td class="px-3 py-2 text-zinc-200">DeepSeek V3</td><td class="px-3 py-2 text-right text-zinc-300">94,103</td><td class="px-3 py-2 text-right text-zinc-400">128,000</td><td class="px-3 py-2 text-center"><span class="font-medium text-emerald-400">✓ 73%</span></td></tr>
+              <tr class="border-b border-zinc-800"><td class="px-3 py-2 text-zinc-200">Llama 3.x (70B+)</td><td class="px-3 py-2 text-right text-zinc-300">99,508</td><td class="px-3 py-2 text-right text-zinc-400">128,000</td><td class="px-3 py-2 text-center"><span class="font-medium text-emerald-400">✓ 77%</span></td></tr>
+              <tr class="border-b border-zinc-800"><td class="px-3 py-2 text-zinc-200">Qwen 2.5 (7B+)</td><td class="px-3 py-2 text-right text-zinc-300">92,144</td><td class="px-3 py-2 text-right text-zinc-400">128,000</td><td class="px-3 py-2 text-center"><span class="font-medium text-emerald-400">✓ 71%</span></td></tr>
+              <tr class="border-b border-zinc-800"><td class="px-3 py-2 text-zinc-200">Mistral 7B / Mixtral</td><td class="px-3 py-2 text-right text-zinc-300">95,732</td><td class="px-3 py-2 text-right text-zinc-400">32,768</td><td class="px-3 py-2 text-center"><span class="font-medium text-red-400">✗ 292%</span></td></tr>
+              <tr class="border-b border-zinc-800"><td class="px-3 py-2 text-zinc-200">Grok 2 / 3 <span class="ml-1 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">approx</span></td><td class="px-3 py-2 text-right text-zinc-300">87,420</td><td class="px-3 py-2 text-right text-zinc-400">131,072</td><td class="px-3 py-2 text-center"><span class="font-medium text-emerald-400">✓ 67%</span></td></tr>
+              <tr class="border-b border-zinc-800"><td class="px-3 py-2 text-zinc-200">Gemini 2.5 Pro <span class="ml-1 rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-400">approx</span></td><td class="px-3 py-2 text-right text-zinc-300">91,791</td><td class="px-3 py-2 text-right text-zinc-400">1,048,576</td><td class="px-3 py-2 text-center"><span class="font-medium text-emerald-400">✓ 9%</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+</div>
+
+<!-- ════════════════════════════ Drop overlay (optional 3rd state) ════════════════════════════ -->
+<div class="p-8">
+  <div class="mb-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">State 3 — Mid drag-drop (the v0.4 overlay)</div>
+  <div class="relative h-64 bg-zinc-950 rounded-xl border border-zinc-800 overflow-hidden">
+    <div class="absolute inset-0 flex items-center justify-center bg-emerald-500/10 backdrop-blur-sm">
+      <div class="rounded-lg border-2 border-dashed border-emerald-400 bg-zinc-900/90 px-8 py-6 text-lg font-semibold text-emerald-300 shadow-2xl">Drop folder to pack</div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
