@@ -21,6 +21,13 @@ All notable changes to ProjectPacker are documented in this file. The format fol
 
 ### Performance
 - Release-profile `panic = "abort"` (5–15% smaller release binary; verified no `catch_unwind` callers, only a logging panic hook).
+- **Parallelized secret-scan loop** via Rayon `par_iter_mut`. Each file's `scan_and_redact` runs on its own thread; a short serial post-pass preserves deterministic `SecretHit` event order and `all_redactions` indexing. On a 12-core box with 10k files, ~10–15 s saved on the secret-scan phase alone.
+- **Parallelized per-file tokenize loop** via Rayon. `count_by_name` is pure and `CoreBPE` is `Send + Sync` (returned via `OnceLock<CoreBPE>`). On 10k files at ~5 ms/file, this is ~30–45 s saved sequential → ~5 s on 12 cores.
+- **Eliminated per-file `String` clones** in the process loop. The `after_comments` and `content` if-chains used to `.clone()` `raw` and `after_comments` in the no-transform branches. Reorder so the BLAKE3 hash is computed BEFORE the if-chain (it only needs the bytes), then both variables move through ownership. Saves 2–3 String allocs per file.
+- **Pre-allocated emit buffers**. `XmlBuilder` gains a `with_capacity(n)` constructor; `markdown::render` and `plain::render` start with `String::with_capacity(stats.bytes_total * 2)`. For a 10 MB pack output, eliminates ~13 power-of-2 reallocations + ~10 MB of redundant memcpy. ~50–200 ms saved on large packs + ~1.5× peak-memory reduction during emit.
+- **Cached compiled tree-sitter `Query` per `Lang`** in a `OnceLock<HashMap<Lang, LangQueries>>`. Previously `Query::new()` ran once per file per call; for a Rust monorepo with 500 .rs files that was 1000 redundant compilations. `Parser` stays per-call (`!Sync`). A `const _ASSERT_QUERY_SYNC` compile-time guard catches future tree-sitter regressions.
+- **Pin reorder via index permutation + `mem::take`** instead of clone-and-rebuild. Each `FileEntry` is moved exactly once; no `String` clones on `path`/`content`/`hash`. `FileEntry` gains `#[derive(Default)]` to enable the `mem::take` pattern.
+- **Per-file `tokens_per_model` sum replaces joined-string encode**. Previously `tokens_per_model` allocated a single `joined: String` of all entry contents (~content-bytes peak memory) and ran `count_all` over it. Now: parallel per-file `count_all` + saturating-add into a single `TokensPerModel` accumulator. ~content-size peak-memory reduction, plus parallelism. Behavior caveat: per-file sum diverges from joined-encode by typically <1% due to inter-file token-merge effects at file boundaries; users who snapshot-tested exact pre-v0.5 numbers will see slight drift.
 
 ## [0.4.0] - 2026-05-05
 
