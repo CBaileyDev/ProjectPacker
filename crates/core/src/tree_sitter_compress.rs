@@ -1,11 +1,73 @@
+use std::collections::HashMap;
+use std::sync::OnceLock;
 use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+// Compile-time assertion: this entire module's caching strategy depends on
+// tree_sitter::Query being Sync (we share &'static Query across Rayon
+// threads). If a future tree-sitter version drops Sync, this will fail to
+// compile and surface the regression at build time rather than as UB.
+const _ASSERT_QUERY_SYNC: fn() = || {
+    fn assert_sync<T: Sync>() {}
+    assert_sync::<tree_sitter::Query>();
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Lang {
     Rust,
     Python,
     JavaScript,
     TypeScript,
+}
+
+fn lang_to_tree_sitter(lang: Lang) -> tree_sitter::Language {
+    match lang {
+        Lang::Rust => tree_sitter_rust::LANGUAGE.into(),
+        Lang::Python => tree_sitter_python::LANGUAGE.into(),
+        Lang::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
+        Lang::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
+    }
+}
+
+fn compress_query_for(lang: Lang) -> &'static str {
+    match lang {
+        Lang::Rust => {
+            r#"(function_item) @item (impl_item) @item (struct_item) @item (enum_item) @item (trait_item) @item"#
+        }
+        Lang::Python => r#"(function_definition) @item (class_definition) @item"#,
+        Lang::JavaScript | Lang::TypeScript => {
+            r#"(function_declaration) @item (class_declaration) @item (method_definition) @item"#
+        }
+    }
+}
+
+fn comment_query_for(lang: Lang) -> &'static str {
+    match lang {
+        Lang::Rust => "(line_comment) @c (block_comment) @c",
+        Lang::Python => "(comment) @c",
+        Lang::JavaScript | Lang::TypeScript => "(comment) @c",
+    }
+}
+
+struct LangQueries {
+    compress: Query,
+    comments: Query,
+}
+
+static QUERIES: OnceLock<HashMap<Lang, LangQueries>> = OnceLock::new();
+
+fn queries() -> &'static HashMap<Lang, LangQueries> {
+    QUERIES.get_or_init(|| {
+        let mut m: HashMap<Lang, LangQueries> = HashMap::new();
+        for &lang in &[Lang::Rust, Lang::Python, Lang::JavaScript, Lang::TypeScript] {
+            let language = lang_to_tree_sitter(lang);
+            let compress = Query::new(&language, compress_query_for(lang))
+                .expect("compress query must compile");
+            let comments = Query::new(&language, comment_query_for(lang))
+                .expect("comment query must compile");
+            m.insert(lang, LangQueries { compress, comments });
+        }
+        m
+    })
 }
 
 pub fn detect_language(path: &str) -> Option<Lang> {
@@ -24,13 +86,7 @@ pub fn detect_language(path: &str) -> Option<Lang> {
 }
 
 pub fn compress(source: &str, lang: Lang) -> String {
-    let language: tree_sitter::Language = match lang {
-        Lang::Rust => tree_sitter_rust::LANGUAGE.into(),
-        Lang::Python => tree_sitter_python::LANGUAGE.into(),
-        Lang::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
-        Lang::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-    };
-
+    let language = lang_to_tree_sitter(lang);
     let mut parser = Parser::new();
     if parser.set_language(&language).is_err() {
         return source.to_string();
@@ -39,18 +95,10 @@ pub fn compress(source: &str, lang: Lang) -> String {
         return source.to_string();
     };
 
-    let query_src = match lang {
-        Lang::Rust => {
-            r#"(function_item) @item (impl_item) @item (struct_item) @item (enum_item) @item (trait_item) @item"#
-        }
-        Lang::Python => r#"(function_definition) @item (class_definition) @item"#,
-        Lang::JavaScript | Lang::TypeScript => {
-            r#"(function_declaration) @item (class_declaration) @item (method_definition) @item"#
-        }
-    };
-    let Ok(query) = Query::new(&language, query_src) else {
-        return source.to_string();
-    };
+    let query = &queries()
+        .get(&lang)
+        .expect("query cache must contain all Lang variants")
+        .compress;
 
     let mut cursor = QueryCursor::new();
     let mut out = String::new();
@@ -58,7 +106,7 @@ pub fn compress(source: &str, lang: Lang) -> String {
     out.push_str("// COMPRESSED skeleton — bodies elided\n");
 
     let python_style = matches!(lang, Lang::Python);
-    let mut matches_iter = cursor.matches(&query, tree.root_node(), bytes);
+    let mut matches_iter = cursor.matches(query, tree.root_node(), bytes);
     while let Some(m) = matches_iter.next() {
         for capture in m.captures {
             let node = capture.node;
@@ -106,13 +154,7 @@ fn first_colon(bytes: &[u8], start: usize, end: usize) -> usize {
 /// should be passed through unchanged at the call site — this function
 /// requires a concrete `Lang`.
 pub fn remove_comments(source: &str, lang: Lang) -> String {
-    let language: tree_sitter::Language = match lang {
-        Lang::Rust => tree_sitter_rust::LANGUAGE.into(),
-        Lang::Python => tree_sitter_python::LANGUAGE.into(),
-        Lang::JavaScript => tree_sitter_javascript::LANGUAGE.into(),
-        Lang::TypeScript => tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into(),
-    };
-
+    let language = lang_to_tree_sitter(lang);
     let mut parser = Parser::new();
     if parser.set_language(&language).is_err() {
         return source.to_string();
@@ -121,19 +163,15 @@ pub fn remove_comments(source: &str, lang: Lang) -> String {
         return source.to_string();
     };
 
-    let query_src = match lang {
-        Lang::Rust => "(line_comment) @c (block_comment) @c",
-        Lang::Python => "(comment) @c",
-        Lang::JavaScript | Lang::TypeScript => "(comment) @c",
-    };
-    let Ok(query) = Query::new(&language, query_src) else {
-        return source.to_string();
-    };
+    let query = &queries()
+        .get(&lang)
+        .expect("query cache must contain all Lang variants")
+        .comments;
 
     let bytes = source.as_bytes();
     let mut cursor = QueryCursor::new();
     let mut ranges: Vec<(usize, usize)> = Vec::new();
-    let mut iter = cursor.matches(&query, tree.root_node(), bytes);
+    let mut iter = cursor.matches(query, tree.root_node(), bytes);
     while let Some(m) = iter.next() {
         for cap in m.captures {
             ranges.push((cap.node.start_byte(), cap.node.end_byte()));
