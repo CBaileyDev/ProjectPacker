@@ -223,6 +223,11 @@ pub fn pack(
     // ── Pin reorder ───────────────────────────────────────────────────────────
     // Partition entries into (pinned, non-pinned), then reassemble with pinned
     // entries in declaration order first, non-pinned in their original walk order.
+    //
+    // Index-permutation + `mem::take`: we never clone a FileEntry. Each entry
+    // is moved exactly once into the `taken` staging Vec (leaving an empty
+    // `Default::default()` placeholder in its original slot), then drained
+    // back into `entries` in permutation order via a second `mem::take`.
     {
         // Build a lookup from path → index in the `entries` Vec.
         let mut path_to_idx: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
@@ -230,28 +235,39 @@ pub fn pack(
             path_to_idx.insert(e.path.as_str(), i);
         }
 
-        // Collect pinned entries in declaration order (skipping absent ones).
-        let mut pinned_entries: Vec<FileEntry> = Vec::new();
-        let mut pinned_indices: HashSet<usize> = HashSet::new();
+        // Collect pinned indices in declaration order (skipping absent + dedup'd).
+        let mut pinned_indices: Vec<usize> = Vec::new();
+        let mut pinned_seen: HashSet<usize> = HashSet::new();
         for rel in &pinned_rel_paths {
             if let Some(&idx) = path_to_idx.get(rel.as_str()) {
-                if !pinned_indices.contains(&idx) {
-                    pinned_indices.insert(idx);
-                    pinned_entries.push(entries[idx].clone());
+                if pinned_seen.insert(idx) {
+                    pinned_indices.push(idx);
                 }
             }
         }
 
-        // Collect non-pinned entries in their original walk order.
-        let non_pinned: Vec<FileEntry> = entries
-            .iter()
-            .enumerate()
-            .filter(|(i, _)| !pinned_indices.contains(i))
-            .map(|(_, e)| e.clone())
+        // Non-pinned indices in their original walk order.
+        let non_pinned_indices: Vec<usize> = (0..entries.len())
+            .filter(|i| !pinned_seen.contains(i))
             .collect();
 
-        entries = pinned_entries;
-        entries.extend(non_pinned);
+        // Final permutation: pinned-first, then non-pinned.
+        let perm: Vec<usize> = pinned_indices
+            .into_iter()
+            .chain(non_pinned_indices)
+            .collect();
+
+        // `path_to_idx` borrows `entries` immutably; drop it before we mutate.
+        drop(path_to_idx);
+
+        // Move each entry exactly once via `mem::take` + perm-driven reassembly.
+        // First pass: take every slot into `taken` (originals are now Default).
+        // Second pass: take from `taken[perm[i]]` to build the final order.
+        let mut taken: Vec<FileEntry> = entries.iter_mut().map(std::mem::take).collect();
+        entries = perm
+            .into_iter()
+            .map(|i| std::mem::take(&mut taken[i]))
+            .collect();
     }
     // ── End pin reorder ───────────────────────────────────────────────────────
 

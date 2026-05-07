@@ -11,7 +11,7 @@ pub use orchestrator::{pack, PackEvent};
 use serde::Serialize;
 use specta::Type;
 
-#[derive(Debug, Clone, Serialize, Type)]
+#[derive(Debug, Clone, Default, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
 pub struct FileEntry {
     pub path: String,
