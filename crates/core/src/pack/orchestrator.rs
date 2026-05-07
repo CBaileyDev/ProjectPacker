@@ -7,6 +7,7 @@ use crate::pack::FileEntry;
 use crate::protocol;
 use crate::secrets;
 use crate::tokens;
+use crate::tokens::TokensPerModel;
 use crate::tree_sitter_compress;
 use crate::types::{
     FileFound, PackFormat, PackOptions, PackRedaction, PackResult, PackStats,
@@ -344,10 +345,15 @@ pub fn pack(
     // `tokens_per_model` is always `Some(_)` when `count_tokens` is on so
     // the UI can distinguish "count_tokens disabled" from "count_tokens
     // enabled but a tokenizer hiccupped" — the latter falls through to a
-    // zero-filled struct (effectively unreachable in practice). Both
-    // `tokens_per_model` and `tokens_total` reflect joined per-file content,
-    // NOT the final emitted output: pack overhead (XML/MD wrappers, stats
-    // block, protocol envelope) typically adds 5–15% on top.
+    // zero-filled struct (effectively unreachable in practice).
+    //
+    // Per-model token counts are summed per-file rather than encoding a joined
+    // string. This trades a typically-<1% loss in accuracy (inter-file token-merge
+    // effects at file boundaries) for ~content-size reduction in peak memory and
+    // for-free parallelization across cores. Documented in CHANGELOG as a behavior
+    // note for users who pinned exact pre-v0.5 token numbers. Pack overhead
+    // (XML/MD wrappers, stats block, protocol envelope) still adds 5–15% on top
+    // of the reported numbers vs. the final emitted output.
     let (tokens_per_model, tokenize_ms) = if opts.count_tokens {
         let tokenize_start = Instant::now();
         // Parallel per-file tokenization: each thread owns one entry slot
@@ -374,12 +380,26 @@ pub fn pack(
             })
             .collect();
         warnings.extend(tokenize_warnings.into_iter().flatten());
-        let joined: String = entries
-            .iter()
-            .map(|e| e.content.as_str())
-            .collect::<Vec<_>>()
-            .join("\n\n");
-        let per_model = Some(tokens::count_all(&joined).unwrap_or_default());
+
+        // Parallel per-file count_all. Each file is encoded once across all 7 model
+        // tokenizers; the per-file results are summed via saturating arithmetic into
+        // a single TokensPerModel. This avoids the ~content-bytes peak-memory of
+        // the previous joined-string approach and parallelizes across cores.
+        let per_file_counts: Vec<TokensPerModel> = entries
+            .par_iter()
+            .map(|e| tokens::count_all(&e.content).unwrap_or_default())
+            .collect();
+        let mut acc = TokensPerModel::default();
+        for c in per_file_counts {
+            acc.gpt4o = acc.gpt4o.saturating_add(c.gpt4o);
+            acc.claude = acc.claude.saturating_add(c.claude);
+            acc.llama3 = acc.llama3.saturating_add(c.llama3);
+            acc.qwen2_5 = acc.qwen2_5.saturating_add(c.qwen2_5);
+            acc.deep_seek = acc.deep_seek.saturating_add(c.deep_seek);
+            acc.mistral = acc.mistral.saturating_add(c.mistral);
+            acc.gemini_approx = acc.gemini_approx.saturating_add(c.gemini_approx);
+        }
+        let per_model = Some(acc);
         (per_model, Some(tokenize_start.elapsed().as_millis() as u32))
     } else {
         (None, None)
