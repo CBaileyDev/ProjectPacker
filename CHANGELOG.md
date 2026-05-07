@@ -2,6 +2,26 @@
 
 All notable changes to ProjectPacker are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Removed
+- **Dead Rust deps:** `parking_lot`, `arboard`, `anyhow` (app crate), `proptest` (core dev-deps). Verified zero `use` statements anywhere in the workspace.
+- **Dead frontend deps (~10):** `sonner`, `react-hook-form`, `@hookform/resolvers`, `zod`, `class-variance-authority`, `lucide-react`, `tailwind-merge`, `clsx`, `tw-animate-css`, and the `radix-ui` meta-package. All were transitive of the unused shadcn primitives.
+- **`frontend/src/components/ui/`** (entire directory, 14 vendored shadcn primitives, ~1063 LoC). Zero imports outside the folder itself.
+- **`frontend/src/lib/theme.ts`** (`useTheme`) — zero callers; dark theme is hardcoded throughout `Pack.tsx`.
+- **`frontend/src/lib/cn.ts`** — only used by the deleted `components/ui/`.
+- **`XmlBuilder::git_logs`** method (zero callers; `include_git_history` was never plumbed through).
+- **`PackOptions.include_git_history`** field — declared but never read by the orchestrator.
+- **`#[cfg(test)] pub fn files`** test alias in `pack/xml.rs` (rewired 2 callers to `files_legacy`).
+
+### Changed
+- **`use crate::types::*;` glob in `pack/orchestrator.rs`** replaced with explicit list of the 11 actually-used identifiers.
+- **`format!`-into-`push_str` patterns in `markdown.rs` and `plain.rs`** migrated to `writeln!`/`write!` (xml.rs already used this pattern). Same output, fewer heap allocations per pack.
+- **`pushEvent` Zustand action** caps the `events` array at 256 entries (UI only renders the last 16; prevents O(n²) growth on long-running packs).
+
+### Performance
+- Release-profile `panic = "abort"` (5–15% smaller release binary; verified no `catch_unwind` callers, only a logging panic hook).
+
 ## [0.4.0] - 2026-05-05
 
 ### Added
