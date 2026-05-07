@@ -51,7 +51,9 @@ export const useApp = create<AppState>()(
         set({ jobId: id, status: "running", events: [], result: null }),
       pushEvent: (e) =>
         set((s) => ({
-          events: [...s.events, e],
+          // Cap at 256 — UI only ever displays the last 16 (ProgressLog.slice(-16)).
+          // Prevents O(n²) memory churn during long-running packs that emit many events.
+          events: [...s.events, e].slice(-256),
           status:
             e.kind === "done"
               ? "done"
