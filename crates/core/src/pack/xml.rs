@@ -20,6 +20,12 @@ impl XmlBuilder {
         Self { out: String::new() }
     }
 
+    pub fn with_capacity(cap: usize) -> Self {
+        Self {
+            out: String::with_capacity(cap),
+        }
+    }
+
     pub fn open_repository(&mut self) -> &mut Self {
         self.out.push_str("<repository>\n");
         self

@@ -164,33 +164,36 @@ pub fn pack(
                 }
             };
 
-            // Step 1: strip comments if requested (tree-sitter languages only).
-            let after_comments = if opts.remove_comments {
-                if let Some(lang) = tree_sitter_compress::detect_language(&f.path) {
-                    tree_sitter_compress::remove_comments(&raw, lang)
-                } else {
-                    raw.clone()
-                }
-            } else {
-                raw.clone()
-            };
-
-            // Step 2: optionally compress to a skeleton.
-            let content = if opts.compress {
-                if let Some(lang) = tree_sitter_compress::detect_language(&f.path) {
-                    tree_sitter_compress::compress(&after_comments, lang)
-                } else {
-                    after_comments.clone()
-                }
-            } else {
-                after_comments
-            };
-
+            // Hash the original bytes BEFORE any comment-strip / compress transforms,
+            // so we can move `raw` into `after_comments` below without an extra clone.
+            //
             // Per-file `tokens` is computed AFTER the secret-scan loop so
             // it describes the same (post-redaction) content as
             // `tokens_total` and `tokens_per_model`. See the post-redaction
             // pass below.
             let hash = hash_content(raw.as_bytes(), &abs);
+
+            // Step 1: strip comments if requested (tree-sitter languages only).
+            let after_comments: String = if opts.remove_comments {
+                if let Some(lang) = tree_sitter_compress::detect_language(&f.path) {
+                    tree_sitter_compress::remove_comments(&raw, lang)
+                } else {
+                    raw
+                }
+            } else {
+                raw
+            };
+
+            // Step 2: optionally compress to a skeleton.
+            let content: String = if opts.compress {
+                if let Some(lang) = tree_sitter_compress::detect_language(&f.path) {
+                    tree_sitter_compress::compress(&after_comments, lang)
+                } else {
+                    after_comments
+                }
+            } else {
+                after_comments
+            };
 
             (
                 FileEntry {
@@ -420,7 +423,7 @@ pub fn pack(
     let output = match opts.format {
         PackFormat::Xml => {
             let protocol_block = protocol::block_for_pack(&opts.goal, &opts.protocol_version)?;
-            let mut builder = XmlBuilder::new();
+            let mut builder = XmlBuilder::with_capacity((stats.bytes_total as usize).saturating_mul(2));
             builder
                 .open_repository()
                 .raw_block(&protocol_block)
