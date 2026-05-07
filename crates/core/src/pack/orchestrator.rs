@@ -35,6 +35,8 @@ pub fn pack(
 
     // _clone_guard keeps the GitHub TempDir alive for the duration of pack();
     // dropping it at end-of-fn cleans up the cloned repo. None for Folder targets.
+    // resolve_target may emit `Cloning` for GitHub targets BEFORE `Started` —
+    // preserving the historical event order.
     let (root, label, _clone_guard) = resolve_target(target, job_id, &tx)?;
 
     let _ = tx.send(ProgressEvent::Started {
@@ -42,10 +44,121 @@ pub fn pack(
         target_label: label.clone(),
     });
 
+    let (outcome, pinned_rel_paths, pinned_set, walk_ms) = run_walk_phase(&root, opts);
+
+    let _ = tx.send(ProgressEvent::Walking {
+        files_scanned: outcome.included.len() as u32,
+    });
+    let _ = tx.send(ProgressEvent::FileFoundBatch {
+        paths: outcome.included.clone(),
+    });
+    for (p, r) in &outcome.skipped {
+        let _ = tx.send(ProgressEvent::FileSkipped {
+            path: p.clone(),
+            reason: r.clone(),
+        });
+    }
+
+    // Checkpoint 1: after walk, before processing.
+    if cancel.is_cancelled() {
+        return Err(CoreError::Cancelled);
+    }
+
+    let _ = tx.send(ProgressEvent::BuildingOutput);
+
+    let (mut entries, process_warnings, process_ms) =
+        run_process_phase(&outcome, opts, &root, &cancel);
+    warnings.extend(process_warnings);
+
+    // Checkpoint 2: after process loop.
+    if cancel.is_cancelled() {
+        return Err(CoreError::Cancelled);
+    }
+
+    let pinned_count = apply_pin_reorder(&mut entries, &pinned_rel_paths, &pinned_set);
+
+    let (secrets_found, all_redactions, secret_scan_ms) =
+        run_secret_scan_phase(&mut entries, opts, &tx);
+
+    let (tokens_per_model, tokenize_ms, tokenize_warnings) =
+        run_tokenize_phase(&mut entries, opts);
+    warnings.extend(tokenize_warnings);
+
+    let (bytes_total, tokens_total) = accumulate_byte_token_totals(&entries);
+
+    // files_total accounting:
+    //   included = files we kept (walker matches + force-included pins)
+    //   skipped  = files we explicitly excluded (after pin pre-pass removed
+    //              any pinned-but-skipped entries from this list)
+    //   total    = included + skipped
+    //
+    // First construction: real per-phase fields are known, but `emit_ms` cannot
+    // be measured until after the renderer runs below. We use `emit_ms: 0` and
+    // then refresh `stats` with the real `emit_ms` (and an updated total
+    // `duration_ms`) immediately after the emit phase. Both `duration_ms` and
+    // `emit_ms` therefore reflect the post-emit wall clock in the final stats
+    // shipped to the renderer's `<security_report>`/UI; the renderer only sees
+    // the pre-emit version, but its `emit_ms` is never serialized into the
+    // pack output (renderers don't read that field today).
+    let stats = PackStats {
+        files_total: (outcome.included.len() + outcome.skipped.len()) as u32,
+        files_included: entries.len() as u32,
+        files_skipped: outcome.skipped.len() as u32,
+        bytes_total,
+        tokens_total: opts.count_tokens.then_some(tokens_total),
+        tokens_per_model,
+        secrets_found,
+        duration_ms: start.elapsed().as_millis() as u32,
+        walk_ms,
+        process_ms,
+        secret_scan_ms,
+        tokenize_ms,
+        emit_ms: 0,
+    };
+
+    let (output, emit_ms) =
+        run_emit_phase(&entries, &stats, opts, &label, &all_redactions, pinned_count)?;
+
+    // Refresh stats with real emit_ms and updated total duration_ms.
+    let stats = PackStats {
+        emit_ms,
+        duration_ms: start.elapsed().as_millis() as u32,
+        ..stats
+    };
+
+    let claude_code_prompt = protocol::claude_code_prompt(&opts.protocol_version)?;
+
+    // Checkpoint 3: after emit, before returning result.
+    if cancel.is_cancelled() {
+        return Err(CoreError::Cancelled);
+    }
+
+    let _ = tx.send(ProgressEvent::Done {
+        stats: stats.clone(),
+    });
+
+    Ok(PackResult {
+        output,
+        claude_code_prompt,
+        stats,
+        warnings,
+        redactions: all_redactions,
+    })
+}
+
+/// Walker + pin pre-pass. Target resolution + the `Started` event happen
+/// in `pack()` directly so the historical event order (`Cloning` →
+/// `Started` → walker) is preserved without threading the channel down here.
+///
+/// Returns `(outcome, pinned_rel_paths, pinned_set, walk_ms)`.
+fn run_walk_phase(
+    root: &Path,
+    opts: &PackOptions,
+) -> (walker::WalkOutcome, Vec<String>, HashSet<String>, u32) {
     let walk_start = Instant::now();
-    let matcher = IgnoreMatcher::new(&root, &opts.custom_ignore_patterns, opts.respect_gitignore);
+    let matcher = IgnoreMatcher::new(root, &opts.custom_ignore_patterns, opts.respect_gitignore);
     let mut outcome = walker::walk(
-        &root,
+        root,
         &matcher,
         &WalkOptions {
             max_file_size_kb: opts.max_file_size_kb,
@@ -57,7 +170,7 @@ pub fn pack(
     // ones need to be force-included (i.e. weren't already picked up by the
     // walker). We also build the set of pinned paths so we can reorder entries
     // afterwards (pinned entries render first).
-    let pinned_rel_paths: Vec<String> = pin::pinned_files(&root);
+    let pinned_rel_paths: Vec<String> = pin::pinned_files(root);
 
     // Build a fast lookup of paths already in outcome.included.
     let mut already_included: HashSet<String> = outcome
@@ -101,27 +214,17 @@ pub fn pack(
     // ── End pin pre-pass ──────────────────────────────────────────────────────
     let walk_ms = walk_start.elapsed().as_millis() as u32;
 
-    let _ = tx.send(ProgressEvent::Walking {
-        files_scanned: outcome.included.len() as u32,
-    });
-    let _ = tx.send(ProgressEvent::FileFoundBatch {
-        paths: outcome.included.clone(),
-    });
+    (outcome, pinned_rel_paths, pinned_set, walk_ms)
+}
 
-    for (p, r) in &outcome.skipped {
-        let _ = tx.send(ProgressEvent::FileSkipped {
-            path: p.clone(),
-            reason: r.clone(),
-        });
-    }
-
-    // Checkpoint 1: after walk, before processing.
-    if cancel.is_cancelled() {
-        return Err(CoreError::Cancelled);
-    }
-
-    let _ = tx.send(ProgressEvent::BuildingOutput);
-
+/// Per-file processing in `par_iter`: read + encoding-fallback + comment-strip +
+/// compress + hash. Returns `(entries, accumulated_warnings, process_ms)`.
+fn run_process_phase(
+    outcome: &walker::WalkOutcome,
+    opts: &PackOptions,
+    root: &Path,
+    cancel: &CancellationToken,
+) -> (Vec<FileEntry>, Vec<PackWarning>, u32) {
     let process_start = Instant::now();
     let results: Vec<(FileEntry, Vec<PackWarning>)> = outcome
         .included
@@ -210,75 +313,80 @@ pub fn pack(
         .collect();
     let process_ms = process_start.elapsed().as_millis() as u32;
 
-    // Checkpoint 2: after process loop.
-    if cancel.is_cancelled() {
-        return Err(CoreError::Cancelled);
-    }
-
     let mut entries: Vec<FileEntry> = Vec::with_capacity(results.len());
+    let mut warnings: Vec<PackWarning> = Vec::new();
     for (entry, w) in results {
         entries.push(entry);
         warnings.extend(w);
     }
 
-    // ── Pin reorder ───────────────────────────────────────────────────────────
-    // Partition entries into (pinned, non-pinned), then reassemble with pinned
-    // entries in declaration order first, non-pinned in their original walk order.
-    //
-    // Index-permutation + `mem::take`: we never clone a FileEntry. Each entry
-    // is moved exactly once into the `taken` staging Vec (leaving an empty
-    // `Default::default()` placeholder in its original slot), then drained
-    // back into `entries` in permutation order via a second `mem::take`.
-    {
-        // Build a lookup from path → index in the `entries` Vec.
-        let mut path_to_idx: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
-        for (i, e) in entries.iter().enumerate() {
-            path_to_idx.insert(e.path.as_str(), i);
-        }
+    (entries, warnings, process_ms)
+}
 
-        // Collect pinned indices in declaration order (skipping absent + dedup'd).
-        let mut pinned_indices: Vec<usize> = Vec::new();
-        let mut pinned_seen: HashSet<usize> = HashSet::new();
-        for rel in &pinned_rel_paths {
-            if let Some(&idx) = path_to_idx.get(rel.as_str()) {
-                if pinned_seen.insert(idx) {
-                    pinned_indices.push(idx);
-                }
+/// Reorder `entries` so pinned files appear first (in declaration order), then
+/// non-pinned files in their original walk order. Returns the pinned-prefix
+/// length: how many entries at the front of `entries` are pinned.
+///
+/// Index-permutation + `mem::take`: we never clone a `FileEntry`. Each entry
+/// is moved exactly once into the `taken` staging Vec (leaving an empty
+/// `Default::default()` placeholder in its original slot), then drained back
+/// into `entries` in permutation order via a second `mem::take`. The pinned-
+/// count returned is passed to markdown/plain renderers so they keep the
+/// pinned segment in declaration order while alphabetically sorting the
+/// non-pinned tail.
+fn apply_pin_reorder(
+    entries: &mut Vec<FileEntry>,
+    pinned_rel_paths: &[String],
+    pinned_set: &HashSet<String>,
+) -> usize {
+    // Build a lookup from path → index in the `entries` Vec.
+    let mut path_to_idx: std::collections::HashMap<&str, usize> =
+        std::collections::HashMap::new();
+    for (i, e) in entries.iter().enumerate() {
+        path_to_idx.insert(e.path.as_str(), i);
+    }
+
+    // Collect pinned indices in declaration order (skipping absent + dedup'd).
+    let mut pinned_indices: Vec<usize> = Vec::new();
+    let mut pinned_seen: HashSet<usize> = HashSet::new();
+    for rel in pinned_rel_paths {
+        if let Some(&idx) = path_to_idx.get(rel.as_str()) {
+            if pinned_seen.insert(idx) {
+                pinned_indices.push(idx);
             }
         }
-
-        // Non-pinned indices in their original walk order.
-        let non_pinned_indices: Vec<usize> = (0..entries.len())
-            .filter(|i| !pinned_seen.contains(i))
-            .collect();
-
-        // Final permutation: pinned-first, then non-pinned.
-        let perm: Vec<usize> = pinned_indices
-            .into_iter()
-            .chain(non_pinned_indices)
-            .collect();
-
-        // `path_to_idx` borrows `entries` immutably; drop it before we mutate.
-        drop(path_to_idx);
-
-        // Move each entry exactly once via `mem::take` + perm-driven reassembly.
-        // First pass: take every slot into `taken` (originals are now Default).
-        // Second pass: take from `taken[perm[i]]` to build the final order.
-        let mut taken: Vec<FileEntry> = entries.iter_mut().map(std::mem::take).collect();
-        entries = perm
-            .into_iter()
-            .map(|i| std::mem::take(&mut taken[i]))
-            .collect();
     }
-    // ── End pin reorder ───────────────────────────────────────────────────────
+
+    // Non-pinned indices in their original walk order.
+    let non_pinned_indices: Vec<usize> = (0..entries.len())
+        .filter(|i| !pinned_seen.contains(i))
+        .collect();
+
+    // Final permutation: pinned-first, then non-pinned.
+    let perm: Vec<usize> = pinned_indices
+        .into_iter()
+        .chain(non_pinned_indices)
+        .collect();
+
+    // `path_to_idx` borrows `entries` immutably; drop it before we mutate.
+    drop(path_to_idx);
+
+    // Move each entry exactly once via `mem::take` + perm-driven reassembly.
+    // First pass: take every slot into `taken` (originals are now Default).
+    // Second pass: take from `taken[perm[i]]` to build the final order.
+    let mut taken: Vec<FileEntry> = entries.iter_mut().map(std::mem::take).collect();
+    *entries = perm
+        .into_iter()
+        .map(|i| std::mem::take(&mut taken[i]))
+        .collect();
 
     // pinned_count: how many entries at the front of `entries` are pinned files.
     // Passed to markdown/plain renderers so they can keep the pinned segment in
     // declaration order while sorting the non-pinned tail alphabetically.
     //
-    // Relies on the invariant that the pin reorder block above produces a
-    // contiguous pinned-then-non-pinned layout. The debug_assert below catches
-    // any future refactor that breaks that contiguity.
+    // Relies on the invariant that the reorder above produces a contiguous
+    // pinned-then-non-pinned layout. The debug_assert below catches any future
+    // refactor that breaks that contiguity.
     let pinned_count = entries
         .iter()
         .take_while(|e| pinned_set.contains(&e.path))
@@ -288,7 +396,18 @@ pub fn pack(
         entries.iter().filter(|e| pinned_set.contains(&e.path)).count(),
         "pin reorder must produce a contiguous pinned prefix",
     );
+    pinned_count
+}
 
+/// Parallel `scan_and_redact` + serial post-pass for events and aggregation.
+///
+/// Returns `(secrets_found, all_redactions, secret_scan_ms_or_None)`.
+/// Returns `None` for `secret_scan_ms` when `opts.secret_scan` is false.
+fn run_secret_scan_phase(
+    entries: &mut [FileEntry],
+    opts: &PackOptions,
+    tx: &Sender<PackEvent>,
+) -> (u32, Vec<PackRedaction>, Option<u32>) {
     let mut secrets_found = 0u32;
     let mut all_redactions: Vec<PackRedaction> = Vec::new();
     let secret_scan_ms: Option<u32> = if opts.secret_scan {
@@ -336,123 +455,120 @@ pub fn pack(
         None
     };
 
-    // Per-file token counts run AFTER the secret-scan loop so each entry's
-    // `tokens` reflects the same (post-redaction) content as `tokens_total`
-    // and `tokens_per_model`. Parallel pass — the encoder behind
-    // `count_by_name` is `&'static` (cached via `OnceLock<CoreBPE>`) and
-    // each thread mutates only its own entry slot.
-    //
-    // `tokens_per_model` is always `Some(_)` when `count_tokens` is on so
-    // the UI can distinguish "count_tokens disabled" from "count_tokens
-    // enabled but a tokenizer hiccupped" — the latter falls through to a
-    // zero-filled struct (effectively unreachable in practice).
-    //
-    // Per-model token counts are summed per-file rather than encoding a joined
-    // string. This trades a typically-<1% loss in accuracy (inter-file token-merge
-    // effects at file boundaries) for ~content-size reduction in peak memory and
-    // for-free parallelization across cores. Documented in CHANGELOG as a behavior
-    // note for users who pinned exact pre-v0.5 token numbers. Pack overhead
-    // (XML/MD wrappers, stats block, protocol envelope) still adds 5–15% on top
-    // of the reported numbers vs. the final emitted output.
-    let (tokens_per_model, tokenize_ms) = if opts.count_tokens {
-        let tokenize_start = Instant::now();
-        // Parallel per-file tokenization: each thread owns one entry slot
-        // via `par_iter_mut` and writes back its own `tokens`. Warnings are
-        // collected as `Vec<Option<PackWarning>>` (one slot per entry to
-        // preserve order) and flattened back into `warnings` after.
-        let tokenize_warnings: Vec<Option<PackWarning>> = entries
-            .par_iter_mut()
-            .map(|e| {
-                match tokens::count_by_name(&opts.tokenizer_model, &e.content) {
-                    Ok(n) => {
-                        e.tokens = Some(n);
-                        None
-                    }
-                    Err(err) => {
-                        e.tokens = None;
-                        Some(PackWarning {
-                            kind: WarningKind::TokenizeFailed,
-                            path: Some(e.path.clone()),
-                            message: format!("token count failed: {err}"),
-                        })
-                    }
+    (secrets_found, all_redactions, secret_scan_ms)
+}
+
+/// Per-file `count_by_name` (parallel) + per-file `count_all` sum (parallel).
+///
+/// Returns `(tokens_per_model_or_None, tokenize_ms_or_None, tokenize_warnings)`.
+/// Both `Option`s are `None` when `opts.count_tokens` is false.
+///
+/// Per-file token counts run AFTER the secret-scan loop so each entry's
+/// `tokens` reflects the same (post-redaction) content as `tokens_total`
+/// and `tokens_per_model`. The encoder behind `count_by_name` is `&'static`
+/// (cached via `OnceLock<CoreBPE>`) and each thread mutates only its own
+/// entry slot.
+///
+/// `tokens_per_model` is always `Some(_)` when `count_tokens` is on so
+/// the UI can distinguish "count_tokens disabled" from "count_tokens
+/// enabled but a tokenizer hiccupped" — the latter falls through to a
+/// zero-filled struct (effectively unreachable in practice).
+///
+/// Per-model token counts are summed per-file rather than encoding a joined
+/// string. This trades a typically-<1% loss in accuracy (inter-file token-merge
+/// effects at file boundaries) for ~content-size reduction in peak memory and
+/// for-free parallelization across cores. Documented in CHANGELOG as a behavior
+/// note for users who pinned exact pre-v0.5 token numbers. Pack overhead
+/// (XML/MD wrappers, stats block, protocol envelope) still adds 5–15% on top
+/// of the reported numbers vs. the final emitted output.
+fn run_tokenize_phase(
+    entries: &mut [FileEntry],
+    opts: &PackOptions,
+) -> (Option<TokensPerModel>, Option<u32>, Vec<PackWarning>) {
+    if !opts.count_tokens {
+        return (None, None, Vec::new());
+    }
+
+    let tokenize_start = Instant::now();
+    // Parallel per-file tokenization: each thread owns one entry slot
+    // via `par_iter_mut` and writes back its own `tokens`. Warnings are
+    // collected as `Vec<Option<PackWarning>>` (one slot per entry to
+    // preserve order) and flattened back into `warnings` after.
+    let tokenize_warnings: Vec<Option<PackWarning>> = entries
+        .par_iter_mut()
+        .map(|e| {
+            match tokens::count_by_name(&opts.tokenizer_model, &e.content) {
+                Ok(n) => {
+                    e.tokens = Some(n);
+                    None
                 }
-            })
-            .collect();
-        warnings.extend(tokenize_warnings.into_iter().flatten());
+                Err(err) => {
+                    e.tokens = None;
+                    Some(PackWarning {
+                        kind: WarningKind::TokenizeFailed,
+                        path: Some(e.path.clone()),
+                        message: format!("token count failed: {err}"),
+                    })
+                }
+            }
+        })
+        .collect();
+    let warnings: Vec<PackWarning> = tokenize_warnings.into_iter().flatten().collect();
 
-        // Parallel per-file count_all. Each file is encoded once across all 7 model
-        // tokenizers; the per-file results are summed via saturating arithmetic into
-        // a single TokensPerModel. This avoids the ~content-bytes peak-memory of
-        // the previous joined-string approach and parallelizes across cores.
-        let per_file_counts: Vec<TokensPerModel> = entries
-            .par_iter()
-            .map(|e| tokens::count_all(&e.content).unwrap_or_default())
-            .collect();
-        let mut acc = TokensPerModel::default();
-        for c in per_file_counts {
-            acc.gpt4o = acc.gpt4o.saturating_add(c.gpt4o);
-            acc.claude = acc.claude.saturating_add(c.claude);
-            acc.llama3 = acc.llama3.saturating_add(c.llama3);
-            acc.qwen2_5 = acc.qwen2_5.saturating_add(c.qwen2_5);
-            acc.deep_seek = acc.deep_seek.saturating_add(c.deep_seek);
-            acc.mistral = acc.mistral.saturating_add(c.mistral);
-            acc.gemini_approx = acc.gemini_approx.saturating_add(c.gemini_approx);
-        }
-        let per_model = Some(acc);
-        (per_model, Some(tokenize_start.elapsed().as_millis() as u32))
-    } else {
-        (None, None)
-    };
+    // Parallel per-file count_all. Each file is encoded once across all 7 model
+    // tokenizers; the per-file results are summed via saturating arithmetic into
+    // a single TokensPerModel. This avoids the ~content-bytes peak-memory of
+    // the previous joined-string approach and parallelizes across cores.
+    let per_file_counts: Vec<TokensPerModel> = entries
+        .par_iter()
+        .map(|e| tokens::count_all(&e.content).unwrap_or_default())
+        .collect();
+    let mut acc = TokensPerModel::default();
+    for c in per_file_counts {
+        acc.gpt4o = acc.gpt4o.saturating_add(c.gpt4o);
+        acc.claude = acc.claude.saturating_add(c.claude);
+        acc.llama3 = acc.llama3.saturating_add(c.llama3);
+        acc.qwen2_5 = acc.qwen2_5.saturating_add(c.qwen2_5);
+        acc.deep_seek = acc.deep_seek.saturating_add(c.deep_seek);
+        acc.mistral = acc.mistral.saturating_add(c.mistral);
+        acc.gemini_approx = acc.gemini_approx.saturating_add(c.gemini_approx);
+    }
+    (Some(acc), Some(tokenize_start.elapsed().as_millis() as u32), warnings)
+}
 
-    // Use u64 accumulator — `tokens_total` is u32 on the wire, but a multi-
-    // million-token monorepo pack can wrap a u32 sum mid-loop. Saturate at
-    // the cast site instead of silently wrapping.
+/// Accumulate `bytes_total` + `tokens_total` across `entries`.
+///
+/// Uses a u64 accumulator — `tokens_total` is u32 on the wire, but a multi-
+/// million-token monorepo pack can wrap a u32 sum mid-loop. Saturate at
+/// the cast site instead of silently wrapping.
+fn accumulate_byte_token_totals(entries: &[FileEntry]) -> (u64, u32) {
     let mut bytes_total = 0u64;
     let mut tokens_total: u64 = 0;
-    for e in &entries {
+    for e in entries {
         bytes_total += e.bytes;
         if let Some(t) = e.tokens {
             tokens_total += u64::from(t);
         }
     }
     let tokens_total: u32 = tokens_total.min(u64::from(u32::MAX)) as u32;
+    (bytes_total, tokens_total)
+}
 
-    // files_total accounting:
-    //   included = files we kept (walker matches + force-included pins)
-    //   skipped  = files we explicitly excluded (after pin pre-pass removed
-    //              any pinned-but-skipped entries from this list)
-    //   total    = included + skipped
-    //
-    // The pin pre-pass mutates outcome.included (push) and outcome.skipped
-    // (retain), keeping the invariant `total = included + skipped` stable
-    // across pinning. A pinned file that wasn't visited by the walker is a
-    // net-add to total (it's a new file we wouldn't have counted otherwise),
-    // which is correct.
-    // First construction: real per-phase fields are known, but `emit_ms` cannot
-    // be measured until after the renderer runs below. We use `emit_ms: 0` and
-    // then refresh `stats` with the real `emit_ms` (and an updated total
-    // `duration_ms`) immediately after the emit match. Both `duration_ms` and
-    // `emit_ms` therefore reflect the post-emit wall clock in the final stats
-    // shipped to the renderer's `<security_report>`/UI; the renderer only sees
-    // the pre-emit version, but its `emit_ms` is never serialized into the
-    // pack output (renderers don't read that field today).
-    let stats = PackStats {
-        files_total: (outcome.included.len() + outcome.skipped.len()) as u32,
-        files_included: entries.len() as u32,
-        files_skipped: outcome.skipped.len() as u32,
-        bytes_total,
-        tokens_total: opts.count_tokens.then_some(tokens_total),
-        tokens_per_model,
-        secrets_found,
-        duration_ms: start.elapsed().as_millis() as u32,
-        walk_ms,
-        process_ms,
-        secret_scan_ms,
-        tokenize_ms,
-        emit_ms: 0,
-    };
-
+/// Build the output string by routing to the appropriate emitter.
+/// Returns `(output, emit_ms)`.
+///
+/// `stats` is the pre-emit version (with `emit_ms: 0` placeholder); the
+/// caller refreshes it with the real `emit_ms` after this returns. The
+/// renderer only sees the pre-emit version, but its `emit_ms` is never
+/// serialized into the pack output (renderers don't read that field today).
+fn run_emit_phase(
+    entries: &[FileEntry],
+    stats: &PackStats,
+    opts: &PackOptions,
+    label: &str,
+    all_redactions: &[PackRedaction],
+    pinned_count: usize,
+) -> CoreResult<(String, u32)> {
     let dir_paths: Vec<String> = entries.iter().map(|e| e.path.clone()).collect();
 
     let emit_start = Instant::now();
@@ -463,51 +579,26 @@ pub fn pack(
             builder
                 .open_repository()
                 .raw_block(&protocol_block)
-                .stats_block(&label, opts, &stats, &entries, &all_redactions)
-                .security_report_block(&all_redactions)
+                .stats_block(label, opts, stats, entries, all_redactions)
+                .security_report_block(all_redactions)
                 .directory_structure(&dir_paths);
             // Route to the Anthropic cxml schema (default) or the legacy schema.
             match opts.xml_schema {
-                XmlSchema::Cxml => { builder.documents(&entries); }
-                XmlSchema::Legacy => { builder.files_legacy(&entries); }
+                XmlSchema::Cxml => { builder.documents(entries); }
+                XmlSchema::Legacy => { builder.files_legacy(entries); }
             }
             builder.close_repository();
             builder.finish()
         }
         PackFormat::Markdown => {
-            markdown::render(&label, opts, &stats, &entries, pinned_count, &all_redactions)
+            markdown::render(label, opts, stats, entries, pinned_count, all_redactions)
         }
         PackFormat::PlainText => {
-            plain::render(&label, opts, &stats, &entries, pinned_count, &all_redactions)
+            plain::render(label, opts, stats, entries, pinned_count, all_redactions)
         }
     };
     let emit_ms = emit_start.elapsed().as_millis() as u32;
-
-    // Refresh stats with real emit_ms and updated total duration_ms.
-    let stats = PackStats {
-        emit_ms,
-        duration_ms: start.elapsed().as_millis() as u32,
-        ..stats
-    };
-
-    let claude_code_prompt = protocol::claude_code_prompt(&opts.protocol_version)?;
-
-    // Checkpoint 3: after emit, before returning result.
-    if cancel.is_cancelled() {
-        return Err(CoreError::Cancelled);
-    }
-
-    let _ = tx.send(ProgressEvent::Done {
-        stats: stats.clone(),
-    });
-
-    Ok(PackResult {
-        output,
-        claude_code_prompt,
-        stats,
-        warnings,
-        redactions: all_redactions,
-    })
+    Ok((output, emit_ms))
 }
 
 /// Hash file content using BLAKE3.
