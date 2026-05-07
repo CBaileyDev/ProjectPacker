@@ -273,15 +273,30 @@ pub fn pack(
     let mut all_redactions: Vec<PackRedaction> = Vec::new();
     let secret_scan_ms: Option<u32> = if opts.secret_scan {
         let secret_scan_start = Instant::now();
-        // This loop has two responsibilities:
-        //   (1) Build `all_redactions` for the security_report block + PackResult.
-        //   (2) Mutate each entry's `content` to its redacted form so the pack
-        //       output ships `[REDACTED:<rule-id>]` markers, not the secrets.
         // Hoisting `vendored()` out keeps the keyword-index cache hot across files.
         let ruleset = secrets::ruleset::vendored();
-        for e in entries.iter_mut() {
-            let result = secrets::scan_and_redact(&e.content, ruleset);
-            for r in &result.redactions {
+
+        // Parallel pass: each thread owns one entry slot via `par_iter_mut`,
+        // mutates content in-place, and produces a `Vec<Redaction>` for that
+        // entry. The whole `entries` slice is borrowed mutably only by the
+        // iterator, which gives non-overlapping `&mut` to each slot.
+        let per_file: Vec<Vec<crate::secrets::Redaction>> = entries
+            .par_iter_mut()
+            .map(|e| {
+                let result = secrets::scan_and_redact(&e.content, ruleset);
+                // Replace original content with redacted content so the pack
+                // output ships the redacted version, not the secrets.
+                e.content = result.redacted_content;
+                result.redactions
+            })
+            .collect();
+
+        // Serial post-pass: emit progress events in deterministic file-order,
+        // increment the `secrets_found` counter, and append `all_redactions`
+        // in stable order for the security_report block + PackResult. This
+        // loop is O(total_redactions), not O(N_files), so it is cheap.
+        for (e, redactions) in entries.iter().zip(per_file.iter()) {
+            for r in redactions {
                 secrets_found += 1;
                 let _ = tx.send(ProgressEvent::SecretHit {
                     path: e.path.clone(),
@@ -295,9 +310,6 @@ pub fn pack(
                     byte_offset: r.byte_offset,
                 });
             }
-            // Replace original content with redacted content so the pack
-            // output ships the redacted version, not the secrets.
-            e.content = result.redacted_content;
         }
         Some(secret_scan_start.elapsed().as_millis() as u32)
     } else {
@@ -306,9 +318,9 @@ pub fn pack(
 
     // Per-file token counts run AFTER the secret-scan loop so each entry's
     // `tokens` reflects the same (post-redaction) content as `tokens_total`
-    // and `tokens_per_model`. Sequential pass — `count_by_name` is fast
-    // (~5ms per file with a hot tokenizer cache); the parallelism win is
-    // negligible vs. the correctness win of unified post-redaction semantics.
+    // and `tokens_per_model`. Parallel pass — the encoder behind
+    // `count_by_name` is `&'static` (cached via `OnceLock<CoreBPE>`) and
+    // each thread mutates only its own entry slot.
     //
     // `tokens_per_model` is always `Some(_)` when `count_tokens` is on so
     // the UI can distinguish "count_tokens disabled" from "count_tokens
@@ -319,19 +331,30 @@ pub fn pack(
     // block, protocol envelope) typically adds 5–15% on top.
     let (tokens_per_model, tokenize_ms) = if opts.count_tokens {
         let tokenize_start = Instant::now();
-        for e in entries.iter_mut() {
-            match tokens::count_by_name(&opts.tokenizer_model, &e.content) {
-                Ok(n) => e.tokens = Some(n),
-                Err(err) => {
-                    e.tokens = None;
-                    warnings.push(PackWarning {
-                        kind: WarningKind::TokenizeFailed,
-                        path: Some(e.path.clone()),
-                        message: format!("token count failed: {err}"),
-                    });
+        // Parallel per-file tokenization: each thread owns one entry slot
+        // via `par_iter_mut` and writes back its own `tokens`. Warnings are
+        // collected as `Vec<Option<PackWarning>>` (one slot per entry to
+        // preserve order) and flattened back into `warnings` after.
+        let tokenize_warnings: Vec<Option<PackWarning>> = entries
+            .par_iter_mut()
+            .map(|e| {
+                match tokens::count_by_name(&opts.tokenizer_model, &e.content) {
+                    Ok(n) => {
+                        e.tokens = Some(n);
+                        None
+                    }
+                    Err(err) => {
+                        e.tokens = None;
+                        Some(PackWarning {
+                            kind: WarningKind::TokenizeFailed,
+                            path: Some(e.path.clone()),
+                            message: format!("token count failed: {err}"),
+                        })
+                    }
                 }
-            }
-        }
+            })
+            .collect();
+        warnings.extend(tokenize_warnings.into_iter().flatten());
         let joined: String = entries
             .iter()
             .map(|e| e.content.as_str())
