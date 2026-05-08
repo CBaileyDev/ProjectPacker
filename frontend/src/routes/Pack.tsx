@@ -1,8 +1,5 @@
-import type { Channel } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { useEffect, useRef, useState } from "react";
-import type { PackFormat, ProgressEvent } from "../bindings";
-import { commands } from "../bindings";
+import type { PackFormat } from "../bindings";
 import { AiContextTable } from "../components/pack/AiContextTable";
 import { CopyButton } from "../components/pack/CopyButton";
 import { DropOverlay } from "../components/pack/DropOverlay";
@@ -10,9 +7,9 @@ import { PhaseBreakdown } from "../components/pack/PhaseBreakdown";
 import { ProgressLog } from "../components/pack/ProgressLog";
 import { StatsBar } from "../components/pack/StatsBar";
 import { Toggle } from "../components/pack/Toggle";
-import { createPackProgressChannel } from "../lib/events";
 import { useApp } from "../lib/store";
 import { useDragDrop } from "../lib/use-drag-drop";
+import { usePackJob } from "../lib/use-pack-job";
 
 // ---------------------------------------------------------------------------
 // Format display labels
@@ -33,49 +30,18 @@ const COPY_BUTTON_LABELS: Record<PackFormat, string> = {
 // Main screen
 // ---------------------------------------------------------------------------
 export default function Pack() {
-  const {
-    options,
-    patchOptions,
-    status,
-    events,
-    setJob,
-    pushEvent,
-    setResult,
-    result,
-    reset,
-  } = useApp();
-
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
-
-  // Single Channel for the component lifetime. Tauri's `Channel` registers
-  // an internal IPC handler; reassigning `onmessage` to a no-op on `done`
-  // does NOT unregister it. Reusing one channel across runs prevents the
-  // O(packs run) handler leak. The channel is created lazily on first
-  // `runPack` because `new Channel()` allocates a wire id even before any
-  // command attaches it. Cleanup runs on unmount.
-  const channelRef = useRef<Channel<ProgressEvent> | null>(null);
-  const isRunning = status === "running";
-  const isRunningRef = useRef(isRunning);
-  isRunningRef.current = isRunning;
-
-  useEffect(() => {
-    return () => {
-      // Drop the channel reference so the Tauri side can GC its handler.
-      // No explicit close API; setting onmessage to a no-op + dropping the
-      // reference is the best we can do.
-      if (channelRef.current) {
-        channelRef.current.onmessage = () => {};
-        channelRef.current = null;
-      }
-    };
-  }, []);
+  const { options, patchOptions, status, events, result, reset } = useApp();
+  const { run: runPack, errorMsg, isRunning } = usePackJob();
 
   const { isDragging } = useDragDrop({
     onDrop: (folderPath: string) => {
       // Ignore drops while a pack is in flight — clobbering options.target
       // mid-pack confuses the UI (in-flight pack uses server-captured target;
       // the UI would show a different one with no way to reconcile).
-      if (isRunningRef.current) return;
+      // `useDragDrop` re-reads its `onDrop` callback through a ref each
+      // render, so the closure here captures the latest `isRunning` value
+      // without needing a separate ref.
+      if (isRunning) return;
       patchOptions({ target: { kind: "folder", value: folderPath } });
     },
   });
@@ -85,58 +51,6 @@ export default function Pack() {
     if (typeof path === "string") {
       patchOptions({ target: { kind: "folder", value: path } });
     }
-  }
-
-  async function runPack() {
-    if (isRunningRef.current) return; // double-click / pre-await reentry guard
-    setErrorMsg(null);
-    reset();
-
-    // Lazily create the channel once. Subsequent runs reuse it — `onmessage`
-    // is reassigned each pack to capture the fresh closure (jobId, etc.)
-    // but the underlying Tauri IPC subscription stays the same.
-    if (channelRef.current === null) {
-      channelRef.current = createPackProgressChannel(() => {});
-    }
-    const channel = channelRef.current;
-
-    // Install the real handler BEFORE awaiting packStart. Otherwise an
-    // event emitted between packStart returning (server side) and the JS
-    // continuation reassigning onmessage would be silently swallowed by
-    // the no-op handler. The `Started` event carries `job_id`, so we can
-    // capture it from inside the handler instead of waiting for
-    // packStart's return value.
-    let capturedJobId: string | null = null;
-    channel.onmessage = (e) => {
-      pushEvent(e);
-      if (e.kind === "started") {
-        capturedJobId = e.job_id;
-      }
-      if (e.kind === "done") {
-        const id = capturedJobId;
-        if (!id) {
-          // Shouldn't happen — `started` always precedes `done`. Fall back
-          // to a useful error rather than swallowing.
-          setErrorMsg("internal: done without started");
-          return;
-        }
-        (async () => {
-          const r = await commands.packGetResult(id);
-          if (r.status === "ok") setResult(r.data);
-          else setErrorMsg(r.error.message);
-        })();
-      }
-      if (e.kind === "error" && e.fatal) {
-        setErrorMsg(e.message);
-      }
-    };
-
-    const startRes = await commands.packStart(options, channel);
-    if (startRes.status !== "ok") {
-      setErrorMsg(startRes.error.message);
-      return;
-    }
-    setJob(startRes.data);
   }
 
   const targetMode = options.target.kind;
