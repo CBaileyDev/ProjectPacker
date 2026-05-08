@@ -2,7 +2,12 @@
 
 All notable changes to ProjectPacker are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] - 2026-05-06
+
+### Refactored
+- **`crates/core/src/pack/orchestrator.rs::pack`** decomposed from a ~420-line inline body into a 122-line orchestrator that calls 7 private phase helpers in dataflow order: `run_walk_phase`, `run_process_phase`, `apply_pin_reorder`, `run_secret_scan_phase`, `run_tokenize_phase`, `accumulate_byte_token_totals`, `run_emit_phase`. Cancel checkpoints, event order, `_clone_guard` lifetime, and post-emit stats refresh all preserved. No behavior change.
+- **`frontend/src/routes/Pack.tsx`** slimmed from 711 → 324 LoC. Sub-components extracted into `frontend/src/components/pack/{Toggle,CopyButton,StatsBar,PhaseBreakdown,AiContextTable,ProgressLog,DropOverlay}.tsx`; format helpers into `frontend/src/lib/format.ts`; AI model data into `frontend/src/lib/ai-models.ts`.
+- **`usePackJob` hook** extracted into `frontend/src/lib/use-pack-job.ts` (106 LoC). Owns Channel<ProgressEvent> reuse across runs, runPack lifecycle, errorMsg state, and re-entry guards. Pack.tsx now just calls `const { run, errorMsg, isRunning } = usePackJob();`.
 
 ### Removed
 - **Dead Rust deps:** `parking_lot`, `arboard`, `anyhow` (app crate), `proptest` (core dev-deps). Verified zero `use` statements anywhere in the workspace.
