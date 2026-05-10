@@ -1,0 +1,24 @@
+# Read by ProjectPacker's user-tier ignore matcher (Tier 3, always active —
+# applies whether or not "Respect .gitignore" is toggled on).
+#
+# These paths are data assets the app uses at runtime; they are not source
+# code and would individually exceed any model's context window if packed.
+
+# Vendored HuggingFace tokenizer blobs (~26 MB combined).
+crates/core/assets/tokenizers/
+
+# Vendored gitleaks secret-detection ruleset (~98 KB).
+crates/core/assets/gitleaks.toml
+
+# Auto-generated Tauri capability ACL schemas (~1 MB combined).
+crates/app/gen/
+
+# TypeScript incremental build cache.
+*.tsbuildinfo
+
+# Pack outputs — if the user runs Save to file… into the project root,
+# subsequent packs would otherwise nest the previous pack.xml (containing
+# CDATA-wrapped sources, redactions, and stats) into the new one.
+pack.xml
+pack.md
+pack.txt

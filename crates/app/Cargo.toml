@@ -1,0 +1,56 @@
+[package]
+name = "projectpacker-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+default-run = "projectpacker-app"
+
+[lib]
+name = "projectpacker_app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+projectpacker-core = { path = "../core" }
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+specta.workspace = true
+specta-typescript.workspace = true
+log = "0.4"
+
+tauri = { version = "2", features = ["devtools"] }
+tauri-specta = { version = "=2.0.0-rc.21", features = ["derive", "typescript"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-store = "2"
+tauri-plugin-window-state = "2"
+tauri-plugin-single-instance = "2"
+tauri-plugin-log = "2"
+dashmap = "6"
+uuid = { version = "1", features = ["v7"] }
+
+# GitHub PAT storage. We initially used `keyring` 3.x but that crate
+# delegates to the macOS data-protection keychain (`SecItemAdd`), which
+# silently demotes writes from unsigned apps into a transient store —
+# `set_password` reports success but the data never reaches `login.keychain`
+# and can't be read back by another process. Code-signing would fix this
+# but requires an Apple Developer ID. Pragmatic answer: a 0600-permission
+# file in the app data dir. `dirs` resolves the per-platform location.
+dirs = "5"
+
+# Async HTTP for the GitHub REST API. rustls-tls keeps us off OpenSSL so
+# the build stays self-contained on macOS + Windows. `json` pulls in
+# serde_json::Value parsing helpers used by the GitHub client.
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json"] }
+
+[dev-dependencies]
+tempfile = "3"

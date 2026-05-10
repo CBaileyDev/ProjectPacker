@@ -1,0 +1,73 @@
+ProjectPacker — Third-Party License Attributions
+================================================
+
+ProjectPacker bundles the following third-party assets. Each is used under its
+upstream license; the original copyright and license text follow.
+
+--------------------------------------------------------------------------------
+Gitleaks ruleset
+  Source:    https://github.com/gitleaks/gitleaks/blob/master/config/gitleaks.toml
+  License:   MIT
+  Vendored:  crates/core/assets/gitleaks.toml
+
+  Copyright (c) 2019 Zachary Rice
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in
+  all copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+  THE SOFTWARE.
+
+--------------------------------------------------------------------------------
+Llama 3 tokenizer
+  Source:    https://huggingface.co/unsloth/llama-3-8b/resolve/main/tokenizer.json
+  License:   Meta Llama 3 Community License
+  Vendored:  crates/core/assets/tokenizers/llama-3.json
+  Notice:    Copyright (c) Meta Platforms, Inc. The Llama 3 tokenizer.json
+             contains the BPE merge tables and special tokens for Meta's
+             Llama 3 model family. ProjectPacker uses this file solely to
+             count tokens for context-window-fit display; no model weights
+             are bundled. Llama 3 is governed by Meta's Llama 3 Community
+             License Agreement, available at:
+               https://llama.meta.com/llama3/license
+
+--------------------------------------------------------------------------------
+Qwen 2.5 tokenizer
+  Source:    https://huggingface.co/Qwen/Qwen2.5-7B/resolve/main/tokenizer.json
+  License:   Apache License 2.0
+  Vendored:  crates/core/assets/tokenizers/qwen-2.5.json
+  Notice:    Copyright (c) Alibaba Cloud / Qwen Team. Distributed under the
+             Apache License, Version 2.0:
+               http://www.apache.org/licenses/LICENSE-2.0
+
+--------------------------------------------------------------------------------
+DeepSeek tokenizer
+  Source:    https://huggingface.co/deepseek-ai/DeepSeek-V3/resolve/main/tokenizer.json
+  License:   DeepSeek License (model file)
+  Vendored:  crates/core/assets/tokenizers/deepseek.json
+  Notice:    Copyright (c) DeepSeek. The DeepSeek-V3 tokenizer.json is
+             distributed under the DeepSeek License:
+               https://github.com/deepseek-ai/DeepSeek-V3/blob/main/LICENSE-MODEL
+             ProjectPacker uses this file solely to count tokens; no model
+             weights are bundled.
+
+--------------------------------------------------------------------------------
+Mistral 7B tokenizer
+  Source:    https://huggingface.co/mistralai/Mistral-7B-v0.1/resolve/main/tokenizer.json
+  License:   Apache License 2.0
+  Vendored:  crates/core/assets/tokenizers/mistral.json
+  Notice:    Copyright (c) Mistral AI. Distributed under the Apache License,
+             Version 2.0:
+               http://www.apache.org/licenses/LICENSE-2.0

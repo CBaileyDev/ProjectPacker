@@ -1,0 +1,41 @@
+{
+  "$schema": "../../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "ProjectPacker",
+  "version": "0.5.0",
+  "identifier": "dev.cbailey.projectpacker",
+  "build": {
+    "frontendDist": "../../frontend/dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "pnpm --filter projectpacker-frontend dev",
+    "beforeBuildCommand": "pnpm --filter projectpacker-frontend build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "ProjectPacker",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 960,
+        "minHeight": 600,
+        "decorations": true,
+        "transparent": false,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://avatars.githubusercontent.com; connect-src 'self' ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["msi", "nsis"],
+    "icon": ["icons/icon.png"],
+    "category": "DeveloperTool",
+    "shortDescription": "Pack a repo into XML for AI workflows",
+    "longDescription": "ProjectPacker turns a folder or GitHub repo into a single self-describing XML file optimized for a Grok → Claude Code two-AI workflow.",
+    "windows": {
+      "wix": { "language": "en-US" },
+      "nsis": { "installMode": "currentUser" }
+    }
+  }
+}

@@ -1,0 +1,85 @@
+# Built-in ProjectPacker ignore defaults — Tier 1; layered with project (.gitignore + .git/info/exclude) and user (.repomixignore + custom_patterns) tiers
+
+# Version control
+.git/
+.svn/
+.hg/
+
+# Dependencies
+node_modules/
+bower_components/
+vendor/
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pnpm-store/
+
+# Build outputs
+target/
+build/
+dist/
+out/
+.next/
+.nuxt/
+.parcel-cache/
+.turbo/
+.vite/
+.tauri/
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Lockfiles (still text but rarely useful in a pack)
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+Cargo.lock
+poetry.lock
+Gemfile.lock
+go.sum
+
+# Binary / large media
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.ico
+*.icns
+*.webp
+*.svg
+*.mp3
+*.mp4
+*.mov
+*.avi
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+*.pdf
+*.woff
+*.woff2
+*.ttf
+*.otf
+*.eot
+
+# Logs
+*.log
+logs/

@@ -1,0 +1,51 @@
+# Rust
+target/
+Cargo.lock.bak
+
+# Node
+node_modules/
+.pnpm-store/
+
+# Builds
+dist/
+build/
+*.exe
+*.msi
+
+# Frontend build output (covered by dist/, but explicit for clarity)
+frontend/dist/
+
+# tsc -b emits these next to vite.config.ts when composite: true
+frontend/vite.config.js
+frontend/vite.config.d.ts
+frontend/*.tsbuildinfo
+
+# Generated bindings (regenerated each build)
+frontend/src/bindings/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Tauri
+crates/app/gen/
+.tauri/
+
+# Logs
+*.log
+
+# Local env
+.env
+.env.local
+
+# Pack outputs (regenerated each pack)
+pack.xml
+pack.md
+pack.txt
+
+# Session-bridge notes (kept local only)
+HANDOFF.md
