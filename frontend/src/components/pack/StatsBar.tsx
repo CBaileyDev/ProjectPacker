@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import * as m from "framer-motion/m";
 import { memo } from "react";
 import type { PackStats } from "../../bindings";
 import { fmtBytes, fmtNum } from "../../lib/format";
@@ -8,14 +8,8 @@ import {
   slideInUp,
   staggerContainer,
 } from "../../lib/motion";
+import { AlertIcon, ClockIcon, FileIcon, PackageIcon, ZapIcon } from "./icons";
 import { SkeletonBlock } from "./Skeleton";
-import {
-  AlertIcon,
-  ClockIcon,
-  FileIcon,
-  PackageIcon,
-  ZapIcon,
-} from "./icons";
 
 interface StatsBarProps {
   stats: PackStats | null;
@@ -36,7 +30,7 @@ interface StatsBarProps {
 function StatsBarInner({ stats, loading }: StatsBarProps) {
   if (loading || (stats === null && loading !== false)) {
     return (
-      <motion.div
+      <m.div
         className="rounded-xl border border-zinc-700/80 bg-zinc-800/40 px-5 py-4 backdrop-blur-sm"
         variants={fadeUp}
         initial="hidden"
@@ -58,20 +52,20 @@ function StatsBarInner({ stats, loading }: StatsBarProps) {
             </div>
           ))}
         </div>
-      </motion.div>
+      </m.div>
     );
   }
 
   if (stats === null) {
     return (
-      <motion.div
+      <m.div
         className="rounded-xl border border-zinc-700/80 bg-zinc-800/40 px-5 py-4 text-sm text-zinc-500"
         variants={fadeUp}
         initial="hidden"
         animate="visible"
       >
         No stats yet
-      </motion.div>
+      </m.div>
     );
   }
 
@@ -105,14 +99,14 @@ function StatsBarInner({ stats, loading }: StatsBarProps) {
   ];
 
   return (
-    <motion.div
+    <m.div
       className="relative overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-800/60 px-5 py-4 backdrop-blur-sm"
       variants={staggerContainer}
       initial="hidden"
       animate="visible"
       aria-label="Pack statistics"
     >
-      <motion.div
+      <m.div
         // Decorative progress backdrop — width tracks filesIncluded /
         // filesTotal so the user gets a glanceable "how much got
         // packed" without reading the percent badge.
@@ -128,40 +122,38 @@ function StatsBarInner({ stats, loading }: StatsBarProps) {
       />
       <div className="relative flex flex-wrap gap-x-6 gap-y-3 text-sm">
         {items.map((item) => (
-          <motion.span
+          <m.span
             key={item.label}
             className="flex items-center gap-2"
             variants={slideInUp}
           >
             {item.icon}
             <span className="text-zinc-500">{item.label}</span>
-            <span className="font-semibold text-zinc-100">{item.value}</span>
+            <span className="font-semibold text-zinc-100 nums">
+              {item.value}
+            </span>
             {item.highlight && (
               <span className="rounded bg-emerald-500/10 px-1.5 py-0.5 text-[11px] font-medium text-emerald-400">
                 {item.highlight}
               </span>
             )}
-          </motion.span>
+          </m.span>
         ))}
 
         {stats.tokensTotal != null && (
-          <motion.span className="flex items-center gap-2" variants={fadeUp}>
+          <m.span className="flex items-center gap-2" variants={fadeUp}>
             <ZapIcon size={14} className="text-violet-400" />
             <span className="text-zinc-500">Tokens</span>
-            <span className="font-semibold text-zinc-100">
+            <span className="font-semibold text-zinc-100 nums">
               {fmtNum(stats.tokensTotal)}
             </span>
-          </motion.span>
+          </m.span>
         )}
 
         {stats.secretsFound > 0 && (
-          <motion.span
+          <m.span
             className="flex items-center gap-1.5 font-semibold text-amber-400"
-            initial={
-              prefersReducedMotion
-                ? false
-                : { opacity: 0, scale: 0.9 }
-            }
+            initial={prefersReducedMotion ? false : { opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={
               prefersReducedMotion
@@ -177,10 +169,10 @@ function StatsBarInner({ stats, loading }: StatsBarProps) {
             <AlertIcon size={14} />
             {stats.secretsFound} secret{stats.secretsFound !== 1 ? "s" : ""}{" "}
             detected
-          </motion.span>
+          </m.span>
         )}
       </div>
-    </motion.div>
+    </m.div>
   );
 }
 

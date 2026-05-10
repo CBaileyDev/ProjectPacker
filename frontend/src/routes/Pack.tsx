@@ -1,7 +1,9 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
+import * as m from "framer-motion/m";
+import type { LucideProps } from "lucide-react";
 import type React from "react";
-import { useEffect, useMemo, useState } from "react";
+import { type ComponentType, useEffect, useMemo, useState } from "react";
 import type { PackFormat, PackOptions, PackResult } from "../bindings";
 import { AiContextTable } from "../components/pack/AiContextTable";
 import { CopyButton } from "../components/pack/CopyButton";
@@ -32,7 +34,7 @@ import {
   springButton,
   staggerContainer,
 } from "../lib/motion";
-import { useApp } from "../lib/store";
+import { useApp, usePackOptions, usePackProgress } from "../lib/store";
 import { useDragDrop } from "../lib/use-drag-drop";
 import { usePackJob } from "../lib/use-pack-job";
 
@@ -82,7 +84,9 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 }
 
 export default function Pack() {
-  const { options, patchOptions, status, events, result, reset } = useApp();
+  const { options, patchOptions } = usePackOptions();
+  const { status, events, result } = usePackProgress();
+  const reset = useApp((s) => s.reset);
   const { run: runPack, errorMsg, dismissError, isRunning } = usePackJob();
 
   const { isDragging, dropState } = useDragDrop({
@@ -123,7 +127,7 @@ export default function Pack() {
     id: PackTab;
     label: string;
     description: string;
-    Icon: React.FC<{ size?: number; className?: string }>;
+    Icon: ComponentType<LucideProps>;
     disabled?: boolean;
   }> = [
     {
@@ -175,14 +179,14 @@ export default function Pack() {
     <div className="min-h-screen text-zinc-100">
       <DropOverlay visible={isDragging} dropState={dropState} />
 
-      <motion.div
+      <m.div
         className="mx-auto grid min-h-screen max-w-6xl gap-6 p-6 lg:grid-cols-[280px_minmax(0,1fr)]"
         variants={staggerContainer}
         initial="hidden"
         animate="visible"
       >
         {/* ── Sidebar ── */}
-        <motion.aside
+        <m.aside
           variants={fadeUp}
           className="flex flex-col rounded-2xl border border-zinc-800/80 bg-zinc-950/70 p-4 shadow-2xl shadow-black/20 backdrop-blur"
         >
@@ -191,7 +195,9 @@ export default function Pack() {
               <PackageIcon size={21} className="text-emerald-400" />
             </div>
             <div>
-              <h1 className="text-xl font-bold tracking-tight">ProjectPacker</h1>
+              <h1 className="text-xl font-bold tracking-tight">
+                ProjectPacker
+              </h1>
               <p className="mt-1 text-xs leading-relaxed text-zinc-500">
                 Pack a codebase into a single AI-ready file.
               </p>
@@ -217,10 +223,14 @@ export default function Pack() {
                   aria-current={selected ? "page" : undefined}
                 >
                   {selected && (
-                    <motion.span
+                    <m.span
                       layoutId="active-pack-tab"
                       className="absolute left-0 top-2 h-[calc(100%-1rem)] w-1 rounded-r-full bg-emerald-400"
-                      transition={{ type: "spring", stiffness: 420, damping: 34 }}
+                      transition={{
+                        type: "spring",
+                        stiffness: 420,
+                        damping: 34,
+                      }}
                     />
                   )}
                   <span
@@ -244,21 +254,25 @@ export default function Pack() {
           {isRunning && (
             <div className="mt-auto pt-6">
               <div className="flex items-center gap-2 rounded-lg border border-emerald-700/40 bg-emerald-950/20 px-3 py-2.5 text-xs text-emerald-300">
-                <motion.span
+                <m.span
                   aria-hidden="true"
                   animate={{ rotate: 360 }}
-                  transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                  transition={{
+                    duration: 1.5,
+                    repeat: Infinity,
+                    ease: "linear",
+                  }}
                 >
                   <LoaderIcon size={12} />
-                </motion.span>
+                </m.span>
                 Packing in progress
               </div>
             </div>
           )}
-        </motion.aside>
+        </m.aside>
 
         {/* ── Main ── */}
-        <motion.main
+        <m.main
           variants={fadeUp}
           className="min-w-0 rounded-2xl border border-zinc-800/80 bg-zinc-950/55 p-6 shadow-2xl shadow-black/20 backdrop-blur"
         >
@@ -272,11 +286,13 @@ export default function Pack() {
           </div>
 
           <AnimatePresence mode="wait">
-            <motion.div
+            <m.div
               key={activeTab}
               initial={prefersReducedMotion ? false : { opacity: 0, x: 18 }}
               animate={{ opacity: 1, x: 0 }}
-              exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: -18 }}
+              exit={
+                prefersReducedMotion ? { opacity: 0 } : { opacity: 0, x: -18 }
+              }
               transition={{
                 duration: prefersReducedMotion ? 0 : 0.22,
                 ease: [0.22, 1, 0.36, 1],
@@ -321,13 +337,21 @@ export default function Pack() {
 
                     <AnimatePresence mode="wait">
                       {targetMode === "folder" ? (
-                        <motion.div
+                        <m.div
                           key="folder"
                           className="flex gap-2"
-                          initial={prefersReducedMotion ? false : { opacity: 0, y: -6 }}
+                          initial={
+                            prefersReducedMotion ? false : { opacity: 0, y: -6 }
+                          }
                           animate={{ opacity: 1, y: 0 }}
-                          exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
-                          transition={{ duration: prefersReducedMotion ? 0 : 0.2 }}
+                          exit={
+                            prefersReducedMotion
+                              ? { opacity: 0 }
+                              : { opacity: 0, y: 6 }
+                          }
+                          transition={{
+                            duration: prefersReducedMotion ? 0 : 0.2,
+                          }}
                         >
                           <input
                             className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800/60 px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 transition-colors focus:border-emerald-500/50 focus:outline-none"
@@ -336,26 +360,37 @@ export default function Pack() {
                             aria-label="Folder path"
                             onChange={(e) =>
                               patchOptions({
-                                target: { kind: "folder", value: e.target.value },
+                                target: {
+                                  kind: "folder",
+                                  value: e.target.value,
+                                },
                               })
                             }
                           />
-                          <motion.button
+                          <m.button
                             type="button"
                             className="rounded-lg border border-zinc-600 bg-zinc-700 px-4 py-2.5 text-sm text-zinc-200 hover:bg-zinc-600 transition-colors"
                             onClick={pickFolder}
                             whileTap={springButton}
                           >
                             Browse…
-                          </motion.button>
-                        </motion.div>
+                          </m.button>
+                        </m.div>
                       ) : (
-                        <motion.div
+                        <m.div
                           key="github"
-                          initial={prefersReducedMotion ? false : { opacity: 0, y: -6 }}
+                          initial={
+                            prefersReducedMotion ? false : { opacity: 0, y: -6 }
+                          }
                           animate={{ opacity: 1, y: 0 }}
-                          exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
-                          transition={{ duration: prefersReducedMotion ? 0 : 0.2 }}
+                          exit={
+                            prefersReducedMotion
+                              ? { opacity: 0 }
+                              : { opacity: 0, y: 6 }
+                          }
+                          transition={{
+                            duration: prefersReducedMotion ? 0 : 0.2,
+                          }}
                         >
                           <div className="flex gap-2">
                             <input
@@ -367,14 +402,19 @@ export default function Pack() {
                               value={targetVal}
                               placeholder="https://github.com/owner/repo"
                               aria-label="GitHub repository URL"
-                              aria-invalid={Boolean(targetVal) && !isValidTarget}
+                              aria-invalid={
+                                Boolean(targetVal) && !isValidTarget
+                              }
                               onChange={(e) =>
                                 patchOptions({
-                                  target: { kind: "github", value: e.target.value },
+                                  target: {
+                                    kind: "github",
+                                    value: e.target.value,
+                                  },
                                 })
                               }
                             />
-                            <motion.button
+                            <m.button
                               type="button"
                               className="rounded-lg border border-zinc-600 bg-zinc-700 px-4 py-2.5 text-sm text-zinc-200 hover:bg-zinc-600 transition-colors"
                               onClick={() => setActiveTab("github")}
@@ -382,10 +422,10 @@ export default function Pack() {
                               title="Pick a repo from the GitHub tab"
                             >
                               Browse…
-                            </motion.button>
+                            </m.button>
                           </div>
                           {targetVal && !isValidTarget && (
-                            <motion.div
+                            <m.div
                               className="mt-1.5 text-xs text-red-400"
                               role="alert"
                               initial={{ opacity: 0, y: -4 }}
@@ -393,9 +433,9 @@ export default function Pack() {
                             >
                               Enter a valid GitHub repo URL, such as
                               https://github.com/owner/repo
-                            </motion.div>
+                            </m.div>
                           )}
-                        </motion.div>
+                        </m.div>
                       )}
                     </AnimatePresence>
                   </section>
@@ -458,14 +498,18 @@ export default function Pack() {
                           className="rounded-lg border border-zinc-700 bg-zinc-800/60 px-2.5 py-1.5 text-sm text-zinc-100 focus:border-emerald-500/50 focus:outline-none"
                           value={options.format}
                           onChange={(e) =>
-                            patchOptions({ format: e.target.value as PackFormat })
+                            patchOptions({
+                              format: e.target.value as PackFormat,
+                            })
                           }
                         >
-                          {(Object.keys(FORMAT_LABELS) as PackFormat[]).map((f) => (
-                            <option key={f} value={f}>
-                              {FORMAT_LABELS[f]}
-                            </option>
-                          ))}
+                          {(Object.keys(FORMAT_LABELS) as PackFormat[]).map(
+                            (f) => (
+                              <option key={f} value={f}>
+                                {FORMAT_LABELS[f]}
+                              </option>
+                            ),
+                          )}
                         </select>
                       </label>
 
@@ -494,7 +538,7 @@ export default function Pack() {
                   </section>
 
                   {/* Pack button */}
-                  <motion.button
+                  <m.button
                     type="button"
                     className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold transition-all duration-200 ${
                       isRunning || !isValidTarget
@@ -504,11 +548,13 @@ export default function Pack() {
                     onClick={handlePack}
                     disabled={isRunning || !isValidTarget}
                     aria-busy={isRunning}
-                    whileTap={!isRunning && isValidTarget ? { scale: 0.98 } : undefined}
+                    whileTap={
+                      !isRunning && isValidTarget ? { scale: 0.98 } : undefined
+                    }
                   >
                     <AnimatePresence mode="wait" initial={false}>
                       {isRunning ? (
-                        <motion.span
+                        <m.span
                           key="running"
                           className="flex items-center gap-2"
                           initial={{ opacity: 0, y: 8 }}
@@ -516,17 +562,21 @@ export default function Pack() {
                           exit={{ opacity: 0, y: -8 }}
                           transition={{ duration: 0.2 }}
                         >
-                          <motion.span
+                          <m.span
                             aria-hidden="true"
                             animate={{ rotate: 360 }}
-                            transition={{ duration: 1.5, repeat: Infinity, ease: "linear" }}
+                            transition={{
+                              duration: 1.5,
+                              repeat: Infinity,
+                              ease: "linear",
+                            }}
                           >
                             <LoaderIcon size={16} />
-                          </motion.span>
+                          </m.span>
                           Packing…
-                        </motion.span>
+                        </m.span>
                       ) : (
-                        <motion.span
+                        <m.span
                           key="idle"
                           className="flex items-center gap-2"
                           initial={{ opacity: 0, y: 8 }}
@@ -536,23 +586,30 @@ export default function Pack() {
                         >
                           <PlayIcon size={16} />
                           Pack
-                        </motion.span>
+                        </m.span>
                       )}
                     </AnimatePresence>
-                  </motion.button>
+                  </m.button>
 
                   {/* Error */}
                   <AnimatePresence>
                     {errorMsg && (
-                      <motion.div
+                      <m.div
                         role="alert"
                         className="flex items-start gap-3 rounded-xl border border-red-600/40 bg-red-950/40 px-4 py-3 text-sm text-red-300"
                         initial={{ opacity: 0, y: -8, scale: 0.98 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
                         exit={{ opacity: 0, y: -8, scale: 0.98 }}
-                        transition={{ type: "spring", stiffness: 400, damping: 28 }}
+                        transition={{
+                          type: "spring",
+                          stiffness: 400,
+                          damping: 28,
+                        }}
                       >
-                        <AlertIcon size={16} className="mt-0.5 shrink-0 text-red-400" />
+                        <AlertIcon
+                          size={16}
+                          className="mt-0.5 shrink-0 text-red-400"
+                        />
                         <div className="flex-1 break-words">{errorMsg}</div>
                         <button
                           type="button"
@@ -562,28 +619,28 @@ export default function Pack() {
                         >
                           <XIcon size={14} />
                         </button>
-                      </motion.div>
+                      </m.div>
                     )}
                   </AnimatePresence>
 
                   {/* Progress while running */}
                   <AnimatePresence>
                     {isRunning && (
-                      <motion.div
+                      <m.div
                         initial={{ opacity: 0, height: 0 }}
                         animate={{ opacity: 1, height: "auto" }}
                         exit={{ opacity: 0, height: 0 }}
                         transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
                       >
                         <ProgressLog events={events} />
-                      </motion.div>
+                      </m.div>
                     )}
                   </AnimatePresence>
 
                   {/* Result skeleton */}
                   <AnimatePresence>
                     {showResultSkeleton && (
-                      <motion.div
+                      <m.div
                         className="space-y-5"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
@@ -591,21 +648,24 @@ export default function Pack() {
                         transition={{ duration: 0.3, delay: 0.05 }}
                       >
                         <StatsBar stats={null} loading />
-                      </motion.div>
+                      </m.div>
                     )}
                   </AnimatePresence>
 
                   {/* Result summary inline (full deep-dive lives in Results tab) */}
                   <AnimatePresence>
                     {isDone && result && (
-                      <motion.div
+                      <m.div
                         className="space-y-4"
                         initial={{ opacity: 0 }}
                         animate={{ opacity: 1 }}
                         transition={{ duration: 0.4, delay: 0.1 }}
                       >
                         <div className="flex items-center gap-2">
-                          <SparklesIcon size={14} className="text-emerald-400" />
+                          <SparklesIcon
+                            size={14}
+                            className="text-emerald-400"
+                          />
                           <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
                             Done
                           </span>
@@ -621,7 +681,7 @@ export default function Pack() {
                             suggestedFilename={SAVE_FILENAMES[options.format]}
                             text={result.output}
                           />
-                          <motion.button
+                          <m.button
                             type="button"
                             className="flex items-center gap-1.5 rounded-lg border border-emerald-600/60 bg-emerald-500/10 px-4 py-2.5 text-sm text-emerald-300 hover:bg-emerald-500/20 transition-colors"
                             onClick={() => setActiveTab("results")}
@@ -629,17 +689,17 @@ export default function Pack() {
                           >
                             <FileTextIcon size={14} />
                             Open Results tab
-                          </motion.button>
-                          <motion.button
+                          </m.button>
+                          <m.button
                             type="button"
                             className="flex items-center gap-1.5 rounded-lg border border-zinc-600/80 bg-zinc-800 px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-700 hover:text-white transition-colors"
                             onClick={() => reset()}
                             whileTap={springButton}
                           >
                             New Pack
-                          </motion.button>
+                          </m.button>
                         </div>
-                      </motion.div>
+                      </m.div>
                     )}
                   </AnimatePresence>
                 </div>
@@ -665,10 +725,10 @@ export default function Pack() {
 
               {/* ── Settings tab ── */}
               {activeTab === "settings" && <Settings />}
-            </motion.div>
+            </m.div>
           </AnimatePresence>
-        </motion.main>
-      </motion.div>
+        </m.main>
+      </m.div>
     </div>
   );
 }
@@ -686,7 +746,12 @@ interface ResultsTabProps {
   switchToPacker: () => void;
 }
 
-function ResultsTab({ result, options, reset, switchToPacker }: ResultsTabProps) {
+function ResultsTab({
+  result,
+  options,
+  reset,
+  switchToPacker,
+}: ResultsTabProps) {
   if (!result) {
     return (
       <div className="flex min-h-[360px] flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-700/70 bg-zinc-900/25 px-6 text-center">
@@ -695,11 +760,11 @@ function ResultsTab({ result, options, reset, switchToPacker }: ResultsTabProps)
           No pack results yet
         </h3>
         <p className="mt-2 max-w-sm text-sm leading-relaxed text-zinc-500">
-          Run a pack from the Packer tab. When it completes, this view will
-          show stats, phase timing, AI compatibility, redactions, and a
-          preview of the output.
+          Run a pack from the Packer tab. When it completes, this view will show
+          stats, phase timing, AI compatibility, redactions, and a preview of
+          the output.
         </p>
-        <motion.button
+        <m.button
           type="button"
           className="mt-5 flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white"
           onClick={switchToPacker}
@@ -707,7 +772,7 @@ function ResultsTab({ result, options, reset, switchToPacker }: ResultsTabProps)
         >
           <PackageIcon size={14} />
           Open Packer
-        </motion.button>
+        </m.button>
       </div>
     );
   }
@@ -739,14 +804,14 @@ function ResultsTab({ result, options, reset, switchToPacker }: ResultsTabProps)
           label="Copy Claude Code Prompt"
           text={result.claudeCodePrompt}
         />
-        <motion.button
+        <m.button
           type="button"
           className="flex items-center gap-1.5 rounded-lg border border-zinc-600/80 bg-zinc-800 px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-700 hover:text-white transition-colors"
           onClick={() => reset()}
           whileTap={springButton}
         >
           New Pack
-        </motion.button>
+        </m.button>
       </section>
 
       {/* AI compatibility */}

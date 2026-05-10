@@ -1,4 +1,5 @@
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
+import * as m from "framer-motion/m";
 import { useEffect, useState } from "react";
 import { AlertIcon, FolderOpenIcon, KeyboardIcon } from "./icons";
 
@@ -55,7 +56,10 @@ function useReducedMotion(): boolean {
  * y-bounce is replaced with a static frame, and AnimatePresence
  * transitions collapse to ~0ms.
  */
-export function DropOverlay({ visible, dropState = "valid" }: DropOverlayProps) {
+export function DropOverlay({
+  visible,
+  dropState = "valid",
+}: DropOverlayProps) {
   const reducedMotion = useReducedMotion();
   // When idle and not visible, render nothing — no DOM, no listeners,
   // no flash on remount during options-panel re-renders.
@@ -73,11 +77,11 @@ export function DropOverlay({ visible, dropState = "valid" }: DropOverlayProps) 
   const titleCls = isInvalid ? "text-amber-300" : "text-emerald-300";
   const subtitleCls = isInvalid ? "text-amber-400/60" : "text-emerald-400/60";
   const iconCls = isInvalid ? "text-amber-400" : "text-emerald-400";
-  const backdropCls = isInvalid
-    ? "bg-amber-500/8"
-    : "bg-emerald-500/8";
+  const backdropCls = isInvalid ? "bg-amber-500/8" : "bg-emerald-500/8";
 
-  const title = isInvalid ? "Invalid drop — folders only" : "Drop folder to pack";
+  const title = isInvalid
+    ? "Invalid drop — folders only"
+    : "Drop folder to pack";
   const subtitle = isInvalid
     ? "ProjectPacker only accepts directories"
     : "Release to select this folder";
@@ -85,7 +89,7 @@ export function DropOverlay({ visible, dropState = "valid" }: DropOverlayProps) 
   return (
     <AnimatePresence>
       {(visible || dropState === "invalid") && (
-        <motion.div
+        <m.div
           // pointer-events-none lets the underlying webview still receive
           // the drop event; the overlay is purely visual.
           aria-hidden="true"
@@ -97,7 +101,7 @@ export function DropOverlay({ visible, dropState = "valid" }: DropOverlayProps) 
           data-state={dropState}
           data-accent={accent}
         >
-          <motion.div
+          <m.div
             className={`absolute inset-0 ${backdropCls} backdrop-blur-sm`}
             aria-hidden="true"
             initial={{ opacity: 0 }}
@@ -105,7 +109,7 @@ export function DropOverlay({ visible, dropState = "valid" }: DropOverlayProps) 
             exit={{ opacity: 0 }}
             transition={{ duration: reducedMotion ? 0.05 : 0.2 }}
           />
-          <motion.div
+          <m.div
             className="relative z-10"
             initial={{ scale: reducedMotion ? 1 : 0.9, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
@@ -125,6 +129,7 @@ export function DropOverlay({ visible, dropState = "valid" }: DropOverlayProps) 
                   ? undefined
                   : {
                       animation: "drop-overlay-pulse 1.8s ease-in-out infinite",
+                      willChange: "transform, opacity",
                     }
               }
               className={`rounded-2xl border-2 border-dashed ${cardBorderCls} bg-zinc-900/95 px-12 py-10 text-center shadow-2xl`}
@@ -134,11 +139,9 @@ export function DropOverlay({ visible, dropState = "valid" }: DropOverlayProps) 
                   <AlertIcon size={40} className={`mx-auto mb-3 ${iconCls}`} />
                 </div>
               ) : (
-                <motion.div
+                <m.div
                   aria-hidden="true"
-                  animate={
-                    reducedMotion ? { y: 0 } : { y: [0, -4, 0] }
-                  }
+                  animate={reducedMotion ? { y: 0 } : { y: [0, -4, 0] }}
                   transition={
                     reducedMotion
                       ? { duration: 0 }
@@ -153,7 +156,7 @@ export function DropOverlay({ visible, dropState = "valid" }: DropOverlayProps) 
                     size={40}
                     className={`mx-auto mb-3 ${iconCls}`}
                   />
-                </motion.div>
+                </m.div>
               )}
               <div className={`text-lg font-semibold ${titleCls}`}>{title}</div>
               <div className={`mt-1 text-sm ${subtitleCls}`}>{subtitle}</div>
@@ -163,8 +166,8 @@ export function DropOverlay({ visible, dropState = "valid" }: DropOverlayProps) 
                 <span>Press Tab + Space to browse instead</span>
               </div>
             </div>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>
   );

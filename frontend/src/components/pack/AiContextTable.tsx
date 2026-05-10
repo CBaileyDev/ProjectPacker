@@ -1,11 +1,11 @@
-import { motion } from "framer-motion";
+import * as m from "framer-motion/m";
 import { memo } from "react";
 import type { TokensPerModel } from "../../bindings";
 import { AI_MODELS } from "../../lib/ai-models";
 import { fmtNum } from "../../lib/format";
 import { fadeUp, prefersReducedMotion } from "../../lib/motion";
-import { SkeletonRow } from "./Skeleton";
 import { CheckIcon, XIcon } from "./icons";
+import { SkeletonRow } from "./Skeleton";
 
 interface AiContextTableProps {
   tokensPerModel: TokensPerModel | null;
@@ -25,13 +25,10 @@ interface AiContextTableProps {
  *      loading=false + tokensPerModel=null → "Enable Count tokens..."
  *      tokensPerModel != null → real content
  */
-function AiContextTableInner({
-  tokensPerModel,
-  loading,
-}: AiContextTableProps) {
+function AiContextTableInner({ tokensPerModel, loading }: AiContextTableProps) {
   if (loading) {
     return (
-      <motion.div
+      <m.div
         className="overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-800/40"
         variants={fadeUp}
         initial="hidden"
@@ -49,26 +46,25 @@ function AiContextTableInner({
             <SkeletonRow key={m.name} />
           ))}
         </div>
-      </motion.div>
+      </m.div>
     );
   }
 
   if (!tokensPerModel) {
     return (
-      <motion.div
+      <m.div
         className="rounded-xl border border-zinc-700/80 bg-zinc-800/40 p-5 text-sm text-zinc-400"
         variants={fadeUp}
         initial="hidden"
         animate="visible"
       >
-        Enable "Count tokens" in options to see AI context-window
-        compatibility.
-      </motion.div>
+        Enable "Count tokens" in options to see AI context-window compatibility.
+      </m.div>
     );
   }
 
   return (
-    <motion.div
+    <m.div
       className="overflow-hidden rounded-xl border border-zinc-700/80"
       variants={fadeUp}
       initial="hidden"
@@ -80,10 +76,10 @@ function AiContextTableInner({
         </span>
       </div>
       <div className="divide-y divide-zinc-800/60">
-        {AI_MODELS.map((m, i) => {
-          const tokens = tokensPerModel[m.tokenModel];
-          const fits = tokens <= m.context;
-          const pct = (tokens / m.context) * 100;
+        {AI_MODELS.map((model, i) => {
+          const tokens = tokensPerModel[model.tokenModel];
+          const fits = tokens <= model.context;
+          const pct = (tokens / model.context) * 100;
           // Green: comfortable fit. Amber: closing in (80-100%). Red:
           // overflow. Red only fires when we're _over_ the limit, since
           // exactly 100% still technically fits and doesn't need alarm.
@@ -94,14 +90,10 @@ function AiContextTableInner({
             : "bg-red-500";
 
           return (
-            <motion.div
-              key={m.name}
+            <m.div
+              key={model.name}
               className="flex items-center gap-4 px-4 py-3"
-              initial={
-                prefersReducedMotion
-                  ? false
-                  : { opacity: 0, x: -12 }
-              }
+              initial={prefersReducedMotion ? false : { opacity: 0, x: -12 }}
               animate={{ opacity: 1, x: 0 }}
               transition={
                 prefersReducedMotion
@@ -114,8 +106,8 @@ function AiContextTableInner({
               }
             >
               <div className="w-40 shrink-0">
-                <span className="text-sm text-zinc-200">{m.name}</span>
-                {m.approx && (
+                <span className="text-sm text-zinc-200">{model.name}</span>
+                {model.approx && (
                   <span className="ml-1.5 rounded bg-zinc-700/60 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-zinc-400">
                     approx
                   </span>
@@ -129,9 +121,9 @@ function AiContextTableInner({
                   aria-valuenow={Math.round(Math.min(pct, 100))}
                   aria-valuemin={0}
                   aria-valuemax={100}
-                  aria-label={`${m.name} fill ${Math.round(pct)} percent`}
+                  aria-label={`${model.name} fill ${Math.round(pct)} percent`}
                 >
-                  <motion.div
+                  <m.div
                     className={`h-full rounded-full ${barColor}`}
                     initial={{ width: 0 }}
                     animate={{ width: `${Math.min(pct, 100)}%` }}
@@ -148,17 +140,17 @@ function AiContextTableInner({
                 </div>
               </div>
 
-              <div className="w-28 shrink-0 text-right text-xs">
+              <div className="w-28 shrink-0 text-right text-xs nums">
                 <span className="font-medium text-zinc-200">
                   {fmtNum(tokens)}
                 </span>
                 <span className="text-zinc-600">
                   {" / "}
-                  {fmtNum(m.context)}
+                  {fmtNum(model.context)}
                 </span>
               </div>
 
-              <div className="w-16 shrink-0 text-right">
+              <div className="w-16 shrink-0 text-right nums">
                 {fits ? (
                   <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-400">
                     <CheckIcon size={12} />
@@ -171,7 +163,7 @@ function AiContextTableInner({
                   </span>
                 )}
               </div>
-            </motion.div>
+            </m.div>
           );
         })}
       </div>
@@ -180,7 +172,7 @@ function AiContextTableInner({
         cl100k×1.05 ceil for Gemini) since the authentic tokenizers are not
         public.
       </div>
-    </motion.div>
+    </m.div>
   );
 }
 

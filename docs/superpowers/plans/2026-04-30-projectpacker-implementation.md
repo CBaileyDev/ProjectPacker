@@ -1686,7 +1686,7 @@ mod tests {
 
     #[test]
     fn detects_aws_access_key() {
-        let hits = scan("token = AKIAIOSFODNN7EXAMPLE\n");
+        let hits = scan("token = AKIA-EXAMPLE-DO-NOT-MATCH\n");
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].kind, "aws-access-key");
         assert_eq!(hits[0].line, 1);
@@ -1694,7 +1694,7 @@ mod tests {
 
     #[test]
     fn detects_github_token() {
-        let hits = scan("ghp_1234567890abcdefghijklmnopqrstuvwxyz1\n");
+        let hits = scan("ghp_EXAMPLE_token_here\n");
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].kind, "github-token");
     }
@@ -1715,7 +1715,7 @@ mod tests {
 
     #[test]
     fn excerpt_is_redacted() {
-        let hits = scan("AKIAIOSFODNN7EXAMPLE\n");
+        let hits = scan("AKIA-EXAMPLE-DO-NOT-MATCH\n");
         assert!(hits[0].matched_excerpt.contains("***"));
         assert!(!hits[0].matched_excerpt.contains("IOSFODNN"));
     }
@@ -3849,7 +3849,7 @@ echo "Welcome to docs." > tests/fixtures/tiny/docs/intro.md
 echo "BUILD ARTIFACT" > tests/fixtures/tiny/build/output.txt
 echo "build/" > tests/fixtures/tiny/.gitignore
 echo "docs/private/" > tests/fixtures/tiny/.codeparserignore
-echo "AKIA0000000000000000  # fake aws key" > tests/fixtures/tiny/src/danger.txt
+echo "AKIA-EXAMPLE-DO-NOT-MATCH  # fake aws key" > tests/fixtures/tiny/src/danger.txt
 ```
 
 - [ ] **Step 2: Allowlist the fake secret**

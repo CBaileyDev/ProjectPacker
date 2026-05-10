@@ -1,5 +1,6 @@
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
+import * as m from "framer-motion/m";
 // NOTE: useState MUST be imported here. The previous version of this file
 // shipped without it (memo/useCallback/useRef were imported but useState
 // was forgotten); the swarm-coordinator deliverable flagged it as "BUG:
@@ -73,7 +74,7 @@ function CopyButtonInner({ label, text }: CopyButtonProps) {
   const isError = status.kind === "error";
 
   return (
-    <motion.button
+    <m.button
       type="button"
       onClick={doCopy}
       title={isError ? status.message : undefined}
@@ -92,7 +93,7 @@ function CopyButtonInner({ label, text }: CopyButtonProps) {
     >
       <AnimatePresence mode="wait" initial={false}>
         {isCopied ? (
-          <motion.span
+          <m.span
             key="copied"
             className="flex items-center gap-2"
             initial={{ opacity: 0, scale: 0.8 }}
@@ -102,9 +103,9 @@ function CopyButtonInner({ label, text }: CopyButtonProps) {
           >
             <CheckIcon size={15} />
             Copied!
-          </motion.span>
+          </m.span>
         ) : isError ? (
-          <motion.span
+          <m.span
             key="error"
             className="flex items-center gap-2"
             initial={{ opacity: 0, scale: 0.8 }}
@@ -114,9 +115,9 @@ function CopyButtonInner({ label, text }: CopyButtonProps) {
           >
             <XIcon size={15} />
             Failed
-          </motion.span>
+          </m.span>
         ) : (
-          <motion.span
+          <m.span
             key="idle"
             className="flex items-center gap-2"
             initial={{ opacity: 0, scale: 0.8 }}
@@ -126,10 +127,10 @@ function CopyButtonInner({ label, text }: CopyButtonProps) {
           >
             <CopyIcon size={15} />
             {label}
-          </motion.span>
+          </m.span>
         )}
       </AnimatePresence>
-    </motion.button>
+    </m.button>
   );
 }
 

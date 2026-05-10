@@ -6,12 +6,22 @@ pub mod jobs;
 pub mod settings;
 
 use std::sync::Arc;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 pub fn run() {
     let registry = Arc::new(jobs::JobRegistry::new());
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
+            // Refocus the existing main window when a second launch is attempted,
+            // and forward argv to the renderer so it can switch target on a
+            // dropped-folder path.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_focus();
+                let _ = window.unminimize();
+            }
+            let _ = app.emit("single-instance", argv);
+        }))
         .manage(registry)
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_clipboard_manager::init())
@@ -19,13 +29,6 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_store::Builder::default().build())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
-            // Focus the existing main window when a second launch is attempted.
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.set_focus();
-                let _ = window.unminimize();
-            }
-        }))
         .plugin(
             tauri_plugin_log::Builder::default()
                 .level(if cfg!(debug_assertions) {

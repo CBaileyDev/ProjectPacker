@@ -1,4 +1,5 @@
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
+import * as m from "framer-motion/m";
 import { memo, useEffect, useMemo, useRef } from "react";
 import type { ProgressEvent } from "../../bindings";
 import { prefersReducedMotion } from "../../lib/motion";
@@ -134,9 +135,11 @@ function ProgressLogInner({ events }: { events: ProgressEvent[] }) {
   }, [lines.length]);
 
   return (
-    <motion.div
+    <m.div
       className="overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-900/80 backdrop-blur-sm"
-      initial={prefersReducedMotion ? false : { opacity: 0, y: 12, scale: 0.98 }}
+      initial={
+        prefersReducedMotion ? false : { opacity: 0, y: 12, scale: 0.98 }
+      }
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={
         prefersReducedMotion
@@ -146,13 +149,11 @@ function ProgressLogInner({ events }: { events: ProgressEvent[] }) {
     >
       <div className="border-b border-zinc-700/60 px-4 py-2.5">
         <div className="flex items-center gap-2">
-          <motion.div
+          <m.div
             aria-hidden="true"
             className="h-2 w-2 rounded-full bg-emerald-400"
             animate={
-              prefersReducedMotion
-                ? { opacity: 1 }
-                : { opacity: [1, 0.3, 1] }
+              prefersReducedMotion ? { opacity: 1 } : { opacity: [1, 0.3, 1] }
             }
             transition={
               prefersReducedMotion
@@ -167,11 +168,10 @@ function ProgressLogInner({ events }: { events: ProgressEvent[] }) {
       </div>
       <div
         ref={scrollRef}
-        // role="log" + live-polite so AT users hear progress without
-        // having every walking-tick interrupt them.
         role="log"
         aria-live="polite"
         aria-relevant="additions"
+        aria-label="Pack progress events"
         className="max-h-48 overflow-y-auto px-4 py-2"
       >
         {olderRows.map((l, i) => (
@@ -192,18 +192,14 @@ function ProgressLogInner({ events }: { events: ProgressEvent[] }) {
         ))}
         <AnimatePresence initial={false}>
           {tailRows.map((l, i) => (
-            <motion.div
+            <m.div
               // Append-only log; index in the trailing window is a stable
               // identity for as long as a line is on screen.
               key={`tail-${windowStart + tailStart + i}-${l.kind}`}
               className={`flex items-center gap-2 py-0.5 font-mono text-xs ${
                 STAGE_COLORS[l.kind] ?? "text-zinc-400"
               }`}
-              initial={
-                prefersReducedMotion
-                  ? false
-                  : { opacity: 0, x: -8 }
-              }
+              initial={prefersReducedMotion ? false : { opacity: 0, x: -8 }}
               animate={{ opacity: 1, x: 0 }}
               exit={{ opacity: 0 }}
               transition={
@@ -216,7 +212,7 @@ function ProgressLogInner({ events }: { events: ProgressEvent[] }) {
                 {STAGE_ICONS[l.kind] ?? "·"}
               </span>
               <span className="truncate">{l.text}</span>
-            </motion.div>
+            </m.div>
           ))}
         </AnimatePresence>
         {lines.length === 0 && (
@@ -225,7 +221,7 @@ function ProgressLogInner({ events }: { events: ProgressEvent[] }) {
           </div>
         )}
       </div>
-    </motion.div>
+    </m.div>
   );
 }
 

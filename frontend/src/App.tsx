@@ -1,7 +1,17 @@
-import { AnimatePresence, motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { stat } from "@tauri-apps/plugin-fs";
+import {
+  AnimatePresence,
+  domAnimation,
+  LazyMotion,
+  MotionConfig,
+} from "framer-motion";
+import * as m from "framer-motion/m";
+import type { LucideProps } from "lucide-react";
+import { type ComponentType, useEffect, useState } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { AlertIcon, CheckIcon, XIcon } from "./components/pack/icons";
+import { useApp } from "./lib/store";
 import { useToast } from "./lib/toast";
 import Pack from "./routes/Pack";
 
@@ -37,9 +47,52 @@ function useSystemTheme(): void {
   }, []);
 }
 
+/**
+ * Subscribe to the `single-instance` event emitted by the backend when a
+ * user tries to launch a second copy of the app (e.g. via "Open with"
+ * or by dragging a folder onto the dock icon). The Rust side already
+ * refocuses the existing window; the renderer's job here is to look at
+ * the forwarded argv, find a path that resolves to a directory, and
+ * patch it into the target so the user lands on the right repo.
+ */
+function useSingleInstance(): void {
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    (async () => {
+      const fn = await listen<string[]>("single-instance", async (event) => {
+        // argv[0] is the binary path; skip it and look for the first
+        // remaining argument that points to an existing directory.
+        for (const arg of event.payload.slice(1)) {
+          try {
+            const info = await stat(arg);
+            if (info.isDirectory) {
+              useApp
+                .getState()
+                .patchOptions({ target: { kind: "folder", value: arg } });
+              return;
+            }
+          } catch {
+            // Unreadable / missing — keep scanning.
+          }
+        }
+      });
+      if (cancelled) {
+        fn();
+        return;
+      }
+      unlisten = fn;
+    })();
+    return () => {
+      cancelled = true;
+      if (unlisten) unlisten();
+    };
+  }, []);
+}
+
 const TOAST_KIND_STYLES: Record<
   "info" | "success" | "error",
-  { bg: string; text: string; ring: string; Icon: React.FC<{ size?: number; className?: string }> }
+  { bg: string; text: string; ring: string; Icon: ComponentType<LucideProps> }
 > = {
   info: {
     bg: "bg-zinc-800/95",
@@ -84,7 +137,7 @@ function Toaster() {
           const style = TOAST_KIND_STYLES[t.kind] ?? TOAST_KIND_STYLES.info;
           const Icon = style.Icon;
           return (
-            <motion.button
+            <m.button
               type="button"
               key={t.id}
               onClick={() => dismissToast(t.id)}
@@ -96,7 +149,7 @@ function Toaster() {
             >
               <Icon size={14} />
               <span>{t.message}</span>
-            </motion.button>
+            </m.button>
           );
         })}
       </AnimatePresence>
@@ -160,10 +213,18 @@ function ErrorFallback({
 
 export default function App() {
   useSystemTheme();
+  useSingleInstance();
   return (
     <ErrorBoundary FallbackComponent={ErrorFallback}>
-      <Pack />
-      <Toaster />
+      <LazyMotion features={domAnimation} strict>
+        <MotionConfig
+          reducedMotion="user"
+          transition={{ duration: 0.18, ease: [0.2, 0, 0, 1] }}
+        >
+          <Pack />
+          <Toaster />
+        </MotionConfig>
+      </LazyMotion>
     </ErrorBoundary>
   );
 }

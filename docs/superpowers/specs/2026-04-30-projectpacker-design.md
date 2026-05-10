@@ -780,7 +780,7 @@ jobs:
 
 ### 10.10 Test data hygiene
 
-Fixtures use synthetic content. Secret-detection fixtures use deliberately-invalid-but-shaped keys (`AKIA0000000000000000`). `.gitleaks.toml` allowlists fixture paths.
+Fixtures use synthetic content. Secret-detection fixtures use deliberately-invalid-but-shaped keys (e.g. an `AKIA…` prefix followed by sixteen zeros — neutered here as `AKIA-EXAMPLE-DO-NOT-MATCH` so this doc itself does not trip the scanner). `.gitleaks.toml` allowlists fixture paths.
 
 ### 10.11 Explicitly out of scope
 

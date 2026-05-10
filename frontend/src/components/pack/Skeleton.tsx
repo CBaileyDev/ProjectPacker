@@ -83,10 +83,7 @@ export const SkeletonCircle = memo(function SkeletonCircle({
 
 export const SkeletonRow = memo(function SkeletonRow() {
   return (
-    <div
-      aria-hidden="true"
-      className="flex items-center gap-3 py-2"
-    >
+    <div aria-hidden="true" className="flex items-center gap-3 py-2">
       <SkeletonCircle size={28} />
       <div className="flex-1">
         <SkeletonText lines={2} lastWidth="40%" />

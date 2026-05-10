@@ -41,7 +41,11 @@ const FLUSH_INTERVAL_MS = 100;
  *    to a no-op, and drops the ref so Tauri can GC the IPC entry.
  */
 export function usePackJob(): UsePackJobReturn {
-  const { options, status, setJob, setResult, reset } = useApp();
+  const options = useApp((s) => s.options);
+  const status = useApp((s) => s.status);
+  const setJob = useApp((s) => s.setJob);
+  const setResult = useApp((s) => s.setResult);
+  const reset = useApp((s) => s.reset);
   const pushEventsBatched = useApp((s) => s.pushEventsBatched);
   const pushEventStable = useApp((s) => s.pushEvent);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);

@@ -78,7 +78,10 @@ function sanitize(raw: string): string {
   }
 
   // goal length
-  if (typeof options.goal === "string" && options.goal.length > MAX_GOAL_LENGTH) {
+  if (
+    typeof options.goal === "string" &&
+    options.goal.length > MAX_GOAL_LENGTH
+  ) {
     options.goal = options.goal.slice(0, MAX_GOAL_LENGTH);
   }
 

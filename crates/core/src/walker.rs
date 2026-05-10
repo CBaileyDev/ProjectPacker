@@ -13,49 +13,6 @@ pub struct WalkOptions {
     pub max_file_size_kb: u32,
 }
 
-/// Sorted list of common binary file extensions for the fast-path
-/// `has_binary_extension` check. MUST stay sorted (lexicographically by
-/// the lowercase string) for the `binary_search` lookup to be correct.
-static BINARY_EXTS: &[&str] = &[
-    "7z", "a", "avi", "bin", "bmp", "class", "dat", "db", "dll", "dylib", "eot", "exe", "gif",
-    "gz", "ico", "idx", "jar", "jpeg", "jpg", "jsbundle", "lib", "lock", "mov", "mp3", "mp4",
-    "otf", "pdf", "png", "pyc", "pyd", "rar", "so", "sqlite", "svg", "tar", "tgz", "ttf", "wasm",
-    "wav", "webm", "webp", "woff", "woff2", "zip",
-];
-
-/// Returns `true` if `path`'s extension is in [`BINARY_EXTS`].
-///
-/// Uses a stack-based `[u8; 16]` lowercase buffer + `binary_search` for
-/// O(log n) lookup with no heap allocation. Extensions longer than 16
-/// bytes are reported as not-found (those are not in the small static
-/// list anyway, and the caller falls back to the slower
-/// content-sniffing path).
-pub fn has_binary_extension(path: &Path) -> bool {
-    let Some(ext_os) = path.extension() else {
-        return false;
-    };
-    let Some(ext) = ext_os.to_str() else {
-        return false;
-    };
-    let bytes = ext.as_bytes();
-    if bytes.is_empty() || bytes.len() > 16 {
-        return false;
-    }
-    let mut buf = [0u8; 16];
-    for (i, &b) in bytes.iter().enumerate() {
-        buf[i] = b.to_ascii_lowercase();
-    }
-    let lower = &buf[..bytes.len()];
-    // SAFETY: ASCII-lowercased ASCII bytes are valid UTF-8. Non-ASCII
-    // input still yields valid UTF-8 because `to_ascii_lowercase` is the
-    // identity on non-ASCII bytes and the source `&str` slice was valid.
-    let ext_str = match std::str::from_utf8(lower) {
-        Ok(s) => s,
-        Err(_) => return false,
-    };
-    BINARY_EXTS.binary_search(&ext_str).is_ok()
-}
-
 /// Replace Windows-style backslash separators with forward slashes.
 ///
 /// Unix fast-path: when the input contains no `\` we return the original
@@ -91,15 +48,6 @@ pub fn walk(root: &Path, matcher: &IgnoreMatcher, opts: &WalkOptions) -> WalkOut
 
         if matcher.is_ignored(rel, false) {
             skipped.push((rel_str, SkipReason::Ignored));
-            continue;
-        }
-
-        // Fast-path: known-binary extensions short-circuit the metadata
-        // and content-sniff stages. Saves a `stat` + an open+read on the
-        // hot path for image/archive/font assets that dominate big
-        // monorepos.
-        if has_binary_extension(abs) {
-            skipped.push((rel_str, SkipReason::Binary));
             continue;
         }
 
@@ -198,32 +146,6 @@ mod tests {
             .iter()
             .any(|(p, r)| p == "binary.bin" && matches!(r, SkipReason::Binary));
         assert!(bin_skipped, "binary.bin should be skipped as Binary");
-    }
-
-    #[test]
-    fn has_binary_extension_recognizes_common_binaries() {
-        assert!(has_binary_extension(Path::new("a.png")));
-        assert!(has_binary_extension(Path::new("a.PNG")));
-        assert!(has_binary_extension(Path::new("a.zip")));
-        assert!(has_binary_extension(Path::new("dir/sub/file.woff2")));
-    }
-
-    #[test]
-    fn has_binary_extension_rejects_text_extensions() {
-        assert!(!has_binary_extension(Path::new("a.rs")));
-        assert!(!has_binary_extension(Path::new("a.md")));
-        assert!(!has_binary_extension(Path::new("a")));
-        assert!(!has_binary_extension(Path::new("a.thisextisway2long")));
-    }
-
-    #[test]
-    fn binary_exts_list_is_sorted() {
-        // The `has_binary_extension` fast path uses `binary_search`, which
-        // requires the underlying slice to be sorted. Lock that down here
-        // so a future edit to the list can't silently break the lookup.
-        let mut sorted = BINARY_EXTS.to_vec();
-        sorted.sort();
-        assert_eq!(BINARY_EXTS, sorted.as_slice(), "BINARY_EXTS must remain sorted");
     }
 
     #[test]

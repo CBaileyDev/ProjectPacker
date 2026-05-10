@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import * as m from "framer-motion/m";
 import { memo, useMemo } from "react";
 import type { PackStats } from "../../bindings";
 import {
@@ -77,7 +77,7 @@ function PhaseBreakdownInner({ stats }: PhaseBreakdownProps) {
   );
 
   return (
-    <motion.div
+    <m.div
       className="mt-3 space-y-1.5"
       variants={staggerContainer}
       initial="hidden"
@@ -93,13 +93,13 @@ function PhaseBreakdownInner({ stats }: PhaseBreakdownProps) {
           const pct = Math.max(4, (phase.value / maxMs) * 100);
           const isZero = phase.value === 0;
           return (
-            <motion.div
+            <m.div
               key={phase.key}
               className="flex-1"
               title={`${phase.label}: ${phase.value}ms`}
               variants={fadeUp}
             >
-              <div className="mb-1 text-center text-[10px] font-mono text-zinc-500">
+              <div className="mb-1 text-center text-[10px] font-mono text-zinc-500 nums">
                 {phase.value > 0 ? `${phase.value}ms` : "—"}
               </div>
               <div
@@ -107,7 +107,7 @@ function PhaseBreakdownInner({ stats }: PhaseBreakdownProps) {
                 role="img"
                 aria-label={`${phase.label}: ${phase.value}ms`}
               >
-                <motion.div
+                <m.div
                   className={`w-full rounded-t ${phase.cls}`}
                   initial={{ height: 0 }}
                   animate={{ height: isZero ? 4 : `${pct}%` }}
@@ -117,11 +117,11 @@ function PhaseBreakdownInner({ stats }: PhaseBreakdownProps) {
               <div className="mt-1 text-center text-[10px] text-zinc-500">
                 {phase.label}
               </div>
-            </motion.div>
+            </m.div>
           );
         })}
       </div>
-    </motion.div>
+    </m.div>
   );
 }
 

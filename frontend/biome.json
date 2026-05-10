@@ -17,7 +17,20 @@
     "rules": {
       "recommended": true,
       "correctness": { "noUnusedVariables": "error" },
-      "style": { "noNonNullAssertion": "off" },
+      "style": {
+        "noNonNullAssertion": "off",
+        "noRestrictedImports": {
+          "level": "error",
+          "options": {
+            "paths": {
+              "framer-motion": {
+                "message": "Import motion components from 'framer-motion/m' (m.div, m.button) under <LazyMotion features={domAnimation}>. The full 'motion' export pulls ~34 KB; LazyMotion + m is ~6 KB. AnimatePresence, LazyMotion, MotionConfig, domAnimation, and Variants from 'framer-motion' are still allowed.",
+                "importNames": ["motion"]
+              }
+            }
+          }
+        }
+      },
       "suspicious": { "noExplicitAny": "warn" }
     }
   },

@@ -1,5 +1,5 @@
-import { motion } from "framer-motion";
-import { useId, type KeyboardEvent } from "react";
+import * as m from "framer-motion/m";
+import { type KeyboardEvent, useId } from "react";
 
 interface ToggleProps {
   label: string;
@@ -52,7 +52,9 @@ export function Toggle({ label, hint, checked, onChange }: ToggleProps) {
       <span className="min-w-0">
         <span
           className={`block text-sm font-medium transition-colors ${
-            checked ? "text-emerald-100" : "text-zinc-200 group-hover:text-white"
+            checked
+              ? "text-emerald-100"
+              : "text-zinc-200 group-hover:text-white"
           }`}
         >
           {label}
@@ -89,7 +91,7 @@ export function Toggle({ label, hint, checked, onChange }: ToggleProps) {
               : "border-zinc-600 bg-zinc-700 group-hover:border-zinc-500"
           }`}
         >
-          <motion.span
+          <m.span
             className="block h-5 w-5 rounded-full bg-white shadow-md"
             animate={{ x: checked ? 22 : 4, y: 3 }}
             transition={{ type: "spring", stiffness: 520, damping: 32 }}

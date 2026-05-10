@@ -1,9 +1,8 @@
-import { motion } from "framer-motion";
+import * as m from "framer-motion/m";
 import { useEffect, useMemo, useState } from "react";
 import { commands, type GithubRepo } from "../../bindings";
 import { fadeUp, springButton } from "../../lib/motion";
 import { useGithubToken } from "../../lib/use-github-token";
-import { SkeletonRow } from "./Skeleton";
 import {
   AlertIcon,
   GithubIcon,
@@ -13,6 +12,7 @@ import {
   SettingsIcon,
   StarIcon,
 } from "./icons";
+import { SkeletonRow } from "./Skeleton";
 
 interface GithubConnectorProps {
   onSelectRepo: (htmlUrl: string) => void;
@@ -78,7 +78,7 @@ export function GithubConnector({
   // ── No PAT yet ──────────────────────────────────────────────────────────
   if (ready && !hasToken) {
     return (
-      <motion.div
+      <m.div
         className="flex min-h-[360px] flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-700/70 bg-zinc-900/25 px-6 text-center"
         variants={fadeUp}
         initial="hidden"
@@ -89,12 +89,12 @@ export function GithubConnector({
           Connect to GitHub to browse repos
         </h3>
         <p className="mt-2 max-w-md text-sm leading-relaxed text-zinc-500">
-          Add a Personal Access Token in Settings — it's stored in a
-          user-only file in your app-data folder and never reaches the
-          renderer. Once connected, your repos appear here and a single
-          click loads one into the Packer tab.
+          Add a Personal Access Token in Settings — it's stored in a user-only
+          file in your app-data folder and never reaches the renderer. Once
+          connected, your repos appear here and a single click loads one into
+          the Packer tab.
         </p>
-        <motion.button
+        <m.button
           type="button"
           className="mt-5 flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-900/30 hover:bg-emerald-500"
           onClick={onGoToSettings}
@@ -102,13 +102,13 @@ export function GithubConnector({
         >
           <SettingsIcon size={15} />
           Open Settings
-        </motion.button>
-      </motion.div>
+        </m.button>
+      </m.div>
     );
   }
 
   return (
-    <motion.div
+    <m.div
       className="space-y-4"
       variants={fadeUp}
       initial="hidden"
@@ -129,7 +129,7 @@ export function GithubConnector({
             className="w-full rounded-lg border border-zinc-700 bg-zinc-800/60 pl-9 pr-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 transition-colors focus:border-emerald-500/50 focus:outline-none"
           />
         </div>
-        <motion.button
+        <m.button
           type="button"
           onClick={() => void loadRepos()}
           disabled={loading || !hasToken}
@@ -137,7 +137,7 @@ export function GithubConnector({
           whileTap={springButton}
           aria-label="Refresh repository list"
         >
-          <motion.span
+          <m.span
             aria-hidden="true"
             animate={loading ? { rotate: 360 } : { rotate: 0 }}
             transition={
@@ -147,13 +147,13 @@ export function GithubConnector({
             }
           >
             <RefreshIcon size={14} />
-          </motion.span>
+          </m.span>
           {loading ? "Loading…" : "Refresh"}
-        </motion.button>
+        </m.button>
       </div>
 
       {error && (
-        <motion.div
+        <m.div
           role="alert"
           className="flex items-start gap-3 rounded-xl border border-red-600/40 bg-red-950/40 px-4 py-3 text-sm text-red-300"
           initial={{ opacity: 0, y: -4 }}
@@ -161,7 +161,7 @@ export function GithubConnector({
         >
           <AlertIcon size={16} className="mt-0.5 shrink-0 text-red-400" />
           <div className="flex-1 break-words">{error}</div>
-        </motion.div>
+        </m.div>
       )}
 
       {loading && repos.length === 0 && (
@@ -201,13 +201,13 @@ export function GithubConnector({
           push
         </p>
       )}
-    </motion.div>
+    </m.div>
   );
 }
 
 function RepoRow({ repo, onClick }: { repo: GithubRepo; onClick: () => void }) {
   return (
-    <motion.button
+    <m.button
       type="button"
       onClick={onClick}
       className="flex w-full items-start gap-3 px-4 py-3 text-left transition-colors hover:bg-zinc-800/50"
@@ -256,11 +256,9 @@ function RepoRow({ repo, onClick }: { repo: GithubRepo; onClick: () => void }) {
               {repo.stargazersCount.toLocaleString()}
             </span>
           )}
-          <span>
-            updated {new Date(repo.pushedAt).toLocaleDateString()}
-          </span>
+          <span>updated {new Date(repo.pushedAt).toLocaleDateString()}</span>
         </div>
       </div>
-    </motion.button>
+    </m.button>
   );
 }

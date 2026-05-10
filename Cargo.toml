@@ -20,7 +20,13 @@ specta-typescript = "=0.0.9"
 anyhow = "1"
 
 [profile.release]
-strip = true
-lto = "thin"
+strip = "symbols"
+lto = "fat"
 codegen-units = 1
 panic = "abort"
+opt-level = 3
+
+[profile.release-ci]
+inherits = "release"
+lto = "thin"
+codegen-units = 16

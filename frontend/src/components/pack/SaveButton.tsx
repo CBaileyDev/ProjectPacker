@@ -1,4 +1,5 @@
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence } from "framer-motion";
+import * as m from "framer-motion/m";
 import { memo, useCallback, useRef, useState } from "react";
 import { commands } from "../../bindings";
 import { springButton } from "../../lib/motion";
@@ -70,7 +71,7 @@ function SaveButtonInner({ label, suggestedFilename, text }: SaveButtonProps) {
   const isError = status.kind === "error";
 
   return (
-    <motion.button
+    <m.button
       type="button"
       onClick={doSave}
       disabled={isSaving}
@@ -83,13 +84,7 @@ function SaveButtonInner({ label, suggestedFilename, text }: SaveButtonProps) {
             ? `Save failed: ${status.message}`
             : label
       }
-      title={
-        isSaved
-          ? status.path
-          : isError
-            ? status.message
-            : undefined
-      }
+      title={isSaved ? status.path : isError ? status.message : undefined}
       whileTap={isSaving ? undefined : springButton}
       className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors duration-200 focus-visible:outline-none disabled:cursor-wait ${
         isSaved
@@ -101,7 +96,7 @@ function SaveButtonInner({ label, suggestedFilename, text }: SaveButtonProps) {
     >
       <AnimatePresence mode="wait" initial={false}>
         {isSaving ? (
-          <motion.span
+          <m.span
             key="saving"
             className="flex items-center gap-2"
             initial={{ opacity: 0, scale: 0.8 }}
@@ -109,16 +104,16 @@ function SaveButtonInner({ label, suggestedFilename, text }: SaveButtonProps) {
             exit={{ opacity: 0, scale: 0.8 }}
             transition={{ type: "spring", stiffness: 500, damping: 25 }}
           >
-            <motion.span
+            <m.span
               animate={{ rotate: 360 }}
               transition={{ duration: 1.2, repeat: Infinity, ease: "linear" }}
             >
               <LoaderIcon size={15} />
-            </motion.span>
+            </m.span>
             Saving…
-          </motion.span>
+          </m.span>
         ) : isSaved ? (
-          <motion.span
+          <m.span
             key="saved"
             className="flex items-center gap-2"
             initial={{ opacity: 0, scale: 0.8 }}
@@ -128,9 +123,9 @@ function SaveButtonInner({ label, suggestedFilename, text }: SaveButtonProps) {
           >
             <CheckIcon size={15} />
             Saved
-          </motion.span>
+          </m.span>
         ) : isError ? (
-          <motion.span
+          <m.span
             key="error"
             className="flex items-center gap-2"
             initial={{ opacity: 0, scale: 0.8 }}
@@ -140,9 +135,9 @@ function SaveButtonInner({ label, suggestedFilename, text }: SaveButtonProps) {
           >
             <XIcon size={15} />
             Failed
-          </motion.span>
+          </m.span>
         ) : (
-          <motion.span
+          <m.span
             key="idle"
             className="flex items-center gap-2"
             initial={{ opacity: 0, scale: 0.8 }}
@@ -152,10 +147,10 @@ function SaveButtonInner({ label, suggestedFilename, text }: SaveButtonProps) {
           >
             <SaveIcon size={15} />
             {label}
-          </motion.span>
+          </m.span>
         )}
       </AnimatePresence>
-    </motion.button>
+    </m.button>
   );
 }
 

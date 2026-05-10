@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import * as m from "framer-motion/m";
 import { useState } from "react";
 import { commands, type GithubUser } from "../../bindings";
 import { fadeUp, springButton } from "../../lib/motion";
@@ -70,13 +70,14 @@ export function Settings() {
     } else {
       // The Rust error code already maps 401 vs 403 vs rate-limit etc.
       const err = res.error;
-      const msg = err.code === "github_unauthorized"
-        ? "Token rejected by GitHub. Check it has `repo` scope and hasn't expired."
-        : err.code === "github_rate_limit"
-          ? "GitHub API rate limit reached. Try again in a few minutes."
-          : err.code === "github_no_token"
-            ? "No token stored yet — save one above first."
-            : err.message;
+      const msg =
+        err.code === "github_unauthorized"
+          ? "Token rejected by GitHub. Check it has `repo` scope and hasn't expired."
+          : err.code === "github_rate_limit"
+            ? "GitHub API rate limit reached. Try again in a few minutes."
+            : err.code === "github_no_token"
+              ? "No token stored yet — save one above first."
+              : err.message;
       setTestStatus({ kind: "error", message: msg });
     }
   }
@@ -98,7 +99,7 @@ export function Settings() {
   }
 
   return (
-    <motion.div
+    <m.div
       className="space-y-6"
       variants={fadeUp}
       initial="hidden"
@@ -117,20 +118,20 @@ export function Settings() {
           )}
         </div>
         <p className="text-xs leading-relaxed text-zinc-500">
-          A Personal Access Token lets ProjectPacker list your repositories
-          on the GitHub tab and clone private repos. Create one at{" "}
+          A Personal Access Token lets ProjectPacker list your repositories on
+          the GitHub tab and clone private repos. Create one at{" "}
           <span className="font-mono text-zinc-400">
             github.com/settings/tokens
           </span>{" "}
           with the <span className="font-mono">repo</span> scope (or{" "}
-          <span className="font-mono">public_repo</span> if you only need
-          public repos).
+          <span className="font-mono">public_repo</span> if you only need public
+          repos).
         </p>
 
         <div className="mt-1 flex items-center gap-2 rounded-lg border border-emerald-700/30 bg-emerald-950/20 px-3 py-2 text-[11px] text-emerald-300/85">
           <LockIcon size={12} className="shrink-0" />
-          Stored in a user-only file under your app-data folder. Never
-          visible to the renderer process.
+          Stored in a user-only file under your app-data folder. Never visible
+          to the renderer process.
         </div>
 
         <div className="mt-3 space-y-2">
@@ -166,7 +167,7 @@ export function Settings() {
                 {reveal ? <EyeOffIcon size={14} /> : <EyeIcon size={14} />}
               </button>
             </div>
-            <motion.button
+            <m.button
               type="button"
               onClick={handleSave}
               disabled={!isDirty || saving}
@@ -178,10 +179,10 @@ export function Settings() {
               whileTap={isDirty && !saving ? springButton : undefined}
             >
               {saving ? "Saving…" : "Save"}
-            </motion.button>
+            </m.button>
           </div>
           <div className="flex flex-wrap gap-2 pt-1">
-            <motion.button
+            <m.button
               type="button"
               onClick={runTestConnection}
               disabled={!hasToken || testStatus.kind === "testing"}
@@ -189,23 +190,23 @@ export function Settings() {
               whileTap={springButton}
             >
               {testStatus.kind === "testing" ? "Testing…" : "Test connection"}
-            </motion.button>
+            </m.button>
             {hasToken && (
-              <motion.button
+              <m.button
                 type="button"
                 onClick={handleClear}
                 className="rounded-lg border border-red-700/40 bg-red-900/20 px-3.5 py-2 text-xs text-red-300 hover:bg-red-900/40"
                 whileTap={springButton}
               >
                 Disconnect
-              </motion.button>
+              </m.button>
             )}
           </div>
 
           {/* Save success banner — the keychain accepted the token. The
               connection test is now opt-in (separate button). */}
           {justSaved && !saveError && (
-            <motion.div
+            <m.div
               role="status"
               className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-700/40 bg-emerald-950/30 px-3 py-2.5 text-sm text-emerald-300"
               initial={{ opacity: 0, y: -4 }}
@@ -213,17 +214,17 @@ export function Settings() {
             >
               <CheckIcon size={14} className="shrink-0" />
               <div className="flex-1 text-xs">
-                Saved to keychain. Click "Test connection" to verify it
-                works against GitHub.
+                Saved to keychain. Click "Test connection" to verify it works
+                against GitHub.
               </div>
-            </motion.div>
+            </m.div>
           )}
 
           {/* Save error banner — distinct from the connection-test status
               below, since a format/keychain rejection happens before any
               network call and the user needs to see it immediately. */}
           {saveError && (
-            <motion.div
+            <m.div
               role="alert"
               className="mt-3 flex items-start gap-3 rounded-lg border border-red-600/40 bg-red-950/30 px-3 py-2.5 text-sm text-red-300"
               initial={{ opacity: 0, y: -4 }}
@@ -251,13 +252,13 @@ export function Settings() {
                   <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
               </button>
-            </motion.div>
+            </m.div>
           )}
         </div>
 
         {/* Connection status */}
         {testStatus.kind === "ok" && (
-          <motion.div
+          <m.div
             className="mt-3 flex items-center gap-3 rounded-lg border border-emerald-700/40 bg-emerald-950/30 px-3 py-2.5"
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
@@ -280,10 +281,10 @@ export function Settings() {
                 {testStatus.user.name ? ` · ${testStatus.user.name}` : ""}
               </div>
             </div>
-          </motion.div>
+          </m.div>
         )}
         {testStatus.kind === "error" && (
-          <motion.div
+          <m.div
             role="alert"
             className="mt-3 flex items-start gap-3 rounded-lg border border-red-600/40 bg-red-950/30 px-3 py-2.5 text-sm text-red-300"
             initial={{ opacity: 0, y: -4 }}
@@ -293,7 +294,7 @@ export function Settings() {
             <div className="flex-1 break-words text-xs">
               {testStatus.message}
             </div>
-          </motion.div>
+          </m.div>
         )}
       </section>
 
@@ -301,8 +302,8 @@ export function Settings() {
       <section className="space-y-2 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
         <h3 className="text-sm font-semibold text-zinc-100">About</h3>
         <p className="text-xs leading-relaxed text-zinc-500">
-          ProjectPacker bundles a folder or repo into a single AI-ready
-          file. Settings persist at{" "}
+          ProjectPacker bundles a folder or repo into a single AI-ready file.
+          Settings persist at{" "}
           <span className="font-mono">
             ~/Library/Application Support/dev.cbailey.projectpacker/
           </span>
@@ -311,6 +312,6 @@ export function Settings() {
           <span className="font-mono">0600</span> permissions.
         </p>
       </section>
-    </motion.div>
+    </m.div>
   );
 }

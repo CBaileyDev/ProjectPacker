@@ -1,7 +1,12 @@
 import type { Channel } from "@tauri-apps/api/core";
+import type {
+  AppError,
+  PackOptions,
+  PackResult,
+  ProgressEvent,
+} from "../bindings";
 import * as bindings from "../bindings";
 import { commands } from "../bindings";
-import type { AppError, PackOptions, PackResult, ProgressEvent } from "../bindings";
 
 export const api = bindings;
 export type {
@@ -63,7 +68,9 @@ export function packStartApi(
   return dedup(packStartKey(opts), () => commands.packStart(opts, onEvent));
 }
 
-export function packGetResultApi(jobId: string): Promise<ApiResult<PackResult>> {
+export function packGetResultApi(
+  jobId: string,
+): Promise<ApiResult<PackResult>> {
   return dedup(`packGetResult:${jobId}`, () => commands.packGetResult(jobId));
 }
 
