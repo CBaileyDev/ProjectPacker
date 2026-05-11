@@ -1,6 +1,8 @@
 use projectpacker_core::pack;
 use projectpacker_core::types::*;
+use std::fs;
 use std::path::PathBuf;
+use tempfile::tempdir;
 use tokio_util::sync::CancellationToken;
 
 fn fixture_path(name: &str) -> PathBuf {
@@ -226,4 +228,72 @@ fn tiny_fixture_packs_as_plain_text() {
     assert!(!result.output.contains("<protocol version="));
     assert!(!result.output.contains("```rust"));
     assert!(!result.output.contains("# Repository Pack"));
+}
+
+// ── Phase E: compression-report emitters in MD + Plain ─────────────────────
+
+/// Markdown emitter must append a `## Compression report` table whenever the
+/// transform phase produced any reports.
+#[test]
+fn markdown_emit_includes_compression_report() {
+    let d = tempdir().unwrap();
+    fs::write(d.path().join("a.txt"), "trailing  \n").unwrap();
+    let opts = PackOptions {
+        goal: "x".into(),
+        format: PackFormat::Markdown,
+        secret_scan: false,
+        count_tokens: false,
+        ..PackOptions::default()
+    };
+    let (tx, _rx) = std::sync::mpsc::channel();
+    let result = pack::pack(
+        &PackTarget::Folder(d.path().to_path_buf()),
+        &opts,
+        tx,
+        "job-md-cr",
+        CancellationToken::new(),
+        None,
+    )
+    .unwrap();
+    assert!(
+        result.output.contains("## Compression report"),
+        "markdown output should contain '## Compression report' heading"
+    );
+    assert!(
+        result.output.contains("trim_trailing_ws"),
+        "markdown output should reference trim_trailing_ws transform"
+    );
+}
+
+/// Plain emitter must append a `=== Compression report ===` delimited block
+/// whenever the transform phase produced any reports.
+#[test]
+fn plain_emit_includes_compression_report() {
+    let d = tempdir().unwrap();
+    fs::write(d.path().join("a.txt"), "trailing  \n").unwrap();
+    let opts = PackOptions {
+        goal: "x".into(),
+        format: PackFormat::PlainText,
+        secret_scan: false,
+        count_tokens: false,
+        ..PackOptions::default()
+    };
+    let (tx, _rx) = std::sync::mpsc::channel();
+    let result = pack::pack(
+        &PackTarget::Folder(d.path().to_path_buf()),
+        &opts,
+        tx,
+        "job-plain-cr",
+        CancellationToken::new(),
+        None,
+    )
+    .unwrap();
+    assert!(
+        result.output.contains("=== Compression report ==="),
+        "plain output should contain '=== Compression report ===' delimiter"
+    );
+    assert!(
+        result.output.contains("trim_trailing_ws"),
+        "plain output should reference trim_trailing_ws transform"
+    );
 }

@@ -49,6 +49,22 @@ pub fn render(
         out.push_str(&sec);
     }
 
+    // Compression report (between security report and entries; emitted only
+    // when transforms ran).
+    if !stats.transforms.is_empty() {
+        out.push_str("\n## Compression report\n\n");
+        out.push_str("| Transform | Bytes saved | Files touched | Elapsed (ms) |\n");
+        out.push_str("|---|---:|---:|---:|\n");
+        for r in &stats.transforms {
+            let _ = writeln!(
+                out,
+                "| {} | {} | {} | {} |",
+                r.id, r.bytes_saved, r.files_touched, r.elapsed_ms,
+            );
+        }
+        out.push('\n');
+    }
+
     // Build the ordered slice: pinned entries in incoming order, then non-pinned
     // entries sorted alphabetically by path for diffability.
     let pinned_count = pinned_count.min(entries.len());

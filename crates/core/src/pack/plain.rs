@@ -52,6 +52,20 @@ pub fn render(
         out.push('\n');
     }
 
+    // Compression report (between security report and entries; emitted only
+    // when transforms ran).
+    if !stats.transforms.is_empty() {
+        out.push_str("=== Compression report ===\n");
+        for r in &stats.transforms {
+            let _ = writeln!(
+                out,
+                "  {:30}  bytes_saved={:>10}  files_touched={:>4}  elapsed_ms={:>4}",
+                r.id, r.bytes_saved, r.files_touched, r.elapsed_ms,
+            );
+        }
+        out.push_str("=== END Compression report ===\n\n");
+    }
+
     // Pinned entries in incoming order, then non-pinned sorted alphabetically.
     let pinned_count = pinned_count.min(entries.len());
     let pinned = &entries[..pinned_count];
