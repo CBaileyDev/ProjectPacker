@@ -338,6 +338,8 @@ mod tests {
             secret_scan_ms: None,
             tokenize_ms: None,
             emit_ms: 0,
+            transforms: Vec::new(),
+            transform_phase_ms: 0,
         };
         let entries = vec![FileEntry {
             path: "a.rs".into(),
@@ -388,6 +390,8 @@ mod tests {
             secret_scan_ms: None,
             tokenize_ms: None,
             emit_ms: 0,
+            transforms: Vec::new(),
+            transform_phase_ms: 0,
         };
         let redactions = vec![
             PackRedaction {

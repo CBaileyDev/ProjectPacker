@@ -3,6 +3,17 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::path::PathBuf;
 
+fn default_true() -> bool { true }
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase")]
+pub struct TransformReport {
+    pub id: String,
+    pub bytes_saved: u64,
+    pub files_touched: u32,
+    pub elapsed_ms: u32,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(tag = "kind", content = "value")]
 pub enum PackTarget {
@@ -39,6 +50,22 @@ pub struct PackOptions {
     pub secret_scan: bool,
     pub compress: bool,
     pub remove_comments: bool,
+    #[serde(default = "default_true")]
+    pub dedup_files: bool,
+    #[serde(default = "default_true")]
+    pub trim_trailing_ws: bool,
+    #[serde(default = "default_true")]
+    pub collapse_blank_lines: bool,
+    #[serde(default = "default_true")]
+    pub normalize_line_endings: bool,
+    #[serde(default)]
+    pub collapse_lockfiles: bool,
+    #[serde(default)]
+    pub collapse_minified: bool,
+    #[serde(default)]
+    pub mark_generated: bool,
+    #[serde(default)]
+    pub elide_type_only_exports: bool,
     pub max_file_size_kb: u32,
     pub respect_gitignore: bool,
     pub custom_ignore_patterns: Vec<String>,
@@ -60,6 +87,14 @@ impl Default for PackOptions {
             secret_scan: true,
             compress: false,
             remove_comments: false,
+            dedup_files: true,
+            trim_trailing_ws: true,
+            collapse_blank_lines: true,
+            normalize_line_endings: true,
+            collapse_lockfiles: false,
+            collapse_minified: false,
+            mark_generated: false,
+            elide_type_only_exports: false,
             max_file_size_kb: 1024,
             respect_gitignore: true,
             custom_ignore_patterns: Vec::new(),
@@ -98,6 +133,8 @@ pub struct PackStats {
     pub secret_scan_ms: Option<u32>,
     pub tokenize_ms: Option<u32>,
     pub emit_ms: u32,
+    pub transforms: Vec<TransformReport>,
+    pub transform_phase_ms: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -119,6 +156,7 @@ pub enum WarningKind {
     EncodingFallback,
     SecretScanFailed,
     TokenizeFailed,
+    TransformFailed,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -169,6 +207,14 @@ pub enum ProgressEvent {
     },
     Compressing {
         progress_pct: u8,
+    },
+    TransformStart {
+        id: String,
+    },
+    TransformDone {
+        id: String,
+        bytes_saved: u64,
+        files_touched: u32,
     },
     BuildingOutput,
     Done {
@@ -242,6 +288,54 @@ mod tests {
     }
 
     #[test]
+    fn pack_options_deserializes_with_missing_new_fields() {
+        // Simulates an old preset saved before v0.6 — no transform fields present.
+        // Field names + enum variants use camelCase to match `#[serde(rename_all = "camelCase")]`.
+        let json = r#"{
+            "target": { "kind": "folder", "value": "." },
+            "goal": "x",
+            "format": "xml",
+            "xmlSchema": "cxml",
+            "respectGitignore": true,
+            "secretScan": true,
+            "countTokens": true,
+            "compress": false,
+            "removeComments": false,
+            "tokenizerModel": "claude",
+            "protocolVersion": "grok-to-cc-v1",
+            "maxFileSizeKb": 512,
+            "customIgnorePatterns": []
+        }"#;
+        let opts: PackOptions = serde_json::from_str(json).expect("old preset must deserialize");
+        // The 4 lossless transforms default to ON.
+        assert!(opts.dedup_files);
+        assert!(opts.trim_trailing_ws);
+        assert!(opts.collapse_blank_lines);
+        assert!(opts.normalize_line_endings);
+        // The 4 semantic+lossy transforms default to OFF.
+        assert!(!opts.collapse_lockfiles);
+        assert!(!opts.collapse_minified);
+        assert!(!opts.mark_generated);
+        assert!(!opts.elide_type_only_exports);
+    }
+
+    #[test]
+    fn transform_report_round_trips_via_serde() {
+        let r = TransformReport {
+            id: "dedup_files".into(),
+            bytes_saved: 1234,
+            files_touched: 2,
+            elapsed_ms: 7,
+        };
+        let s = serde_json::to_string(&r).unwrap();
+        let back: TransformReport = serde_json::from_str(&s).unwrap();
+        assert_eq!(back.id, "dedup_files");
+        assert_eq!(back.bytes_saved, 1234);
+        assert_eq!(back.files_touched, 2);
+        assert_eq!(back.elapsed_ms, 7);
+    }
+
+    #[test]
     fn progress_event_done_serializes_with_stats() {
         let ev = ProgressEvent::Done {
             stats: PackStats {
@@ -258,6 +352,8 @@ mod tests {
                 secret_scan_ms: Some(20),
                 tokenize_ms: Some(50),
                 emit_ms: 25,
+                transforms: Vec::new(),
+                transform_phase_ms: 0,
             },
         };
         let s = serde_json::to_string(&ev).unwrap();

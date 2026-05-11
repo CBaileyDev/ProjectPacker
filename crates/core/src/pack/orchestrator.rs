@@ -278,6 +278,8 @@ pub fn pack(
         secret_scan_ms,
         tokenize_ms,
         emit_ms: 0,
+        transforms: Vec::new(),
+        transform_phase_ms: 0,
     };
 
     let (output, emit_ms) =

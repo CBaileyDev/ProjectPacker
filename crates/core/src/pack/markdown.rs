@@ -124,6 +124,8 @@ mod tests {
             secret_scan_ms: None,
             tokenize_ms: Some(50),
             emit_ms: 0,
+            transforms: Vec::new(),
+            transform_phase_ms: 0,
         }
     }
 
