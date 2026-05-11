@@ -9,6 +9,7 @@ pub mod pack;
 pub mod protocol;
 pub mod secrets;
 pub mod tokens;
+pub mod transforms;
 pub mod tree_sitter_compress;
 pub mod types;
 pub mod walker;
