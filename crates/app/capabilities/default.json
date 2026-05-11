@@ -5,7 +5,7 @@
   "permissions": [
     "core:default",
     "dialog:default",
-    "clipboard-manager:default",
+    "clipboard-manager:allow-write-text",
     "shell:allow-open",
     "store:default",
     "log:default"

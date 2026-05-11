@@ -21,11 +21,15 @@ const FLUSH_INTERVAL_MS = 100;
 /**
  * Hook owning the pack-job lifecycle:
  *
- *  - `Channel<ProgressEvent>` is created lazily on first run() and reused
- *    across subsequent runs. Tauri's Channel registers an internal IPC
- *    handler; reassigning onmessage to a no-op does NOT unregister it.
- *    Reusing one channel across runs prevents the O(packs run) handler
- *    leak. The handler is reassigned each pack to capture a fresh closure.
+ *  - A FRESH `Channel<ProgressEvent>` is created per `run()`. Tauri 2's
+ *    `Channel<T>` is single-use: it maintains an internal `nextMessageIndex`
+ *    and calls `cleanupCallback()` (which `unregisterCallback`s the channel
+ *    from `__TAURI_INTERNALS__`) when the Rust-side handle drops and emits
+ *    its END marker. Reusing one channel across packs silently corrupts
+ *    pack #2 — its messages arrive with index 0..N but the channel's
+ *    `nextMessageIndex` is already past them, so they queue in
+ *    `pendingMessages` and `onmessage` is never called. Symptom: pack #2's
+ *    Done never reaches the handler and the UI stays at "Packing…" forever.
  *
  *  - 100ms event-batching buffer: incoming `ProgressEvent`s land in
  *    `eventBufferRef`, get collapsed via `batchEvents` (consecutive `walking`
@@ -37,8 +41,9 @@ const FLUSH_INTERVAL_MS = 100;
  *    immediately — those drive UI state transitions the user is waiting
  *    for, so an extra 100ms here is perceptible.
  *
- *  - Cleanup on unmount clears the flush timer, sets the channel handler
- *    to a no-op, and drops the ref so Tauri can GC the IPC entry.
+ *  - Cleanup on unmount clears the flush timer and detaches the most
+ *    recent channel's handler so stragglers don't write to dead React
+ *    state. The Channel itself auto-unregisters via its own END handling.
  */
 export function usePackJob(): UsePackJobReturn {
   const options = useApp((s) => s.options);
@@ -104,10 +109,16 @@ export function usePackJob(): UsePackJobReturn {
     setErrorMsg(null);
     reset();
 
-    if (channelRef.current === null) {
-      channelRef.current = createPackProgressChannel(() => {});
+    // Detach the previous channel's handler so any stragglers (shouldn't
+    // happen — pack #1 has already terminated by now — but defensively)
+    // can't write to the store mid-run #2.
+    if (channelRef.current !== null) {
+      channelRef.current.onmessage = () => {};
     }
-    const channel = channelRef.current;
+    // Fresh channel per run. Tauri 2 `Channel<T>` is single-use; see the
+    // hook-level doc comment for the failure mode of reuse.
+    const channel = createPackProgressChannel(() => {});
+    channelRef.current = channel;
 
     // Install the real handler BEFORE awaiting packStart. An event emitted
     // between packStart returning (server side) and the JS continuation
