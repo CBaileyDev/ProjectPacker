@@ -762,6 +762,7 @@ fn run_emit_phase(
                 .raw_block(&protocol_block)
                 .stats_block(label, opts, stats, entries, all_redactions)
                 .security_report_block(all_redactions)
+                .compression_report_block(stats)
                 .directory_structure(&dir_paths);
             // Route to the Anthropic cxml schema (default) or the legacy schema.
             match opts.xml_schema {
@@ -1516,6 +1517,85 @@ mod tests {
         assert!(walking >= 1, "walking must be flushed");
         assert!(batches >= 1, "file-found batch must be flushed");
         assert!(hits >= 1, "secret hits must be flushed");
+    }
+
+    // ── Phase E tests ─────────────────────────────────────────────────────────
+
+    /// Default opts have 4 lossless transforms ON. With a file that has trailing
+    /// whitespace, `trim_trailing_ws` should report bytes_saved>0 and the XML
+    /// output should include a `<compression_report>` block referencing it.
+    #[test]
+    fn pack_emits_compression_report_block_when_transforms_applied() {
+        let d = tempdir().unwrap();
+        fs::write(d.path().join("a.txt"), "trailing   \n").unwrap();
+        let opts = PackOptions {
+            goal: "x".into(),
+            secret_scan: false,
+            count_tokens: false,
+            ..PackOptions::default() // 4 lossless ON by default
+        };
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let result = pack(
+            &PackTarget::Folder(d.path().to_path_buf()),
+            &opts,
+            tx,
+            "job-cr",
+            CancellationToken::new(),
+            None,
+        )
+        .unwrap();
+        assert!(
+            result.output.contains("<compression_report>"),
+            "missing <compression_report> block:\n{}",
+            result.output
+        );
+        assert!(
+            result.output.contains("trim_trailing_ws"),
+            "missing trim_trailing_ws transform id in output"
+        );
+        assert!(
+            !result.stats.transforms.is_empty(),
+            "stats.transforms must be populated when transforms ran"
+        );
+    }
+
+    /// Two identical files (`LICENSE` at root, copy under `vendor/foo/`) must
+    /// have the second one rendered as a self-closing
+    /// `<document … duplicate-of="LICENSE" sha="…" />` element.
+    #[test]
+    fn pack_emits_duplicate_of_attr_for_deduped_files() {
+        let d = tempdir().unwrap();
+        let body = "Apache 2.0 license body\n";
+        fs::write(d.path().join("LICENSE"), body).unwrap();
+        // Use a non-builtin-ignored subdirectory name — `vendor/` is in the
+        // Tier-1 builtin ignore defaults so the second copy would be filtered
+        // out before reaching the dedup transform.
+        let sub = d.path().join("licenses").join("foo");
+        fs::create_dir_all(&sub).unwrap();
+        fs::write(sub.join("LICENSE"), body).unwrap();
+        let opts = PackOptions {
+            goal: "x".into(),
+            secret_scan: false,
+            count_tokens: false,
+            respect_gitignore: false,
+            ..PackOptions::default()
+        };
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let result = pack(
+            &PackTarget::Folder(d.path().to_path_buf()),
+            &opts,
+            tx,
+            "job-dup",
+            CancellationToken::new(),
+            None,
+        )
+        .unwrap();
+        // The second copy must reference the first via duplicate-of attribute.
+        assert!(
+            result.output.contains("duplicate-of=\"LICENSE\""),
+            "output should contain duplicate-of attr; got:\n{}",
+            result.output
+        );
     }
 
     /// `send_passthrough` must flush all queued throttled state before

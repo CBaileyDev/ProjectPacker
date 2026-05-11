@@ -128,6 +128,37 @@ impl XmlBuilder {
         self
     }
 
+    /// Emit a `<compression_report>` block summarising every transform that
+    /// ran during the transform phase. Empty input (no transforms enabled or
+    /// the phase was skipped) is a no-op so the byte-for-byte output is
+    /// preserved when nothing was applied.
+    ///
+    /// Schema:
+    /// ```xml
+    /// <compression_report>
+    ///   <transform id="trim_trailing_ws" bytes_saved="12" files_touched="1" elapsed_ms="0"/>
+    ///   …
+    /// </compression_report>
+    /// ```
+    pub fn compression_report_block(&mut self, stats: &PackStats) -> &mut Self {
+        if stats.transforms.is_empty() {
+            return self;
+        }
+        self.out.push_str("<compression_report>\n");
+        for r in &stats.transforms {
+            let _ = writeln!(
+                self.out,
+                "  <transform id=\"{}\" bytes_saved=\"{}\" files_touched=\"{}\" elapsed_ms=\"{}\"/>",
+                escape_attr(&r.id),
+                r.bytes_saved,
+                r.files_touched,
+                r.elapsed_ms,
+            );
+        }
+        self.out.push_str("</compression_report>\n");
+        self
+    }
+
     pub fn directory_structure(&mut self, paths: &[String]) -> &mut Self {
         self.out.push_str("<directory_structure>\n");
         for p in paths {
@@ -159,6 +190,25 @@ impl XmlBuilder {
     pub fn documents(&mut self, files: &[FileEntry]) -> &mut Self {
         self.out.push_str("<documents>\n");
         for (idx, f) in files.iter().enumerate() {
+            // Deduped entries (produced by the `dedup_files` transform) carry
+            // a content marker of the shape:
+            //     "[DUPLICATE OF: <path> | sha: <12-char-prefix>]\n"
+            // Emit them as a self-closing `<document>` with `path` +
+            // `duplicate-of` + `sha` attributes instead of a full-body element.
+            // Falls back to the normal body emit if the marker fails to parse —
+            // we never want to lose content because of a marker-shape change.
+            if let Some((dup_path, dup_sha)) = parse_dup_marker(&f.content) {
+                let _ = writeln!(
+                    self.out,
+                    "<document index=\"{}\" path=\"{}\" duplicate-of=\"{}\" sha=\"{}\"/>",
+                    idx + 1,
+                    escape_attr(&f.path),
+                    escape_attr(dup_path),
+                    escape_attr(dup_sha),
+                );
+                continue;
+            }
+
             let _ = writeln!(self.out, "<document index=\"{}\">", idx + 1);
             let _ = writeln!(self.out, "  <source>{}</source>", escape_text(&f.path));
             if let Some(t) = f.tokens {
@@ -222,6 +272,24 @@ pub fn estimated_xml_capacity(entries_total_bytes: u64, num_entries: usize) -> u
     let body = (entries_total_bytes.saturating_mul(12) / 10) as usize;
     let per_entry = num_entries.saturating_mul(140);
     body.saturating_add(per_entry).saturating_add(512)
+}
+
+/// Parse a `[DUPLICATE OF: <path> | sha: <prefix>]` content marker emitted
+/// by the `dedup_files` transform. Returns `Some((path, sha_prefix))` on a
+/// well-formed marker, `None` otherwise — callers must fall through to the
+/// normal full-body emit on `None` so unrelated content that happens to
+/// start with the prefix is never lost.
+fn parse_dup_marker(content: &str) -> Option<(&str, &str)> {
+    const DUP_PREFIX: &str = "[DUPLICATE OF: ";
+    let rest = content.strip_prefix(DUP_PREFIX)?;
+    let (path_part, after) = rest.split_once(" | sha: ")?;
+    // The marker ends at the first `]`; tolerate either a trailing newline
+    // or none.
+    let sha_part = after.split(']').next()?;
+    if sha_part.is_empty() {
+        return None;
+    }
+    Some((path_part, sha_part))
 }
 
 /// Single-pass-allocation XML text escape. Replaces `&`, `<`, `>` with
