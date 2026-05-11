@@ -1,6 +1,8 @@
 //! Pack-content compression transforms. See
 //! `docs/superpowers/specs/2026-05-11-v06-lossless-compression-design.md`.
 
+pub mod normalize;
+
 use crate::pack::FileEntry;
 use crate::types::{PackOptions, TransformReport};
 use std::time::Instant;
