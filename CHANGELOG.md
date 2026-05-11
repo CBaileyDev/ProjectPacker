@@ -2,6 +2,28 @@
 
 All notable changes to ProjectPacker are documented in this file. The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Compression pipeline (v0.6)** — 10 individually-toggleable content transforms with per-transform savings telemetry.
+  - 4 lossless (default ON): `dedup_files`, `trim_trailing_ws`, `collapse_blank_lines`, `normalize_line_endings`.
+  - 3 semantic (default OFF): `collapse_lockfiles`, `collapse_minified`, `mark_generated`.
+  - 3 code-shaping / lossy (default OFF): `compress` (skeleton, renamed in UI to "Skeleton-compress functions"), `remove_comments`, `elide_type_only_exports` (new).
+- `CompressionPanel` UI — collapsible disclosure on the Pack screen with grouped sections and per-row savings.
+- `<compression_report>` block in XML output; equivalent table/divider in Markdown and Plain outputs.
+- New `ProgressEvent::TransformStart` / `TransformDone` events for live UI updates.
+- First Vitest test in the frontend (`CompressionPanel.test.tsx`).
+
+### Changed
+- `PackOptions` gains 8 new fields. Old presets deserialize cleanly thanks to `#[serde(default)]`.
+- `compress` and `remove_comments` continue to use those exact field names on disk for preset compatibility; UI labels them as "Skeleton-compress functions" and "Strip comments" respectively.
+
+### Internal
+- New `crates/core/src/transforms/` module — one file per transform.
+- New pack pipeline phase between `process` and `pin-reorder` (`run_transform_phase`).
+- `PackStats` gains `transforms: Vec<TransformReport>` and `transform_phase_ms: u32`.
+- New `WarningKind::TransformFailed` for per-file per-transform failures.
+
 ## [0.5.0] - 2026-05-06
 
 ### Refactored
