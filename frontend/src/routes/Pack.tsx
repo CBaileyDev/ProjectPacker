@@ -6,6 +6,7 @@ import type React from "react";
 import { type ComponentType, useEffect, useMemo, useState } from "react";
 import type { PackFormat, PackOptions, PackResult } from "../bindings";
 import { AiContextTable } from "../components/pack/AiContextTable";
+import { CompressionPanel } from "../components/pack/CompressionPanel";
 import { CopyButton } from "../components/pack/CopyButton";
 import { DropOverlay } from "../components/pack/DropOverlay";
 import { GithubConnector } from "../components/pack/GithubConnector";
@@ -460,18 +461,6 @@ export default function Pack() {
 
                     <div className="grid gap-3 md:grid-cols-2">
                       <Toggle
-                        label="Compress to skeleton"
-                        hint="strips bodies, keeps signatures"
-                        checked={options.compress}
-                        onChange={(v) => patchOptions({ compress: v })}
-                      />
-                      <Toggle
-                        label="Remove comments"
-                        hint="tree-sitter: Rust/Py/JS/TS"
-                        checked={options.removeComments}
-                        onChange={(v) => patchOptions({ removeComments: v })}
-                      />
-                      <Toggle
                         label="Respect .gitignore"
                         checked={options.respectGitignore}
                         onChange={(v) => patchOptions({ respectGitignore: v })}
@@ -488,6 +477,12 @@ export default function Pack() {
                         onChange={(v) => patchOptions({ countTokens: v })}
                       />
                     </div>
+
+                    {/* Compression — the v0.6 disclosure that replaced the
+                        inline `compress` + `removeComments` toggles. Houses
+                        all 10 lossless/semantic/code-shaping toggles plus
+                        live per-row `bytesSaved` chips after a pack runs. */}
+                    <CompressionPanel />
 
                     <div className="grid gap-4 rounded-xl border border-zinc-800 bg-zinc-950/50 p-4 md:grid-cols-2">
                       <label className="flex flex-wrap items-center gap-2">
