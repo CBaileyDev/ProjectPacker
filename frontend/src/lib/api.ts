@@ -17,6 +17,7 @@ export type {
   PlanValidation,
   ProgressEvent,
   Settings,
+  TransformReport,
 } from "../bindings";
 
 /**
