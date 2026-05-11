@@ -83,6 +83,15 @@ impl EventThrottler {
         }
     }
 
+    /// Borrow the underlying tx for low-frequency pass-through events
+    /// (transform lifecycle, etc.). The throttler's own buffers are NOT
+    /// flushed first — callers must ensure that's correct for their event.
+    /// For TransformStart/Done this is safe: those events have no ordering
+    /// constraint with FileFound or SecretHit.
+    fn passthrough_tx(&self) -> &Sender<ProgressEvent> {
+        &self.tx
+    }
+
     /// Pass an event straight through to the underlying channel without
     /// throttling. Used for Started/Cloning/BuildingOutput/Done/Error/etc.
     /// Flushes any pending throttled state first so the wire-order invariants
@@ -247,7 +256,7 @@ pub fn pack(
     }
 
     let (transform_reports, transform_phase_ms) =
-        crate::transforms::run_transform_phase(&mut entries, opts);
+        crate::transforms::run_transform_phase(&mut entries, opts, throttler.passthrough_tx());
 
     let (secrets_found, all_redactions, secret_scan_ms) =
         run_secret_scan_phase(&mut entries, opts, &mut throttler);
@@ -926,6 +935,8 @@ mod tests {
                 ProgressEvent::FileFoundBatch { .. } => "batch",
                 ProgressEvent::FileSkipped { .. } => "skipped",
                 ProgressEvent::BuildingOutput => "building",
+                ProgressEvent::TransformStart { .. } => "transform_start",
+                ProgressEvent::TransformDone { .. } => "transform_done",
                 ProgressEvent::Done { .. } => "done",
                 _ => "other",
             });
@@ -934,11 +945,20 @@ mod tests {
         // pack() no longer emits the terminal `Done` event itself —
         // that's the app layer's responsibility, sent only after
         // `store_result` has stashed the PackResult so a fast renderer
-        // can't race past it. From core's perspective, `BuildingOutput`
-        // is the last lifecycle event we ship.
+        // can't race past it. The transform phase emits its own
+        // start/done lifecycle events AFTER BuildingOutput (phase
+        // boundary), so BuildingOutput is no longer strictly last —
+        // assert ordering: building precedes the first transform event.
         assert!(!events.contains(&"done"));
         assert!(events.contains(&"building"));
-        assert_eq!(events.last(), Some(&"building"));
+        let building_idx = events.iter().position(|e| *e == "building").unwrap();
+        let first_transform_idx = events.iter().position(|e| *e == "transform_start");
+        if let Some(t_idx) = first_transform_idx {
+            assert!(
+                building_idx < t_idx,
+                "BuildingOutput must precede the first TransformStart"
+            );
+        }
     }
 
     /// Repos with build artifacts (target/, node_modules, .git/objects) can
