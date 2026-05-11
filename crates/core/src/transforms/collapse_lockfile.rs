@@ -8,7 +8,7 @@ const LOCKFILE_BASENAMES: &[&str] = &[
 pub fn is_lockfile(path: &str) -> bool {
     let basename = path.rsplit('/').next().unwrap_or(path);
     let basename = basename.rsplit('\\').next().unwrap_or(basename);
-    LOCKFILE_BASENAMES.iter().any(|&n| n == basename)
+    LOCKFILE_BASENAMES.contains(&basename)
 }
 
 /// Returns `Some(collapsed_body)` if `path` is a lockfile, else `None`.

@@ -11,7 +11,7 @@ pub fn trim_trailing_ws(s: &str) -> Option<String> {
     let trailing_nl = s.ends_with('\n');
     let mut out: String = s
         .lines()
-        .map(|l| l.trim_end_matches(|c: char| c == ' ' || c == '\t'))
+        .map(|l| l.trim_end_matches([' ', '\t']))
         .collect::<Vec<_>>()
         .join("\n");
     if trailing_nl {

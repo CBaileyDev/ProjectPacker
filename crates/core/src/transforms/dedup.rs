@@ -19,8 +19,8 @@ pub fn apply(entries: &mut [FileEntry]) -> TransformReport {
     }
     // Collect groups with >1 member; lift index refs out before mutating.
     let dup_groups: Vec<Vec<usize>> = by_hash
-        .into_iter()
-        .filter_map(|(_, idxs)| if idxs.len() > 1 { Some(idxs) } else { None })
+        .into_values()
+        .filter_map(|idxs| if idxs.len() > 1 { Some(idxs) } else { None })
         .collect();
     let mut bytes_saved: u64 = 0;
     let mut files_touched: u32 = 0;
