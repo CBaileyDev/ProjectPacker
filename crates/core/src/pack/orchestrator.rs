@@ -241,6 +241,14 @@ pub fn pack(
 
     let pinned_count = apply_pin_reorder(&mut entries, &pinned_rel_paths, &pinned_set);
 
+    // Checkpoint: between pin-reorder and secret-scan.
+    if cancel.is_cancelled() {
+        return Err(CoreError::Cancelled);
+    }
+
+    let (transform_reports, transform_phase_ms) =
+        crate::transforms::run_transform_phase(&mut entries, opts);
+
     let (secrets_found, all_redactions, secret_scan_ms) =
         run_secret_scan_phase(&mut entries, opts, &mut throttler);
 
@@ -278,8 +286,8 @@ pub fn pack(
         secret_scan_ms,
         tokenize_ms,
         emit_ms: 0,
-        transforms: Vec::new(),
-        transform_phase_ms: 0,
+        transforms: transform_reports.clone(),
+        transform_phase_ms,
     };
 
     let (output, emit_ms) =
@@ -1071,6 +1079,26 @@ mod tests {
             "/definitely/does/not/exist/xyz.txt",
         ));
         assert!(matches!(result, Err(CoreError::FileIo { .. })));
+    }
+
+    #[test]
+    fn pack_populates_transform_phase_ms_field() {
+        let d = fixture();
+        let opts = PackOptions {
+            goal: "x".into(),
+            secret_scan: false,
+            count_tokens: false,
+            ..PackOptions::default()
+        };
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let result = pack(
+            &PackTarget::Folder(d.path().to_path_buf()),
+            &opts, tx, "job-test", CancellationToken::new(), None,
+        ).unwrap();
+        // Phase ran (even if reports vec is empty until individual transforms wire in).
+        assert!(result.stats.transform_phase_ms <= result.stats.duration_ms,
+            "transform_phase_ms ({}) must fit within duration_ms ({})",
+            result.stats.transform_phase_ms, result.stats.duration_ms);
     }
 
     #[test]
