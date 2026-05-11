@@ -6,6 +6,7 @@ use crate::types::{PackOptions, ProgressEvent, TransformReport};
 use std::sync::mpsc::Sender;
 use std::time::Instant;
 
+pub mod collapse_lockfile;
 pub mod dedup;
 pub mod normalize;
 
