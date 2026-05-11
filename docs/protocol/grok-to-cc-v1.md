@@ -119,3 +119,29 @@ grok-to-cc-v1. Your role in this workflow is EXECUTOR with veto power.
 
 [The plan from Grok will be inserted here by the Bridge step.]
 ===END===
+
+## Compression markers
+
+The pack may contain placeholders inserted by lossless compression transforms:
+
+### File-body markers
+- `[DUPLICATE OF: <path> | sha: <12-char-prefix>]`
+  File is byte-identical to <path>. Consult the named file for content.
+- `[COMPRESSED: <reason> | original-bytes: N | sha: <12-char-prefix>]`
+  Body was collapsed. <reason> ∈ {lockfile, minified, generated}.
+  Lockfile/minified bodies retain first/last N lines; generated bodies retain
+  the detection banner.
+
+### XML attribute
+- `<document path="..." duplicate-of="..." sha="..." />` — same semantic as
+  the body marker; used when the body is empty.
+
+### Compression report
+Every pack with at least one transform applied emits `<compression_report>`
+(or equivalent Markdown / Plain block) listing every applied transform with
+bytes saved, files touched, and elapsed time.
+
+### Executor guidance
+Do not treat compression markers as missing content. The original content is
+either available in the duplicate's first occurrence or, if compressed, was
+deemed low-signal by the user.
