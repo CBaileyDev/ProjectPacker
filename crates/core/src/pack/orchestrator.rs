@@ -8,7 +8,6 @@ use crate::protocol;
 use crate::secrets;
 use crate::tokens;
 use crate::tokens::TokensPerModel;
-use crate::tree_sitter_compress;
 use crate::types::{
     FileFound, PackFormat, PackOptions, PackRedaction, PackResult, PackStats,
     PackTarget, PackWarning, ProgressEvent, WarningKind, XmlSchema,
@@ -410,11 +409,15 @@ fn run_walk_phase(
     (outcome, pinned_rel_paths, pinned_set, walk_ms)
 }
 
-/// Per-file processing in `par_iter`: read + encoding-fallback + comment-strip +
-/// compress + hash. Returns `(entries, accumulated_warnings, process_ms)`.
+/// Per-file processing in `par_iter`: read + encoding-fallback + hash.
+/// Returns `(entries, accumulated_warnings, process_ms)`.
+///
+/// Note: `_opts` is retained for signature stability; comment-strip and
+/// skeleton-compress have moved to the transform phase but other future
+/// per-file opts may live here.
 fn run_process_phase(
     outcome: &walker::WalkOutcome,
-    opts: &PackOptions,
+    _opts: &PackOptions,
     root: &Path,
     cancel: &CancellationToken,
 ) -> (Vec<FileEntry>, Vec<PackWarning>, u32) {
@@ -461,8 +464,8 @@ fn run_process_phase(
                 }
             };
 
-            // Hash the original bytes BEFORE any comment-strip / compress transforms,
-            // so we can move `raw` into `after_comments` below without an extra clone.
+            // Hash the original bytes before the transform phase mutates content,
+            // so `entry.hash` always refers to on-disk bytes.
             //
             // Per-file `tokens` is computed AFTER the secret-scan loop so
             // it describes the same (post-redaction) content as
@@ -470,27 +473,9 @@ fn run_process_phase(
             // pass below.
             let hash = hash_content(raw.as_bytes(), &abs);
 
-            // Step 1: strip comments if requested (tree-sitter languages only).
-            let after_comments: String = if opts.remove_comments {
-                if let Some(lang) = tree_sitter_compress::detect_language(&f.path) {
-                    tree_sitter_compress::remove_comments(&raw, lang)
-                } else {
-                    raw
-                }
-            } else {
-                raw
-            };
-
-            // Step 2: optionally compress to a skeleton.
-            let content: String = if opts.compress {
-                if let Some(lang) = tree_sitter_compress::detect_language(&f.path) {
-                    tree_sitter_compress::compress(&after_comments, lang)
-                } else {
-                    after_comments
-                }
-            } else {
-                after_comments
-            };
+            // Comment-stripping and skeleton-compress are now handled by the
+            // transform phase (see crates/core/src/transforms/{strip_comments,compress_skeleton}.rs).
+            let content: String = raw;
 
             (
                 FileEntry {

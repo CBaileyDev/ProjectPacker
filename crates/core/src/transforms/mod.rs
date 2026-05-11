@@ -8,9 +8,11 @@ use std::time::Instant;
 
 pub mod collapse_lockfile;
 pub mod collapse_minified;
+pub mod compress_skeleton;
 pub mod dedup;
 pub mod mark_generated;
 pub mod normalize;
+pub mod strip_comments;
 
 /// Run every enabled transform over `entries` in fixed order, emitting
 /// `TransformStart`/`TransformDone` events for each ENABLED transform.
@@ -83,6 +85,26 @@ pub fn run_transform_phase(
         let _ = tx.send(ProgressEvent::TransformStart { id: "mark_generated".into() });
         let r = per_file_with_path(entries, "mark_generated", |path, content, sha| {
             mark_generated::mark(path, content, sha)
+        });
+        let _ = tx.send(ProgressEvent::TransformDone {
+            id: r.id.clone(), bytes_saved: r.bytes_saved, files_touched: r.files_touched,
+        });
+        reports.push(r);
+    }
+    if opts.remove_comments {
+        let _ = tx.send(ProgressEvent::TransformStart { id: "remove_comments".into() });
+        let r = per_file_with_path(entries, "remove_comments", |path, content, _sha| {
+            strip_comments::apply(path, content)
+        });
+        let _ = tx.send(ProgressEvent::TransformDone {
+            id: r.id.clone(), bytes_saved: r.bytes_saved, files_touched: r.files_touched,
+        });
+        reports.push(r);
+    }
+    if opts.compress {
+        let _ = tx.send(ProgressEvent::TransformStart { id: "compress".into() });
+        let r = per_file_with_path(entries, "compress", |path, content, _sha| {
+            compress_skeleton::apply(path, content)
         });
         let _ = tx.send(ProgressEvent::TransformDone {
             id: r.id.clone(), bytes_saved: r.bytes_saved, files_touched: r.files_touched,
