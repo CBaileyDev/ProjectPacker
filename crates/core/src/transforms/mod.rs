@@ -7,6 +7,7 @@ use std::sync::mpsc::Sender;
 use std::time::Instant;
 
 pub mod collapse_lockfile;
+pub mod collapse_minified;
 pub mod dedup;
 pub mod normalize;
 
