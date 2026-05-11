@@ -10,6 +10,7 @@ pub mod collapse_lockfile;
 pub mod collapse_minified;
 pub mod compress_skeleton;
 pub mod dedup;
+pub mod elide_types;
 pub mod mark_generated;
 pub mod normalize;
 pub mod strip_comments;
@@ -105,6 +106,16 @@ pub fn run_transform_phase(
         let _ = tx.send(ProgressEvent::TransformStart { id: "compress".into() });
         let r = per_file_with_path(entries, "compress", |path, content, _sha| {
             compress_skeleton::apply(path, content)
+        });
+        let _ = tx.send(ProgressEvent::TransformDone {
+            id: r.id.clone(), bytes_saved: r.bytes_saved, files_touched: r.files_touched,
+        });
+        reports.push(r);
+    }
+    if opts.elide_type_only_exports {
+        let _ = tx.send(ProgressEvent::TransformStart { id: "elide_type_only_exports".into() });
+        let r = per_file_with_path(entries, "elide_type_only_exports", |path, content, _sha| {
+            elide_types::apply(path, content)
         });
         let _ = tx.send(ProgressEvent::TransformDone {
             id: r.id.clone(), bytes_saved: r.bytes_saved, files_touched: r.files_touched,
