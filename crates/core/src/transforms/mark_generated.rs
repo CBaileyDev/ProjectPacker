@@ -19,7 +19,15 @@ pub struct Detection<'a> {
 }
 
 pub fn detect<'a>(path: &str, content: &'a str) -> Option<Detection<'a>> {
-    let scan_end = content.len().min(BANNER_SCAN_BYTES);
+    // Snap the scan window to the largest <= UTF-8 char boundary so we
+    // never slice inside a multi-byte char (e.g. '→' or '—' straddling
+    // the 2KB mark). Walks back at most 3 bytes since max UTF-8 width
+    // is 4 bytes. Plain byte-indexing here would panic with
+    // "byte index N is not a char boundary".
+    let mut scan_end = content.len().min(BANNER_SCAN_BYTES);
+    while scan_end > 0 && !content.is_char_boundary(scan_end) {
+        scan_end -= 1;
+    }
     let head = &content[..scan_end];
 
     // Case-insensitive "DO NOT EDIT" + case-sensitive others.
@@ -89,6 +97,32 @@ mod tests {
     fn does_not_detect_handwritten_source() {
         let content = "// Comment about generated tests\nfn main() {}\n";
         assert!(detect("src/main.rs", content).is_none());
+    }
+
+    #[test]
+    fn detect_does_not_panic_on_multibyte_char_at_scan_boundary() {
+        // '→' (U+2192) is 3 bytes in UTF-8. Place it so it straddles
+        // BANNER_SCAN_BYTES (2048): 2046 'x' chars + '→' occupies
+        // bytes 2046..2049. The naive `&content[..2048]` slice in the
+        // pre-fix code panicked here.
+        let mut content = "x".repeat(2046);
+        content.push('→');
+        content.push_str("trailing\n");
+        // Sanity: ensure we actually straddle the boundary.
+        assert!(!content.is_char_boundary(2048));
+        // Must not panic; this file has no banner so the result is None.
+        let result = detect("notes.md", &content);
+        assert!(result.is_none());
+    }
+
+    #[test]
+    fn detect_does_not_panic_on_em_dash_at_scan_boundary() {
+        // '—' (em dash, U+2014) is also 3 bytes.
+        let mut content = "y".repeat(2046);
+        content.push('—');
+        content.push_str("rest\n");
+        assert!(!content.is_char_boundary(2048));
+        let _ = detect("a.ts", &content); // must not panic
     }
 
     #[test]
