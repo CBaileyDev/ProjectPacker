@@ -1,0 +1,8 @@
+---
+source: crates/core/tests/protocol_golden.rs
+expression: b.finish()
+---
+<compression_report>
+  <transform id="trim_trailing_ws" bytes_saved="12" files_touched="1" elapsed_ms="0"/>
+  <transform id="dedup_files" bytes_saved="4096" files_touched="2" elapsed_ms="1"/>
+</compression_report>
