@@ -9,6 +9,7 @@ use std::time::Instant;
 pub mod collapse_lockfile;
 pub mod collapse_minified;
 pub mod dedup;
+pub mod mark_generated;
 pub mod normalize;
 
 /// Run every enabled transform over `entries` in fixed order, emitting
