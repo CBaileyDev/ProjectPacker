@@ -3,15 +3,39 @@ name: Release
 on:
   push:
     tags: ["v*.*.*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: windows-latest
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            bundles: msi,nsis
+          # macos-latest runners are arm64; ship an Apple Silicon dmg and
+          # revisit universal binaries if Intel users ask.
+          - os: macos-latest
+            bundles: dmg
+          # ubuntu-22.04 keeps the AppImage glibc floor low; 24.04 would
+          # exclude older distros.
+          - os: ubuntu-22.04
+            bundles: appimage,deb
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Install Linux build deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev \
+            librsvg2-dev libfuse2
 
       - uses: dtolnay/rust-toolchain@stable
       - uses: pnpm/action-setup@v4
@@ -22,23 +46,65 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: cargo test --workspace
       - run: cargo run -p projectpacker-app --bin emit-bindings
-      - run: pnpm tauri build --bundles msi,nsis
+      - run: pnpm tauri build --bundles ${{ matrix.bundles }}
+        env:
+          # linuxdeploy's strip step is flaky inside the AppImage bundler;
+          # the release profile already strips symbols.
+          NO_STRIP: true
 
       - name: Collect artifacts
+        shell: bash
         run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          BUNDLE_DIR="$(find . -type d -path '*/release/bundle' | head -1)"
           mkdir dist
-          $version = "${{ github.ref_name }}".TrimStart('v')
-          Copy-Item crates/app/target/release/bundle/msi/*.msi "dist/ProjectPacker_${version}_x64-setup.msi"
-          Copy-Item crates/app/target/release/bundle/nsis/*.exe "dist/ProjectPacker_${version}_x64-portable.exe"
-          Get-FileHash dist/*.msi -Algorithm SHA256 | Format-List | Out-File dist/SHA256SUMS.txt -Append
-          Get-FileHash dist/*.exe -Algorithm SHA256 | Format-List | Out-File dist/SHA256SUMS.txt -Append
-        shell: pwsh
+          case "${{ runner.os }}" in
+            Windows)
+              cp "$BUNDLE_DIR"/msi/*.msi   "dist/ProjectPacker_${VERSION}_x64-setup.msi"
+              cp "$BUNDLE_DIR"/nsis/*.exe  "dist/ProjectPacker_${VERSION}_x64-setup.exe"
+              ;;
+            macOS)
+              cp "$BUNDLE_DIR"/dmg/*.dmg   "dist/ProjectPacker_${VERSION}_aarch64.dmg"
+              ;;
+            Linux)
+              cp "$BUNDLE_DIR"/appimage/*.AppImage "dist/ProjectPacker_${VERSION}_amd64.AppImage"
+              cp "$BUNDLE_DIR"/deb/*.deb           "dist/ProjectPacker_${VERSION}_amd64.deb"
+              ;;
+          esac
+          cd dist
+          for f in *; do
+            { command -v sha256sum >/dev/null && sha256sum "$f" || shasum -a 256 "$f"; } > "$f.sha256"
+          done
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundles-${{ matrix.os }}
+          path: dist/*
+          if-no-files-found: error
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Extract release notes from CHANGELOG.md
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          awk -v ver="$VERSION" '
+            $0 ~ "^## \\[" ver "\\]" { flag=1; next }
+            /^## / { flag=0 }
+            flag' CHANGELOG.md > RELEASE_NOTES.md
+          [ -s RELEASE_NOTES.md ] || echo "Release $VERSION" > RELEASE_NOTES.md
 
       - uses: softprops/action-gh-release@v2
         with:
-          files: |
-            dist/*.msi
-            dist/*.exe
-            dist/SHA256SUMS.txt
-          draft: true
-          generate_release_notes: true
+          files: dist/*
+          body_path: RELEASE_NOTES.md
+          draft: false

@@ -20,9 +20,9 @@ $msi = Get-ChildItem "crates/app/target/release/bundle/msi/*.msi" | Select-Objec
 $exe = Get-ChildItem "crates/app/target/release/bundle/nsis/*.exe" | Select-Object -First 1
 
 Copy-Item $msi.FullName "$out/ProjectPacker_${Version}_x64-setup.msi"
-Copy-Item $exe.FullName "$out/ProjectPacker_${Version}_x64-portable.exe"
+Copy-Item $exe.FullName "$out/ProjectPacker_${Version}_x64-setup.exe"
 
 Get-FileHash "$out/ProjectPacker_${Version}_x64-setup.msi" -Algorithm SHA256 | Format-List
-Get-FileHash "$out/ProjectPacker_${Version}_x64-portable.exe" -Algorithm SHA256 | Format-List
+Get-FileHash "$out/ProjectPacker_${Version}_x64-setup.exe" -Algorithm SHA256 | Format-List
 
 Write-Host "Done. Artifacts in $out" -ForegroundColor Green
