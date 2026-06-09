@@ -1,0 +1,73 @@
+<svg width="1280" height="640" viewBox="0 0 1280 640" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0c0d10"/>
+      <stop offset="100%" stop-color="#14171c"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#10b981" stop-opacity="0.14"/>
+      <stop offset="100%" stop-color="#10b981" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1280" height="640" fill="url(#bg)"/>
+  <ellipse cx="640" cy="0" rx="700" ry="260" fill="url(#glow)"/>
+
+  <!-- Logo mark -->
+  <rect x="96" y="96" width="64" height="64" rx="16" fill="#10b981" fill-opacity="0.12" stroke="#10b981" stroke-opacity="0.35" stroke-width="2"/>
+  <!-- package icon strokes -->
+  <g stroke="#34d399" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M128 112 L150 124 L150 144 L128 156 L106 144 L106 124 Z"/>
+    <path d="M106 124 L128 136 L150 124"/>
+    <path d="M128 136 L128 156"/>
+  </g>
+
+  <!-- App name -->
+  <text x="184" y="142" font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif" font-size="52" font-weight="700" fill="#fafafa" letter-spacing="-1">ProjectPacker</text>
+
+  <!-- One-liner -->
+  <text x="96" y="234" font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif" font-size="34" fill="#d4d4d8" letter-spacing="-0.5">Pack any repo into AI-ready XML —</text>
+  <text x="96" y="280" font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif" font-size="34" fill="#d4d4d8" letter-spacing="-0.5">with a <tspan fill="#34d399" font-weight="600">validated planner→executor protocol</tspan>.</text>
+
+  <!-- Diagram: planner → validator → executor -->
+  <g font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif">
+    <!-- Planner box -->
+    <rect x="96" y="380" width="280" height="120" rx="14" fill="#18181b" stroke="#3f3f46" stroke-width="2"/>
+    <text x="236" y="432" font-size="26" font-weight="600" fill="#e4e4e7" text-anchor="middle">Planner AI</text>
+    <text x="236" y="466" font-size="18" fill="#71717a" text-anchor="middle">any web AI</text>
+
+    <!-- Arrow 1 -->
+    <g stroke="#52525b" stroke-width="3" fill="none">
+      <path d="M384 440 L468 440"/>
+      <path d="M458 430 L470 440 L458 450"/>
+    </g>
+    <text x="427" y="424" font-size="15" fill="#71717a" text-anchor="middle">plan</text>
+
+    <!-- Validator box (highlighted) -->
+    <rect x="480" y="368" width="320" height="144" rx="14" fill="#062e23" stroke="#10b981" stroke-width="2.5"/>
+    <text x="640" y="428" font-size="26" font-weight="700" fill="#34d399" text-anchor="middle">ProjectPacker</text>
+    <text x="640" y="462" font-size="18" fill="#6ee7b7" text-anchor="middle">validates the plan</text>
+
+    <!-- Reject loop -->
+    <g stroke="#f59e0b" stroke-width="2.5" fill="none" stroke-dasharray="6 5">
+      <path d="M520 512 C 480 570, 330 570, 270 504"/>
+      <path d="M281 516 L267 501 L287 498" stroke-dasharray="none"/>
+    </g>
+    <text x="400" y="576" font-size="15" fill="#d97706" text-anchor="middle">invalid → re-prompt</text>
+
+    <!-- Arrow 2 -->
+    <g stroke="#52525b" stroke-width="3" fill="none">
+      <path d="M808 440 L892 440"/>
+      <path d="M882 430 L894 440 L882 450"/>
+    </g>
+    <text x="851" y="424" font-size="15" fill="#71717a" text-anchor="middle">valid</text>
+
+    <!-- Executor box -->
+    <rect x="904" y="380" width="280" height="120" rx="14" fill="#18181b" stroke="#3f3f46" stroke-width="2"/>
+    <text x="1044" y="432" font-size="26" font-weight="600" fill="#e4e4e7" text-anchor="middle">Executor agent</text>
+    <text x="1044" y="466" font-size="18" fill="#71717a" text-anchor="middle">veto power, step-by-step</text>
+  </g>
+
+  <!-- Footer -->
+  <text x="96" y="610" font-family="Segoe UI, Inter, Helvetica, Arial, sans-serif" font-size="19" fill="#52525b">Rust + Tauri · fully offline · zero telemetry · MIT</text>
+</svg>
