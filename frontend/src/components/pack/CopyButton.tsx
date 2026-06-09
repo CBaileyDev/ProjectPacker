@@ -1,10 +1,6 @@
 import { writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { AnimatePresence } from "framer-motion";
 import * as m from "framer-motion/m";
-// NOTE: useState MUST be imported here. The previous version of this file
-// shipped without it (memo/useCallback/useRef were imported but useState
-// was forgotten); the swarm-coordinator deliverable flagged it as "BUG:
-// Missing useState import". Don't drop it again.
 import { memo, useCallback, useRef, useState } from "react";
 import { springButton } from "../../lib/motion";
 import { useToast } from "../../lib/toast";

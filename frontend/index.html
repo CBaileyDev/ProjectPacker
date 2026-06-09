@@ -4,6 +4,20 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>ProjectPacker</title>
+    <script>
+      // Set the theme class before first paint so light-mode users don't
+      // see a dark flash. The <html> tag ships with class="dark" as the
+      // fallback default; we only remove it when the OS explicitly
+      // prefers light. App.tsx's useSystemTheme keeps it in sync with
+      // live OS-theme changes after hydration.
+      try {
+        if (window.matchMedia("(prefers-color-scheme: light)").matches) {
+          document.documentElement.classList.remove("dark");
+        }
+      } catch (_) {
+        /* keep dark fallback */
+      }
+    </script>
   </head>
   <body class="bg-zinc-950 text-zinc-100">
     <div id="root"></div>

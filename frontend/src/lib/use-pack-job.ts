@@ -2,12 +2,15 @@ import type { Channel } from "@tauri-apps/api/core";
 import { useEffect, useRef, useState } from "react";
 import type { ProgressEvent } from "../bindings";
 import { commands } from "../bindings";
-import { batchEvents, createPackProgressChannel } from "./events";
+import { createPackProgressChannel } from "./events";
 import { useApp } from "./store";
 
 interface UsePackJobReturn {
   /** Start a pack run with the current options. No-op if a pack is already in flight. */
   run: () => Promise<void>;
+  /** Cancel the in-flight pack. No-op when nothing is running. User-initiated,
+   * so it resolves to the `cancelled` status — never the error banner/toast. */
+  cancel: () => Promise<void>;
   /** Most recent error message, or null. Cleared at the start of each new run. */
   errorMsg: string | null;
   /** Manually clear the error banner. */
@@ -53,11 +56,20 @@ export function usePackJob(): UsePackJobReturn {
   const reset = useApp((s) => s.reset);
   const pushEventsBatched = useApp((s) => s.pushEventsBatched);
   const pushEventStable = useApp((s) => s.pushEvent);
+  const markCancelled = useApp((s) => s.markCancelled);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const channelRef = useRef<Channel<ProgressEvent> | null>(null);
   const eventBufferRef = useRef<ProgressEvent[]>([]);
   const flushTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** Job id of the in-flight pack: set from the `started` event (and the
+   * `packStart` return value as a belt-and-braces fallback), cleared on
+   * each new run. `cancel()` needs it for `packCancel`. */
+  const jobIdRef = useRef<string | null>(null);
+  /** True once the user asked to cancel the current run. A terminal
+   * `error` event arriving afterwards is the backend acknowledging the
+   * cancellation — swallow it instead of surfacing an error banner. */
+  const cancelRequestedRef = useRef(false);
 
   const isRunning = status === "running";
   const isRunningRef = useRef(isRunning);
@@ -68,17 +80,27 @@ export function usePackJob(): UsePackJobReturn {
   // re-render swaps the function identity. Zustand actions are stable,
   // but routing them through a ref future-proofs against Zustand v5
   // behaviours and keeps the handler self-contained.
-  const actionsRef = useRef({ pushEventsBatched, pushEventStable, setResult });
-  actionsRef.current = { pushEventsBatched, pushEventStable, setResult };
+  const actionsRef = useRef({
+    pushEventsBatched,
+    pushEventStable,
+    setResult,
+    markCancelled,
+  });
+  actionsRef.current = {
+    pushEventsBatched,
+    pushEventStable,
+    setResult,
+    markCancelled,
+  };
 
   function flushBuffer() {
     const buf = eventBufferRef.current;
     if (buf.length === 0) return;
     eventBufferRef.current = [];
-    // batchEvents in the store layer covers the boundary case (last
-    // store event + first buffered event both walking). We pre-collapse
-    // here too so the store's batch is smaller.
-    actionsRef.current.pushEventsBatched(batchEvents(buf));
+    // The store's `pushEventsBatched` runs `batchEvents` over the stitched
+    // tail + batch, so the walking-collapse happens exactly once there —
+    // no pre-collapse here.
+    actionsRef.current.pushEventsBatched(buf);
   }
 
   function startFlushTimer() {
@@ -93,6 +115,7 @@ export function usePackJob(): UsePackJobReturn {
     }
   }
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: unmount-only cleanup; stopFlushTimer only touches refs and must not re-run per render
   useEffect(() => {
     return () => {
       stopFlushTimer();
@@ -107,6 +130,8 @@ export function usePackJob(): UsePackJobReturn {
   async function run() {
     if (isRunningRef.current) return; // double-click / pre-await reentry guard
     setErrorMsg(null);
+    cancelRequestedRef.current = false;
+    jobIdRef.current = null;
     reset();
 
     // Detach the previous channel's handler so any stragglers (shouldn't
@@ -132,6 +157,17 @@ export function usePackJob(): UsePackJobReturn {
 
       if (e.kind === "started") {
         capturedJobId = e.job_id;
+        jobIdRef.current = e.job_id;
+      }
+
+      // User-initiated cancel: the backend acknowledges by erroring the
+      // job. That's expected, not failure — drain the buffer, mark the
+      // run cancelled, and surface no error banner/toast.
+      if (e.kind === "error" && cancelRequestedRef.current) {
+        flushBuffer();
+        stopFlushTimer();
+        actionsRef.current.markCancelled();
+        return;
       }
 
       if (isTerminal) {
@@ -183,11 +219,41 @@ export function usePackJob(): UsePackJobReturn {
       setErrorMsg(startRes.error.message);
       return;
     }
+    jobIdRef.current ??= startRes.data;
     setJob(startRes.data);
+  }
+
+  async function cancel() {
+    if (!isRunningRef.current || cancelRequestedRef.current) return;
+    const id = jobIdRef.current ?? useApp.getState().jobId;
+    if (!id) return;
+    cancelRequestedRef.current = true;
+    try {
+      const res = await commands.packCancel(id);
+      if (res.status !== "ok") {
+        // Cancel itself failed — the pack is still running, so re-arm and
+        // surface the failure (this one IS an error, not a cancellation).
+        cancelRequestedRef.current = false;
+        setErrorMsg(res.error.message);
+        return;
+      }
+    } catch (e) {
+      cancelRequestedRef.current = false;
+      setErrorMsg(e instanceof Error ? e.message : String(e));
+      return;
+    }
+    // Resolve the UI immediately rather than waiting on a terminal event
+    // the backend may or may not emit post-cancel. If a `done` raced the
+    // cancel and lands afterwards, the store's markCancelled no-ops on
+    // non-running status and the result still wins.
+    flushBuffer();
+    stopFlushTimer();
+    actionsRef.current.markCancelled();
   }
 
   return {
     run,
+    cancel,
     errorMsg,
     dismissError: () => setErrorMsg(null),
     isRunning,
