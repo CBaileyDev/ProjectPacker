@@ -1,8 +1,15 @@
 //! Lockfile detection + body collapse.
 
 const LOCKFILE_BASENAMES: &[&str] = &[
-    "package-lock.json", "pnpm-lock.yaml", "yarn.lock", "Cargo.lock",
-    "Gemfile.lock", "poetry.lock", "composer.lock", "Pipfile.lock", "go.sum",
+    "package-lock.json",
+    "pnpm-lock.yaml",
+    "yarn.lock",
+    "Cargo.lock",
+    "Gemfile.lock",
+    "poetry.lock",
+    "composer.lock",
+    "Pipfile.lock",
+    "go.sum",
 ];
 
 pub fn is_lockfile(path: &str) -> bool {
@@ -14,12 +21,28 @@ pub fn is_lockfile(path: &str) -> bool {
 /// Returns `Some(collapsed_body)` if `path` is a lockfile, else `None`.
 /// `hash_prefix` is the first 12 chars of the file's BLAKE3 hash.
 pub fn collapse(path: &str, content: &str, hash_prefix: &str) -> Option<String> {
-    if !is_lockfile(path) { return None; }
+    if !is_lockfile(path) {
+        return None;
+    }
     let lines: Vec<&str> = content.lines().collect();
     let total = lines.len();
-    if total <= 25 { return None; } // short lockfile — keep as-is
-    let head: String = lines.iter().take(20).copied().collect::<Vec<_>>().join("\n");
-    let tail: String = lines.iter().rev().take(5).rev().copied().collect::<Vec<_>>().join("\n");
+    if total <= 25 {
+        return None;
+    } // short lockfile — keep as-is
+    let head: String = lines
+        .iter()
+        .take(20)
+        .copied()
+        .collect::<Vec<_>>()
+        .join("\n");
+    let tail: String = lines
+        .iter()
+        .rev()
+        .take(5)
+        .rev()
+        .copied()
+        .collect::<Vec<_>>()
+        .join("\n");
     let omitted = total.saturating_sub(25);
     let original_bytes = content.len();
     Some(format!(

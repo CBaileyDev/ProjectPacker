@@ -284,10 +284,19 @@ pub async fn save_pack_output(
 }
 
 fn settings_path(app: &AppHandle) -> PathBuf {
-    app.path()
-        .app_data_dir()
-        .unwrap_or_else(|_| std::env::temp_dir())
-        .join("settings.json")
+    match app.path().app_data_dir() {
+        Ok(dir) => dir.join("settings.json"),
+        Err(e) => {
+            // Distinctive filename so a temp-dir fallback can't be mistaken
+            // for (or collide with) anything else named settings.json.
+            let fallback = std::env::temp_dir().join("projectpacker-settings-fallback.json");
+            log::warn!(
+                "app_data_dir unavailable ({e}); falling back to {}",
+                fallback.display()
+            );
+            fallback
+        }
+    }
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -336,7 +345,11 @@ pub async fn github_clear_token() -> CmdResult<()> {
         .map_err(AppError::from);
     match &result {
         Ok(_) => log::info!("github_clear_token: cleared"),
-        Err(e) => log::error!("github_clear_token failed: code={} msg={}", e.code, e.message),
+        Err(e) => log::error!(
+            "github_clear_token failed: code={} msg={}",
+            e.code,
+            e.message
+        ),
     }
     result
 }

@@ -16,10 +16,7 @@ pub const PIN_FILE_PATHS: &[&str] = &[
 
 /// Glob/directory pins — expanded at runtime rather than baked into a constant.
 /// Format: each entry is a pattern tag (matched by `pinned_files`).
-pub const PIN_GLOB_PATTERNS: &[&str] = &[
-    ".cursor/rules/*.mdc",
-    ".claude/**",
-];
+pub const PIN_GLOB_PATTERNS: &[&str] = &[".cursor/rules/*.mdc", ".claude/**"];
 
 /// Resolve all pinned files that exist under `root`.
 ///

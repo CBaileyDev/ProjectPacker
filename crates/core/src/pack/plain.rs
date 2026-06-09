@@ -27,11 +27,7 @@ pub fn render(
     );
     let _ = writeln!(out, "Bytes: {}", block.bytes_total);
     if let Some(t) = block.tokens_total {
-        let _ = writeln!(
-            out,
-            "Tokens: {t} ({})",
-            block.tokenizer_model
-        );
+        let _ = writeln!(out, "Tokens: {t} ({})", block.tokenizer_model);
     }
     if !block.languages.is_empty() {
         let _ = writeln!(out, "Languages: {}", block.languages_display());
@@ -67,20 +63,7 @@ pub fn render(
     }
 
     // Pinned entries in incoming order, then non-pinned sorted alphabetically.
-    let pinned_count = pinned_count.min(entries.len());
-    let pinned = &entries[..pinned_count];
-    let mut non_pinned: Vec<&FileEntry> = entries[pinned_count..].iter().collect();
-    non_pinned.sort_by(|a, b| a.path.cmp(&b.path));
-
-    for e in pinned {
-        let _ = writeln!(out, "=== {} ===", e.path);
-        out.push_str(&e.content);
-        if !e.content.ends_with('\n') {
-            out.push('\n');
-        }
-        out.push('\n');
-    }
-    for e in &non_pinned {
+    for e in crate::pack::pinned_then_sorted(entries, pinned_count) {
         let _ = writeln!(out, "=== {} ===", e.path);
         out.push_str(&e.content);
         if !e.content.ends_with('\n') {
@@ -224,6 +207,9 @@ mod tests {
         let out = render("repo", &opts(), &stats(), &entries, 0, &[]);
         let a_pos = out.find("a.rs").expect("a.rs not in output");
         let b_pos = out.find("b.rs").expect("b.rs not in output");
-        assert!(a_pos < b_pos, "a.rs must appear before b.rs after alphabetical sort");
+        assert!(
+            a_pos < b_pos,
+            "a.rs must appear before b.rs after alphabetical sort"
+        );
     }
 }

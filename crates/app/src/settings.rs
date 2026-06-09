@@ -354,11 +354,7 @@ pub enum MigrationError {
     #[error("no migration registered from version {from} to current")]
     MissingMigration { from: u32 },
     #[error("migration {from}->{to} failed: {message}")]
-    StepFailed {
-        from: u32,
-        to: u32,
-        message: String,
-    },
+    StepFailed { from: u32, to: u32, message: String },
 }
 
 // ---------------------------------------------------------------------------
@@ -418,11 +414,7 @@ impl MigrationRegistry {
             if current == CURRENT_SETTINGS_VERSION {
                 return Ok(value);
             }
-            let Some(step) = self
-                .migrations
-                .iter()
-                .find(|m| m.from_version() == current)
-            else {
+            let Some(step) = self.migrations.iter().find(|m| m.from_version() == current) else {
                 if self.migrations.is_empty() {
                     // No migrations registered at all — accept the value as-is
                     // (Settings derives serde defaults so additive fields are
@@ -542,10 +534,7 @@ pub fn save(path: &Path, settings: &Settings) -> std::io::Result<()> {
 }
 
 /// Async wrapper around `save` for callers on the tokio runtime.
-pub fn save_async(
-    path: PathBuf,
-    settings: Settings,
-) -> JoinHandle<Result<(), SettingsSaveError>> {
+pub fn save_async(path: PathBuf, settings: Settings) -> JoinHandle<Result<(), SettingsSaveError>> {
     tokio::task::spawn_blocking(move || save(&path, &settings).map_err(SettingsSaveError::from))
 }
 
@@ -615,9 +604,9 @@ mod tests {
         let mut s = Settings::defaults();
         s.default_protocol_version = "made-up-v9".into();
         let errs = s.validate().unwrap_err();
-        assert!(errs
-            .iter()
-            .any(|e| matches!(e, ValidationError::UnsupportedProtocolVersion(v) if v == "made-up-v9")));
+        assert!(errs.iter().any(
+            |e| matches!(e, ValidationError::UnsupportedProtocolVersion(v) if v == "made-up-v9")
+        ));
     }
 
     #[test]
@@ -943,10 +932,7 @@ mod tests {
         fn to_version(&self) -> u32 {
             self.to
         }
-        fn migrate(
-            &self,
-            value: serde_json::Value,
-        ) -> Result<serde_json::Value, MigrationError> {
+        fn migrate(&self, value: serde_json::Value) -> Result<serde_json::Value, MigrationError> {
             Ok(value)
         }
     }

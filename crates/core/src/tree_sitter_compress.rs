@@ -70,8 +70,8 @@ fn queries() -> &'static HashMap<Lang, LangQueries> {
             let language = lang_to_tree_sitter(lang);
             let compress = Query::new(&language, compress_query_for(lang))
                 .expect("compress query must compile");
-            let comments = Query::new(&language, comment_query_for(lang))
-                .expect("comment query must compile");
+            let comments =
+                Query::new(&language, comment_query_for(lang)).expect("comment query must compile");
             m.insert(lang, LangQueries { compress, comments });
         }
         m
@@ -121,7 +121,9 @@ impl PooledParser {
     }
 
     fn parser_mut(&mut self) -> &mut Parser {
-        self.parser.as_mut().expect("parser is always Some until Drop")
+        self.parser
+            .as_mut()
+            .expect("parser is always Some until Drop")
     }
 }
 
@@ -191,25 +193,20 @@ pub fn compress(source: &str, lang: Lang) -> String {
 }
 
 fn first_brace(bytes: &[u8], start: usize, end: usize) -> usize {
-    bytes
-        .iter()
-        .enumerate()
-        .take(end)
-        .skip(start)
-        .find(|(_, &b)| b == b'{')
-        .map(|(i, _)| i)
-        .unwrap_or(end)
+    first_byte(bytes, start, end, b'{')
 }
 
 fn first_colon(bytes: &[u8], start: usize, end: usize) -> usize {
+    first_byte(bytes, start, end, b':')
+}
+
+/// Index of the first `needle` in `bytes[start..end]`, or `end` when absent
+/// (or when the range is empty/out of bounds).
+fn first_byte(bytes: &[u8], start: usize, end: usize, needle: u8) -> usize {
     bytes
-        .iter()
-        .enumerate()
-        .take(end)
-        .skip(start)
-        .find(|(_, &b)| b == b':')
-        .map(|(i, _)| i)
-        .unwrap_or(end)
+        .get(start..end)
+        .and_then(|s| s.iter().position(|&b| b == needle))
+        .map_or(end, |i| start + i)
 }
 
 /// Strip comments from `source` using tree-sitter for the given language.
@@ -474,7 +471,10 @@ mod tests {
     fn removes_rust_line_comments() {
         let src = "fn main() {\n    // a comment\n    println!(\"hi\");\n}\n";
         let result = remove_comments(src, Lang::Rust);
-        assert!(!result.contains("// a comment"), "line comment should be removed");
+        assert!(
+            !result.contains("// a comment"),
+            "line comment should be removed"
+        );
         assert!(result.contains("println!"), "code should be preserved");
     }
 

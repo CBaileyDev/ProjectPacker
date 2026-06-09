@@ -11,7 +11,7 @@ import type {
 import { batchEvents } from "./events";
 import { tauriStoreAdapter } from "./persist-adapter";
 
-type PackingStatus = "idle" | "running" | "done" | "error";
+type PackingStatus = "idle" | "running" | "done" | "error" | "cancelled";
 
 interface AppState {
   jobId: string | null;
@@ -35,7 +35,11 @@ interface AppState {
   pushEventsBatched: (events: ProgressEvent[]) => void;
   setResult: (r: PackResult) => void;
   reset: () => void;
-  setOptions: (o: PackOptions) => void;
+  /** Mark a running pack as user-cancelled. No-op unless a pack is in
+   * flight, so a `done` that races the cancel click wins. Used by
+   * `usePackJob.cancel` — cancellation is not an error, so it must not
+   * route through the `error` event path. */
+  markCancelled: () => void;
   /** Merge a partial update into options, reading current state at call
    * time. Use this from async handlers (pickFolder, drop) so a slow
    * dialog doesn't capture stale `options` and overwrite a recent edit
@@ -168,11 +172,13 @@ export const useApp = create<AppState>()(
       pushEventsBatched: (incoming) =>
         set((s) => {
           if (incoming.length === 0) return s;
-          // Stitch the existing tail together with the new batch before
-          // running batchEvents — that way a `walking` event already at
-          // the end of `s.events` gets collapsed into a `walking` first
-          // event of `incoming`, instead of staying as two adjacent
-          // walking entries across the boundary.
+          // Single point where batchEvents is applied (usePackJob's flush
+          // buffer passes its raw buffer through untouched). Stitch the
+          // existing tail together with the new batch before running
+          // batchEvents — that way a `walking` event already at the end
+          // of `s.events` gets collapsed into a `walking` first event of
+          // `incoming`, instead of staying as two adjacent walking
+          // entries across the boundary.
           const merged = batchEvents([...s.events, ...incoming]);
           let nextStat = s.status;
           let nextStats: PackStats | null = s.lastStats;
@@ -199,7 +205,8 @@ export const useApp = create<AppState>()(
           result: null,
           lastStats: null,
         }),
-      setOptions: (o) => set({ options: o }),
+      markCancelled: () =>
+        set((s) => (s.status === "running" ? { status: "cancelled" } : s)),
       patchOptions: (patch) =>
         set((s) => ({ options: { ...s.options, ...patch } })),
     }),
@@ -235,22 +242,30 @@ export function usePackOptions() {
   return useApp(
     useShallow((s) => ({
       options: s.options,
-      setOptions: s.setOptions,
       patchOptions: s.patchOptions,
     })),
   );
 }
 
-/** Subscribe to the live progress slice (status + events + result). */
+/** Subscribe to the live progress slice (status + result + jobId).
+ * Deliberately excludes `events` — those land ~10×/second during a pack
+ * and would re-render every subscriber per flush. Components that render
+ * the event stream (progress log / progress bar) should use
+ * `usePackEvents` so only they re-render per flush. */
 export function usePackProgress() {
   return useApp(
     useShallow((s) => ({
       status: s.status,
-      events: s.events,
       result: s.result,
       jobId: s.jobId,
     })),
   );
+}
+
+/** Subscribe to the raw progress-event stream. High-churn during a pack
+ * (one update per 100ms flush) — keep subscribers small and leaf-level. */
+export function usePackEvents(): ProgressEvent[] {
+  return useApp((s) => s.events);
 }
 
 /** Subscribe to `lastStats` only. The Compression panel reads

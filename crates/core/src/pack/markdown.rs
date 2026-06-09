@@ -30,11 +30,7 @@ pub fn render(
     );
     let _ = writeln!(out, "| Bytes | {} |", block.bytes_total);
     if let Some(t) = block.tokens_total {
-        let _ = writeln!(
-            out,
-            "| Tokens ({}) | {t} |",
-            block.tokenizer_model
-        );
+        let _ = writeln!(out, "| Tokens ({}) | {t} |", block.tokenizer_model);
     }
     if !block.languages.is_empty() {
         let _ = writeln!(out, "| Languages | {} |", block.languages_display());
@@ -65,35 +61,18 @@ pub fn render(
         out.push('\n');
     }
 
-    // Build the ordered slice: pinned entries in incoming order, then non-pinned
+    // Render order: pinned entries in incoming order, then non-pinned
     // entries sorted alphabetically by path for diffability.
-    let pinned_count = pinned_count.min(entries.len());
-    let pinned = &entries[..pinned_count];
-    let mut non_pinned: Vec<&FileEntry> = entries[pinned_count..].iter().collect();
-    non_pinned.sort_by(|a, b| a.path.cmp(&b.path));
+    let ordered = crate::pack::pinned_then_sorted(entries, pinned_count);
 
     out.push_str("## Directory Structure\n\n```\n");
-    for e in pinned {
-        out.push_str(&e.path);
-        out.push('\n');
-    }
-    for e in &non_pinned {
+    for e in &ordered {
         out.push_str(&e.path);
         out.push('\n');
     }
     out.push_str("```\n\n## Files\n\n");
 
-    for e in pinned {
-        let _ = write!(out, "### `{}`\n\n", e.path);
-        let lang = ext_fence_lang(&e.path);
-        let _ = writeln!(out, "```{lang}");
-        out.push_str(&e.content);
-        if !e.content.ends_with('\n') {
-            out.push('\n');
-        }
-        out.push_str("```\n\n");
-    }
-    for e in &non_pinned {
+    for e in &ordered {
         let _ = write!(out, "### `{}`\n\n", e.path);
         let lang = ext_fence_lang(&e.path);
         let _ = writeln!(out, "```{lang}");
@@ -185,8 +164,20 @@ mod tests {
     #[test]
     fn renders_directory_structure_section() {
         let entries = vec![
-            FileEntry { path: "a.rs".into(), content: "".into(), bytes: 0, tokens: None, hash: "".into() },
-            FileEntry { path: "b.py".into(), content: "".into(), bytes: 0, tokens: None, hash: "".into() },
+            FileEntry {
+                path: "a.rs".into(),
+                content: "".into(),
+                bytes: 0,
+                tokens: None,
+                hash: "".into(),
+            },
+            FileEntry {
+                path: "b.py".into(),
+                content: "".into(),
+                bytes: 0,
+                tokens: None,
+                hash: "".into(),
+            },
         ];
         let out = render("repo", &opts(), &stats(), &entries, 0, &[]);
         assert!(out.contains("## Directory Structure"));
@@ -217,7 +208,10 @@ mod tests {
             "output must NOT contain ## Summary"
         );
         // Also verify key stats fields are present (and we haven't accidentally emitted XML tags).
-        assert!(!out.contains("<pack_target>"), "MD output must not contain XML tags");
+        assert!(
+            !out.contains("<pack_target>"),
+            "MD output must not contain XML tags"
+        );
         assert!(out.contains("| Target |"));
         assert!(out.contains("| Redactions |"));
         assert!(out.contains("| Cache hits |"));
@@ -255,7 +249,10 @@ mod tests {
         let out = render("repo", &opts(), &stats(), &entries, 0, &[]);
         let a_pos = out.find("a.rs").expect("a.rs not in output");
         let b_pos = out.find("b.rs").expect("b.rs not in output");
-        assert!(a_pos < b_pos, "a.rs must appear before b.rs after alphabetical sort");
+        assert!(
+            a_pos < b_pos,
+            "a.rs must appear before b.rs after alphabetical sort"
+        );
     }
 
     /// F2-7: Pinned block stays in incoming order; non-pinned tail is sorted.
@@ -276,8 +273,17 @@ mod tests {
         let a_pos = out.find("a.rs").expect("a.rs not in output");
         let z_pos = out.find("z.rs").expect("z.rs not in output");
 
-        assert!(agents_pos < claude_pos, "AGENTS.md must come before CLAUDE.md (pinned order)");
-        assert!(claude_pos < a_pos, "pinned block must come before non-pinned");
-        assert!(a_pos < z_pos, "a.rs must come before z.rs (alphabetical sort)");
+        assert!(
+            agents_pos < claude_pos,
+            "AGENTS.md must come before CLAUDE.md (pinned order)"
+        );
+        assert!(
+            claude_pos < a_pos,
+            "pinned block must come before non-pinned"
+        );
+        assert!(
+            a_pos < z_pos,
+            "a.rs must come before z.rs (alphabetical sort)"
+        );
     }
 }

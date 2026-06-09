@@ -79,51 +79,10 @@ static TEXT_EXTENSIONS: &[&str] = &[
 // Layer 2 — extension deny-list (these extensions are always treated as binary)
 // ---------------------------------------------------------------------------
 static BINARY_EXTENSIONS: &[&str] = &[
-    "7z",
-    "a",
-    "avi",
-    "bmp",
-    "bz2",
-    "class",
-    "dll",
-    "dylib",
-    "eot",
-    "exe",
-    "flac",
-    "gif",
-    "gz",
-    "ico",
-    "icns",
-    "jar",
-    "jpeg",
-    "jpg",
-    "lib",
-    "mkv",
-    "mov",
-    "mp3",
-    "mp4",
-    "o",
-    "obj",
-    "ogg",
-    "otf",
-    "pdf",
-    "png",
-    "pyc",
-    "rar",
-    "so",
-    "tar",
-    "tgz",
-    "tif",
-    "tiff",
-    "ttf",
-    "wasm",
-    "wav",
-    "webm",
-    "webp",
-    "woff",
-    "woff2",
-    "xz",
-    "zip",
+    "7z", "a", "avi", "bmp", "bz2", "class", "dll", "dylib", "eot", "exe", "flac", "gif", "gz",
+    "ico", "icns", "jar", "jpeg", "jpg", "lib", "mkv", "mov", "mp3", "mp4", "o", "obj", "ogg",
+    "otf", "pdf", "png", "pyc", "rar", "so", "tar", "tgz", "tif", "tiff", "ttf", "wasm", "wav",
+    "webm", "webp", "woff", "woff2", "xz", "zip",
 ];
 
 /// Returns `true` if the file at `path` is likely binary, `false` if likely text.
@@ -278,7 +237,10 @@ mod tests {
         let path = dir.path().join("source.rs");
         // Contents contain NUL bytes that would make Layer 3 say "binary"
         fs::write(&path, b"fn main() {}\x00binary-looking\x00data").unwrap();
-        assert!(!is_binary(&path), ".rs files must be treated as text regardless of content");
+        assert!(
+            !is_binary(&path),
+            ".rs files must be treated as text regardless of content"
+        );
     }
 
     /// 2. Layer 2 wins: .png extension → binary, even if contents are pure ASCII.
@@ -287,8 +249,15 @@ mod tests {
         let dir = tempdir().unwrap();
         let path = dir.path().join("image.png");
         // Contents are pure printable ASCII — Layers 3/4/5 would say "text"
-        fs::write(&path, b"This is definitely plain text content, no magic numbers here").unwrap();
-        assert!(is_binary(&path), ".png files must be treated as binary regardless of content");
+        fs::write(
+            &path,
+            b"This is definitely plain text content, no magic numbers here",
+        )
+        .unwrap();
+        assert!(
+            is_binary(&path),
+            ".png files must be treated as binary regardless of content"
+        );
     }
 
     /// 3. UTF-8 BOM prefix → text, even if subsequent bytes are high/non-ASCII.
@@ -300,7 +269,10 @@ mod tests {
         let mut content = vec![0xEF, 0xBB, 0xBF]; // UTF-8 BOM
         content.extend_from_slice(&[0xC3, 0xA9, 0xC3, 0xBC, 0xC3, 0xB6]); // é ü ö in UTF-8
         fs::write(&path, &content).unwrap();
-        assert!(!is_binary(&path), "UTF-8 BOM prefix should mark file as text");
+        assert!(
+            !is_binary(&path),
+            "UTF-8 BOM prefix should mark file as text"
+        );
     }
 
     /// 4. NUL byte in content with no special extension → binary.
@@ -309,7 +281,10 @@ mod tests {
         let dir = tempdir().unwrap();
         let path = dir.path().join("mystery.data");
         fs::write(&path, b"hello\x00world").unwrap();
-        assert!(is_binary(&path), "NUL byte in content should mark file as binary");
+        assert!(
+            is_binary(&path),
+            "NUL byte in content should mark file as binary"
+        );
     }
 
     /// 5. PNG magic bytes without a recognised extension → Layer 4 catches it.
@@ -322,7 +297,10 @@ mod tests {
         // Pad with some non-NUL bytes so Layer 3 doesn't trigger on NULs
         content.extend_from_slice(&[0x01, 0x02, 0x03, 0x04, 0x05]);
         fs::write(&path, &content).unwrap();
-        assert!(is_binary(&path), "PNG magic bytes should be recognised as binary by Layer 4");
+        assert!(
+            is_binary(&path),
+            "PNG magic bytes should be recognised as binary by Layer 4"
+        );
     }
 
     /// 6. Empty file → not binary.
@@ -338,7 +316,10 @@ mod tests {
     #[test]
     fn unreadable_path_returns_false() {
         let path = Path::new("/this/path/does/not/exist/at/all.data");
-        assert!(!is_binary(path), "Non-existent path should return false (permissive)");
+        assert!(
+            !is_binary(path),
+            "Non-existent path should return false (permissive)"
+        );
     }
 
     /// 8. Plain ASCII text with unknown extension → not binary.
@@ -346,7 +327,14 @@ mod tests {
     fn plain_text_unknown_extension_passes_through() {
         let dir = tempdir().unwrap();
         let path = dir.path().join("notes.unknown");
-        fs::write(&path, b"This is just plain ASCII text with no magic bytes or NUL bytes.").unwrap();
-        assert!(!is_binary(&path), "Plain ASCII text with unknown extension should not be flagged as binary");
+        fs::write(
+            &path,
+            b"This is just plain ASCII text with no magic bytes or NUL bytes.",
+        )
+        .unwrap();
+        assert!(
+            !is_binary(&path),
+            "Plain ASCII text with unknown extension should not be flagged as binary"
+        );
     }
 }

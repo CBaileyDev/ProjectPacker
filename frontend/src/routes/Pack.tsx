@@ -12,6 +12,7 @@ import { DropOverlay } from "../components/pack/DropOverlay";
 import { GithubConnector } from "../components/pack/GithubConnector";
 import {
   AlertIcon,
+  CheckIcon,
   FileTextIcon,
   FolderIcon,
   GithubIcon,
@@ -22,6 +23,7 @@ import {
   SparklesIcon,
   XIcon,
 } from "../components/pack/icons";
+import { PackProgressBar } from "../components/pack/PackProgressBar";
 import { PhaseBreakdown } from "../components/pack/PhaseBreakdown";
 import { ProgressLog } from "../components/pack/ProgressLog";
 import { SaveButton } from "../components/pack/SaveButton";
@@ -33,10 +35,22 @@ import {
   fadeUp,
   prefersReducedMotion,
   springButton,
+  springQuick,
   staggerContainer,
 } from "../lib/motion";
-import { useApp, usePackOptions, usePackProgress } from "../lib/store";
+import { progressFromEvents } from "../lib/pack-progress";
+import { clampList } from "../lib/paginate";
+import {
+  useApp,
+  usePackEvents,
+  usePackOptions,
+  usePackProgress,
+} from "../lib/store";
 import { useDragDrop } from "../lib/use-drag-drop";
+import {
+  isMacPlatform,
+  useKeyboardShortcuts,
+} from "../lib/use-keyboard-shortcuts";
 import { usePackJob } from "../lib/use-pack-job";
 
 const FORMAT_LABELS: Record<PackFormat, string> = {
@@ -86,9 +100,15 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
 
 export default function Pack() {
   const { options, patchOptions } = usePackOptions();
-  const { status, events, result } = usePackProgress();
+  const { status, result } = usePackProgress();
   const reset = useApp((s) => s.reset);
-  const { run: runPack, errorMsg, dismissError, isRunning } = usePackJob();
+  const {
+    run: runPack,
+    cancel: cancelPack,
+    errorMsg,
+    dismissError,
+    isRunning,
+  } = usePackJob();
 
   const { isDragging, dropState } = useDragDrop({
     onDrop: (folderPath: string) => {
@@ -170,6 +190,21 @@ export default function Pack() {
   function handlePack() {
     runPack();
   }
+
+  // mod+Enter starts a pack; Escape cancels a running one. The hook
+  // suppresses non-Escape shortcuts while focus is in an editable field,
+  // and Escape is a no-op unless a pack is actually in flight.
+  useKeyboardShortcuts({
+    "mod+enter": () => {
+      if (!isRunning && isValidTarget) runPack();
+    },
+    escape: () => {
+      if (isRunning) cancelPack();
+    },
+  });
+
+  const isCancelled = status === "cancelled";
+  const showOnboarding = status === "idle" && !result && targetVal.length === 0;
 
   function selectGithubRepo(htmlUrl: string) {
     patchOptions({ target: { kind: "github", value: htmlUrl } });
@@ -532,59 +567,98 @@ export default function Pack() {
                     </div>
                   </section>
 
-                  {/* Pack button */}
-                  <m.button
-                    type="button"
-                    className={`flex w-full items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold transition-all duration-200 ${
-                      isRunning || !isValidTarget
-                        ? "cursor-not-allowed bg-emerald-800/50 text-emerald-300/50"
-                        : "bg-emerald-600 text-white shadow-lg shadow-emerald-900/30 hover:bg-emerald-500 hover:shadow-emerald-900/40"
-                    }`}
-                    onClick={handlePack}
-                    disabled={isRunning || !isValidTarget}
-                    aria-busy={isRunning}
-                    whileTap={
-                      !isRunning && isValidTarget ? { scale: 0.98 } : undefined
-                    }
-                  >
-                    <AnimatePresence mode="wait" initial={false}>
-                      {isRunning ? (
-                        <m.span
-                          key="running"
-                          className="flex items-center gap-2"
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -8 }}
-                          transition={{ duration: 0.2 }}
-                        >
+                  {/* Pack / Cancel button row */}
+                  <div className="flex gap-2.5">
+                    <m.button
+                      type="button"
+                      className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold transition-all duration-200 ${
+                        isRunning || !isValidTarget
+                          ? "cursor-not-allowed bg-emerald-800/50 text-emerald-300/50"
+                          : "bg-emerald-600 text-white shadow-lg shadow-emerald-900/30 hover:bg-emerald-500 hover:shadow-emerald-900/40"
+                      }`}
+                      onClick={handlePack}
+                      disabled={isRunning || !isValidTarget}
+                      aria-busy={isRunning}
+                      whileTap={
+                        !isRunning && isValidTarget
+                          ? { scale: 0.98 }
+                          : undefined
+                      }
+                    >
+                      <AnimatePresence mode="wait" initial={false}>
+                        {isRunning ? (
                           <m.span
-                            aria-hidden="true"
-                            animate={{ rotate: 360 }}
-                            transition={{
-                              duration: 1.5,
-                              repeat: Infinity,
-                              ease: "linear",
-                            }}
+                            key="running"
+                            className="flex items-center gap-2"
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -8 }}
+                            transition={{ duration: 0.2 }}
                           >
-                            <LoaderIcon size={16} />
+                            <m.span
+                              aria-hidden="true"
+                              animate={{ rotate: 360 }}
+                              transition={{
+                                duration: 1.5,
+                                repeat: Infinity,
+                                ease: "linear",
+                              }}
+                            >
+                              <LoaderIcon size={16} />
+                            </m.span>
+                            Packing…
                           </m.span>
-                          Packing…
-                        </m.span>
-                      ) : (
-                        <m.span
-                          key="idle"
-                          className="flex items-center gap-2"
-                          initial={{ opacity: 0, y: 8 }}
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={{ opacity: 0, y: -8 }}
-                          transition={{ duration: 0.2 }}
+                        ) : (
+                          <m.span
+                            key="idle"
+                            className="flex items-center gap-2"
+                            initial={{ opacity: 0, y: 8 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: -8 }}
+                            transition={{ duration: 0.2 }}
+                          >
+                            <PlayIcon size={16} />
+                            Pack
+                            <kbd className="ml-0.5 rounded border border-white/15 bg-white/10 px-1.5 py-0.5 font-sans text-[10px] font-medium leading-none text-white/60">
+                              {isMacPlatform() ? "⌘↵" : "Ctrl↵"}
+                            </kbd>
+                          </m.span>
+                        )}
+                      </AnimatePresence>
+                    </m.button>
+
+                    <AnimatePresence initial={false}>
+                      {isRunning && (
+                        <m.button
+                          key="cancel"
+                          type="button"
+                          onClick={() => cancelPack()}
+                          title="Cancel pack (Esc)"
+                          className="flex items-center gap-2 rounded-xl border border-red-600/50 bg-red-950/40 px-5 py-3.5 text-sm font-semibold text-red-300 transition-colors hover:bg-red-900/40 hover:text-red-200"
+                          initial={
+                            prefersReducedMotion
+                              ? false
+                              : { opacity: 0, scale: 0.95 }
+                          }
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={
+                            prefersReducedMotion
+                              ? { opacity: 0 }
+                              : { opacity: 0, scale: 0.95 }
+                          }
+                          transition={
+                            prefersReducedMotion
+                              ? { duration: 0 }
+                              : { duration: 0.18 }
+                          }
+                          whileTap={springButton}
                         >
-                          <PlayIcon size={16} />
-                          Pack
-                        </m.span>
+                          <XIcon size={15} />
+                          Cancel
+                        </m.button>
                       )}
                     </AnimatePresence>
-                  </m.button>
+                  </div>
 
                   {/* Error */}
                   <AnimatePresence>
@@ -618,6 +692,33 @@ export default function Pack() {
                     )}
                   </AnimatePresence>
 
+                  {/* Cancelled notice — user-initiated, so muted zinc, not
+                      the red error treatment. Cleared by the next run. */}
+                  <AnimatePresence>
+                    {isCancelled && (
+                      <m.div
+                        role="status"
+                        className="flex items-center gap-3 rounded-xl border border-zinc-700/60 bg-zinc-900/50 px-4 py-3 text-sm text-zinc-400"
+                        initial={
+                          prefersReducedMotion
+                            ? false
+                            : { opacity: 0, y: -8, scale: 0.98 }
+                        }
+                        animate={{ opacity: 1, y: 0, scale: 1 }}
+                        exit={{ opacity: 0 }}
+                        transition={
+                          prefersReducedMotion
+                            ? { duration: 0 }
+                            : { type: "spring", stiffness: 400, damping: 28 }
+                        }
+                      >
+                        <XIcon size={16} className="shrink-0 text-zinc-500" />
+                        Pack cancelled. Adjust your options and pack again
+                        whenever you're ready.
+                      </m.div>
+                    )}
+                  </AnimatePresence>
+
                   {/* Progress while running */}
                   <AnimatePresence>
                     {isRunning && (
@@ -627,9 +728,14 @@ export default function Pack() {
                         exit={{ opacity: 0, height: 0 }}
                         transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
                       >
-                        <ProgressLog events={events} />
+                        <LiveProgress />
                       </m.div>
                     )}
+                  </AnimatePresence>
+
+                  {/* Onboarding empty state — first run, nothing selected */}
+                  <AnimatePresence>
+                    {showOnboarding && <OnboardingCard />}
                   </AnimatePresence>
 
                   {/* Result skeleton */}
@@ -729,6 +835,94 @@ export default function Pack() {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
+// Live progress — the ONLY component subscribed to the high-churn `events`
+// slice. Progress events flush ~10×/second during a pack; isolating the
+// subscription here means each flush re-renders this leaf instead of the
+// whole Pack page (options form, sidebar, tabs, …).
+// ─────────────────────────────────────────────────────────────────────────
+
+function LiveProgress() {
+  const events = usePackEvents();
+  const progress = useMemo(() => progressFromEvents(events), [events]);
+  return (
+    <div className="space-y-2.5">
+      <PackProgressBar value={progress} />
+      <ProgressLog events={events} />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Onboarding empty state — shown on the Packer tab when no target is
+// selected and nothing has run yet. Walks through the 3-step flow.
+// ─────────────────────────────────────────────────────────────────────────
+
+const ONBOARDING_STEPS: Array<{
+  Icon: ComponentType<LucideProps>;
+  title: string;
+  body: string;
+}> = [
+  {
+    Icon: FolderIcon,
+    title: "Pick a target",
+    body: "Choose a local folder, drop one onto the window, or paste a GitHub repo URL.",
+  },
+  {
+    Icon: FileTextIcon,
+    title: "Describe your goal",
+    body: "Say what you want to build or fix — it's embedded in the pack for the AI.",
+  },
+  {
+    Icon: PackageIcon,
+    title: "Pack",
+    body: "One AI-ready file with token counts, secret scanning, and compression stats.",
+  },
+];
+
+function OnboardingCard() {
+  return (
+    <m.section
+      aria-label="Getting started"
+      className="rounded-2xl border border-dashed border-zinc-700/70 bg-zinc-900/25 p-6"
+      initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0 }}
+      transition={
+        prefersReducedMotion
+          ? { duration: 0 }
+          : { duration: 0.3, ease: [0.22, 1, 0.36, 1] }
+      }
+    >
+      <div className="flex items-center gap-2">
+        <SparklesIcon size={15} className="text-emerald-400" />
+        <h3 className="text-sm font-semibold text-zinc-200">
+          Get started in three steps
+        </h3>
+      </div>
+      <ol className="mt-4 grid gap-3 md:grid-cols-3">
+        {ONBOARDING_STEPS.map(({ Icon, title, body }, i) => (
+          <li
+            key={title}
+            className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4"
+          >
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 ring-1 ring-emerald-500/20">
+                <Icon size={15} className="text-emerald-400" />
+              </span>
+              <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+                Step {i + 1}
+              </span>
+            </div>
+            <p className="mt-3 text-sm font-semibold text-zinc-200">{title}</p>
+            <p className="mt-1 text-xs leading-relaxed text-zinc-500">{body}</p>
+          </li>
+        ))}
+      </ol>
+    </m.section>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
 // Results tab — extracted for clarity. Shows the full StatsBar, phase
 // breakdown, redaction list, AI compatibility table, output preview, and
 // the full button row. The Packer tab keeps a slimmed summary instead.
@@ -747,6 +941,9 @@ function ResultsTab({
   reset,
   switchToPacker,
 }: ResultsTabProps) {
+  const [showAllWarnings, setShowAllWarnings] = useState(false);
+  const [showAllRedactions, setShowAllRedactions] = useState(false);
+
   if (!result) {
     return (
       <div className="flex min-h-[360px] flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-700/70 bg-zinc-900/25 px-6 text-center">
@@ -776,11 +973,51 @@ function ResultsTab({
   const preview = result.output.slice(0, previewLimit);
   const truncated = result.output.length > previewLimit;
 
+  const warnings = clampList(result.warnings, showAllWarnings);
+  const redactions = clampList(result.redactions, showAllRedactions);
+
   return (
     <div className="space-y-6">
-      {/* Stats + phase breakdown */}
+      {/* Stats + phase breakdown. The stats bar gets a one-shot emerald
+          glow + animated check as the "pack complete" success moment —
+          skipped entirely under prefers-reduced-motion. */}
       <section className="space-y-4">
-        <StatsBar stats={result.stats} />
+        <div className="flex items-center gap-2">
+          <m.span
+            aria-hidden="true"
+            className="flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/25"
+            initial={prefersReducedMotion ? false : { scale: 0, rotate: -90 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={
+              prefersReducedMotion
+                ? { duration: 0 }
+                : { ...springQuick, delay: 0.15 }
+            }
+          >
+            <CheckIcon size={12} strokeWidth={2} />
+          </m.span>
+          <span className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
+            Pack complete
+          </span>
+        </div>
+        <m.div
+          className="rounded-xl"
+          initial={false}
+          animate={
+            prefersReducedMotion
+              ? undefined
+              : {
+                  boxShadow: [
+                    "0 0 0 0px rgba(16, 185, 129, 0)",
+                    "0 0 0 3px rgba(16, 185, 129, 0.30)",
+                    "0 0 0 0px rgba(16, 185, 129, 0)",
+                  ],
+                }
+          }
+          transition={{ duration: 1.1, ease: "easeOut", delay: 0.2 }}
+        >
+          <StatsBar stats={result.stats} />
+        </m.div>
         <PhaseBreakdown stats={result.stats} />
       </section>
 
@@ -821,7 +1058,7 @@ function ResultsTab({
             {result.warnings.length === 1 ? "" : "s"}
           </div>
           <ul className="space-y-1 text-xs text-amber-300/80">
-            {result.warnings.map((w) => (
+            {warnings.visible.map((w) => (
               <li
                 key={`${w.kind}:${w.path ?? ""}:${w.message}`}
                 className="break-words"
@@ -835,6 +1072,17 @@ function ResultsTab({
               </li>
             ))}
           </ul>
+          {warnings.isCapped && (
+            <button
+              type="button"
+              onClick={() => setShowAllWarnings((v) => !v)}
+              className="mt-2.5 rounded-md border border-amber-700/40 bg-amber-950/40 px-2.5 py-1 text-xs font-medium text-amber-300 transition-colors hover:bg-amber-900/40 hover:text-amber-200"
+            >
+              {showAllWarnings
+                ? "Show less"
+                : `Show ${fmtNum(warnings.hiddenCount)} more`}
+            </button>
+          )}
         </section>
       )}
 
@@ -856,7 +1104,7 @@ function ResultsTab({
                 </tr>
               </thead>
               <tbody className="divide-y divide-red-900/30">
-                {result.redactions.map((r, i) => (
+                {redactions.visible.map((r, i) => (
                   <tr
                     // biome-ignore lint/suspicious/noArrayIndexKey: stable list, append-only
                     key={`${r.file}:${r.line}:${r.byteOffset}:${i}`}
@@ -874,11 +1122,29 @@ function ResultsTab({
               </tbody>
             </table>
           </div>
+          {redactions.isCapped && (
+            <button
+              type="button"
+              onClick={() => setShowAllRedactions((v) => !v)}
+              className="mt-3 rounded-md border border-red-700/40 bg-red-950/40 px-2.5 py-1 text-xs font-medium text-red-300 transition-colors hover:bg-red-900/40 hover:text-red-200"
+            >
+              {showAllRedactions
+                ? "Show less"
+                : `Show ${fmtNum(redactions.hiddenCount)} more`}
+            </button>
+          )}
         </section>
       )}
 
       {/* Output preview */}
-      <section className="space-y-2">
+      <section
+        aria-label={
+          truncated
+            ? `Output preview, truncated to the first ${fmtNum(previewLimit)} of ${fmtNum(result.output.length)} characters`
+            : "Output preview"
+        }
+        className="space-y-2"
+      >
         <div className="flex items-center justify-between">
           <SectionTitle>Output preview</SectionTitle>
           <span className="text-[11px] text-zinc-600">

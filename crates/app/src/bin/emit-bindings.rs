@@ -52,8 +52,7 @@ fn main() {
     // @tauri-apps/api/core in the same file. TypeScript 5 rejects the
     // duplicate declaration (TS2440). Strip the conflicting type alias so
     // the import wins unambiguously.
-    let contents =
-        std::fs::read_to_string(out_path).expect("Failed to read generated bindings");
+    let contents = std::fs::read_to_string(out_path).expect("Failed to read generated bindings");
     let patched = contents
         .lines()
         .filter(|line| !line.starts_with("export type TAURI_CHANNEL<"))

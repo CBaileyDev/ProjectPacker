@@ -54,7 +54,7 @@ impl StatsBlock {
             // format stability (renaming would churn TS bindings + the
             // emitted XML tag without functional benefit).
             redacted_bytes: redactions.len() as u64,
-            cache_hits: 0,     // Phase 3 (content-addressed cache) will populate this
+            cache_hits: 0, // Phase 3 (content-addressed cache) will populate this
             duration_ms: stats.duration_ms,
         }
     }

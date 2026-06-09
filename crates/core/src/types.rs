@@ -3,7 +3,9 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::path::PathBuf;
 
-fn default_true() -> bool { true }
+fn default_true() -> bool {
+    true
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -36,7 +38,7 @@ pub enum PackFormat {
 #[serde(rename_all = "camelCase")]
 pub enum XmlSchema {
     #[default]
-    Cxml,   // Anthropic <documents> shape — new default
+    Cxml, // Anthropic <documents> shape — new default
     Legacy, // <files><file path="..."> shape — kept for backwards compat
 }
 

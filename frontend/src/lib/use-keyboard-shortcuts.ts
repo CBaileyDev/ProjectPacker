@@ -6,8 +6,11 @@ export type ShortcutMap = Record<string, () => void>;
  * Detect whether `mod` should match `metaKey` (macOS Command) or
  * `ctrlKey` (everywhere else). We sniff `navigator.platform` rather
  * than UA so it stays correct under macOS Chromium-with-Linux UA spoof.
+ *
+ * Exported so UI hints (e.g. the "⌘↵" / "Ctrl↵" kbd badge next to the
+ * Pack button) render the same modifier the matcher will accept.
  */
-function isMacPlatform(): boolean {
+export function isMacPlatform(): boolean {
   if (typeof navigator === "undefined") return false;
   const platform = navigator.platform || "";
   return /Mac|iPhone|iPod|iPad/i.test(platform);

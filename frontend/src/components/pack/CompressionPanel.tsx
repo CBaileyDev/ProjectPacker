@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import type { PackOptions } from "../../bindings";
 import { useLastStats, usePackOptions } from "../../lib/store";
 import { TransformRow } from "./TransformRow";
@@ -131,12 +131,18 @@ export function CompressionPanel() {
   const [open, setOpen] = useState(false);
   const { options, patchOptions } = usePackOptions();
   const stats = useLastStats();
-  const transforms = stats?.transforms ?? [];
+  const transforms = useMemo(() => stats?.transforms ?? [], [stats]);
 
   const reportFor = (id: string) => transforms.find((t) => t.id === id);
 
-  const enabledCount = ALL_SPECS.filter((spec) => options[spec.key]).length;
-  const totalSaved = transforms.reduce((acc, t) => acc + t.bytesSaved, 0);
+  const enabledCount = useMemo(
+    () => ALL_SPECS.filter((spec) => options[spec.key]).length,
+    [options],
+  );
+  const totalSaved = useMemo(
+    () => transforms.reduce((acc, t) => acc + t.bytesSaved, 0),
+    [transforms],
+  );
 
   function renderGroup(title: string, caption: string, specs: TransformSpec[]) {
     const allOn = specs.every((s) => options[s.key]);
@@ -211,7 +217,10 @@ export function CompressionPanel() {
             {enabledCount} of {ALL_SPECS.length} enabled
           </span>
         </span>
-        <span className="nums text-xs text-transform-savings">
+        <span
+          aria-live="polite"
+          className="nums text-xs text-transform-savings"
+        >
           {transforms.length > 0
             ? `Last run: ${formatBytes(totalSaved)} saved`
             : ""}

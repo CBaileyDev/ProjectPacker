@@ -14,7 +14,9 @@ pub fn apply(entries: &mut [FileEntry]) -> TransformReport {
     let mut by_hash: HashMap<&str, Vec<usize>> = HashMap::new();
     for (i, e) in entries.iter().enumerate() {
         // Skip empty hashes (failed reads).
-        if e.hash.is_empty() { continue; }
+        if e.hash.is_empty() {
+            continue;
+        }
         by_hash.entry(e.hash.as_str()).or_default().push(i);
     }
     // Collect groups with >1 member; lift index refs out before mutating.
@@ -34,9 +36,8 @@ pub fn apply(entries: &mut [FileEntry]) -> TransformReport {
         for &idx in sorted.iter().skip(1) {
             // Marker replaces the content; bytes_saved is the original byte count we no longer emit.
             let original_len = entries[idx].content.len() as u64;
-            entries[idx].content = format!(
-                "[DUPLICATE OF: {first_path} | sha: {first_hash_prefix}]\n"
-            );
+            entries[idx].content =
+                format!("[DUPLICATE OF: {first_path} | sha: {first_hash_prefix}]\n");
             // bytes_saved: original minus the marker we now emit.
             let new_len = entries[idx].content.len() as u64;
             bytes_saved = bytes_saved.saturating_add(original_len.saturating_sub(new_len));
@@ -69,8 +70,16 @@ mod tests {
     fn two_identical_files_keep_first_replace_second() {
         let body = "Apache License 2.0\n... full license body ...\n";
         let mut entries = vec![
-            entry("LICENSE", body, "ab12cd34ef567890ab12cd34ef567890ab12cd34ef567890ab12cd34ef567890"),
-            entry("vendor/copy/LICENSE", body, "ab12cd34ef567890ab12cd34ef567890ab12cd34ef567890ab12cd34ef567890"),
+            entry(
+                "LICENSE",
+                body,
+                "ab12cd34ef567890ab12cd34ef567890ab12cd34ef567890ab12cd34ef567890",
+            ),
+            entry(
+                "vendor/copy/LICENSE",
+                body,
+                "ab12cd34ef567890ab12cd34ef567890ab12cd34ef567890ab12cd34ef567890",
+            ),
         ];
         let report = apply(&mut entries);
         assert_eq!(report.id, "dedup_files");
@@ -85,9 +94,21 @@ mod tests {
     fn three_identical_files_keep_first_replace_others() {
         let body = "x".repeat(500);
         let mut entries = vec![
-            entry("c.txt", &body, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"),
-            entry("a.txt", &body, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"),
-            entry("b.txt", &body, "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"),
+            entry(
+                "c.txt",
+                &body,
+                "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+            ),
+            entry(
+                "a.txt",
+                &body,
+                "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+            ),
+            entry(
+                "b.txt",
+                &body,
+                "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef",
+            ),
         ];
         let report = apply(&mut entries);
         assert_eq!(report.files_touched, 2);
@@ -103,8 +124,16 @@ mod tests {
     #[test]
     fn singletons_left_alone() {
         let mut entries = vec![
-            entry("a.txt", "foo", "1111111111111111111111111111111111111111111111111111111111111111"),
-            entry("b.txt", "bar", "2222222222222222222222222222222222222222222222222222222222222222"),
+            entry(
+                "a.txt",
+                "foo",
+                "1111111111111111111111111111111111111111111111111111111111111111",
+            ),
+            entry(
+                "b.txt",
+                "bar",
+                "2222222222222222222222222222222222222222222222222222222222222222",
+            ),
         ];
         // Plan-typo fix: original test used `assert_eq!(entries, original)`
         // but FileEntry does not derive PartialEq (and adding it would be a
@@ -120,10 +149,7 @@ mod tests {
 
     #[test]
     fn empty_hashes_skipped() {
-        let mut entries = vec![
-            entry("a.txt", "", ""),
-            entry("b.txt", "", ""),
-        ];
+        let mut entries = vec![entry("a.txt", "", ""), entry("b.txt", "", "")];
         let report = apply(&mut entries);
         // No dedup against empty hashes — both kept untouched.
         assert_eq!(report.files_touched, 0);
@@ -134,14 +160,14 @@ mod tests {
         let body = "same\n";
         let hash = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
         // Walker emits zzz first, but aaa should win the sort.
-        let mut entries = vec![
-            entry("zzz.txt", body, hash),
-            entry("aaa.txt", body, hash),
-        ];
+        let mut entries = vec![entry("zzz.txt", body, hash), entry("aaa.txt", body, hash)];
         apply(&mut entries);
         let aaa = entries.iter().find(|e| e.path == "aaa.txt").unwrap();
         let zzz = entries.iter().find(|e| e.path == "zzz.txt").unwrap();
-        assert_eq!(aaa.content, body, "lex-min path wins regardless of walker order");
+        assert_eq!(
+            aaa.content, body,
+            "lex-min path wins regardless of walker order"
+        );
         assert!(zzz.content.starts_with("[DUPLICATE OF: aaa.txt"));
     }
 }

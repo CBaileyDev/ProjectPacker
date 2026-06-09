@@ -29,12 +29,17 @@ pub fn collapse_blank_lines(s: &str) -> Option<String> {
     for l in s.lines() {
         if l.trim().is_empty() {
             run += 1;
-            if run >= 3 { needs_collapse = true; break; }
+            if run >= 3 {
+                needs_collapse = true;
+                break;
+            }
         } else {
             run = 0;
         }
     }
-    if !needs_collapse { return None; }
+    if !needs_collapse {
+        return None;
+    }
 
     let trailing_nl = s.ends_with('\n');
     let mut out_lines: Vec<&str> = Vec::with_capacity(s.lines().count());
@@ -42,7 +47,9 @@ pub fn collapse_blank_lines(s: &str) -> Option<String> {
     for l in s.lines() {
         if l.trim().is_empty() {
             blank_run += 1;
-            if blank_run <= 2 { out_lines.push(l); }
+            if blank_run <= 2 {
+                out_lines.push(l);
+            }
             // skip lines past the second blank
         } else {
             blank_run = 0;
@@ -50,14 +57,18 @@ pub fn collapse_blank_lines(s: &str) -> Option<String> {
         }
     }
     let mut out = out_lines.join("\n");
-    if trailing_nl { out.push('\n'); }
+    if trailing_nl {
+        out.push('\n');
+    }
     Some(out)
 }
 
 /// CRLF → LF and lone CR → LF. Idempotent. Returns `Some(new)` only if
 /// anything changed.
 pub fn normalize_line_endings(s: &str) -> Option<String> {
-    if !s.contains('\r') { return None; }
+    if !s.contains('\r') {
+        return None;
+    }
     let step1 = s.replace("\r\n", "\n");
     let out = step1.replace('\r', "\n");
     Some(out)
@@ -142,14 +153,23 @@ mod tests {
         // own input that exercises it.
         let trim_input = "a   \nb\t\n";
         let after_trim = trim_trailing_ws(trim_input).unwrap();
-        assert!(trim_trailing_ws(&after_trim).is_none(), "trim must be idempotent");
+        assert!(
+            trim_trailing_ws(&after_trim).is_none(),
+            "trim must be idempotent"
+        );
 
         let blank_input = "a\n\n\n\nb\n";
         let after_blank = collapse_blank_lines(blank_input).unwrap();
-        assert!(collapse_blank_lines(&after_blank).is_none(), "collapse must be idempotent");
+        assert!(
+            collapse_blank_lines(&after_blank).is_none(),
+            "collapse must be idempotent"
+        );
 
         let eol_input = "a\r\nb\r\n";
         let after_eol = normalize_line_endings(eol_input).unwrap();
-        assert!(normalize_line_endings(&after_eol).is_none(), "EOL normalize must be idempotent");
+        assert!(
+            normalize_line_endings(&after_eol).is_none(),
+            "EOL normalize must be idempotent"
+        );
     }
 }

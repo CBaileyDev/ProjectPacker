@@ -36,9 +36,8 @@ vi.mock("../../lib/store", () => {
   const patchOptions = vi.fn((p: Partial<PackOptions>) =>
     Object.assign(options, p),
   );
-  const setOptions = vi.fn();
   return {
-    usePackOptions: () => ({ options, patchOptions, setOptions }),
+    usePackOptions: () => ({ options, patchOptions }),
     useLastStats: () => null,
   };
 });

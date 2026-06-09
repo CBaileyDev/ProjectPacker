@@ -31,94 +31,142 @@ pub fn run_transform_phase(
 
     // ── Order: cheapest per-file, then cross-file dedup, then semantic, then lossy.
     if opts.trim_trailing_ws {
-        let _ = tx.send(ProgressEvent::TransformStart { id: "trim_trailing_ws".into() });
+        let _ = tx.send(ProgressEvent::TransformStart {
+            id: "trim_trailing_ws".into(),
+        });
         let r = per_file(entries, "trim_trailing_ws", normalize::trim_trailing_ws);
         let _ = tx.send(ProgressEvent::TransformDone {
-            id: r.id.clone(), bytes_saved: r.bytes_saved, files_touched: r.files_touched,
+            id: r.id.clone(),
+            bytes_saved: r.bytes_saved,
+            files_touched: r.files_touched,
         });
         reports.push(r);
     }
     if opts.collapse_blank_lines {
-        let _ = tx.send(ProgressEvent::TransformStart { id: "collapse_blank_lines".into() });
-        let r = per_file(entries, "collapse_blank_lines", normalize::collapse_blank_lines);
+        let _ = tx.send(ProgressEvent::TransformStart {
+            id: "collapse_blank_lines".into(),
+        });
+        let r = per_file(
+            entries,
+            "collapse_blank_lines",
+            normalize::collapse_blank_lines,
+        );
         let _ = tx.send(ProgressEvent::TransformDone {
-            id: r.id.clone(), bytes_saved: r.bytes_saved, files_touched: r.files_touched,
+            id: r.id.clone(),
+            bytes_saved: r.bytes_saved,
+            files_touched: r.files_touched,
         });
         reports.push(r);
     }
     if opts.normalize_line_endings {
-        let _ = tx.send(ProgressEvent::TransformStart { id: "normalize_line_endings".into() });
-        let r = per_file(entries, "normalize_line_endings", normalize::normalize_line_endings);
+        let _ = tx.send(ProgressEvent::TransformStart {
+            id: "normalize_line_endings".into(),
+        });
+        let r = per_file(
+            entries,
+            "normalize_line_endings",
+            normalize::normalize_line_endings,
+        );
         let _ = tx.send(ProgressEvent::TransformDone {
-            id: r.id.clone(), bytes_saved: r.bytes_saved, files_touched: r.files_touched,
+            id: r.id.clone(),
+            bytes_saved: r.bytes_saved,
+            files_touched: r.files_touched,
         });
         reports.push(r);
     }
     if opts.dedup_files {
-        let _ = tx.send(ProgressEvent::TransformStart { id: "dedup_files".into() });
+        let _ = tx.send(ProgressEvent::TransformStart {
+            id: "dedup_files".into(),
+        });
         let r = dedup::apply(entries);
         let _ = tx.send(ProgressEvent::TransformDone {
-            id: r.id.clone(), bytes_saved: r.bytes_saved, files_touched: r.files_touched,
+            id: r.id.clone(),
+            bytes_saved: r.bytes_saved,
+            files_touched: r.files_touched,
         });
         reports.push(r);
     }
     if opts.collapse_lockfiles {
-        let _ = tx.send(ProgressEvent::TransformStart { id: "collapse_lockfiles".into() });
+        let _ = tx.send(ProgressEvent::TransformStart {
+            id: "collapse_lockfiles".into(),
+        });
         let r = per_file_with_path(entries, "collapse_lockfiles", |path, content, sha| {
             collapse_lockfile::collapse(path, content, sha)
         });
         let _ = tx.send(ProgressEvent::TransformDone {
-            id: r.id.clone(), bytes_saved: r.bytes_saved, files_touched: r.files_touched,
+            id: r.id.clone(),
+            bytes_saved: r.bytes_saved,
+            files_touched: r.files_touched,
         });
         reports.push(r);
     }
     if opts.collapse_minified {
-        let _ = tx.send(ProgressEvent::TransformStart { id: "collapse_minified".into() });
+        let _ = tx.send(ProgressEvent::TransformStart {
+            id: "collapse_minified".into(),
+        });
         let r = per_file_with_path(entries, "collapse_minified", |_path, content, sha| {
             collapse_minified::collapse(content, sha)
         });
         let _ = tx.send(ProgressEvent::TransformDone {
-            id: r.id.clone(), bytes_saved: r.bytes_saved, files_touched: r.files_touched,
+            id: r.id.clone(),
+            bytes_saved: r.bytes_saved,
+            files_touched: r.files_touched,
         });
         reports.push(r);
     }
     if opts.mark_generated {
-        let _ = tx.send(ProgressEvent::TransformStart { id: "mark_generated".into() });
+        let _ = tx.send(ProgressEvent::TransformStart {
+            id: "mark_generated".into(),
+        });
         let r = per_file_with_path(entries, "mark_generated", |path, content, sha| {
             mark_generated::mark(path, content, sha)
         });
         let _ = tx.send(ProgressEvent::TransformDone {
-            id: r.id.clone(), bytes_saved: r.bytes_saved, files_touched: r.files_touched,
+            id: r.id.clone(),
+            bytes_saved: r.bytes_saved,
+            files_touched: r.files_touched,
         });
         reports.push(r);
     }
     if opts.remove_comments {
-        let _ = tx.send(ProgressEvent::TransformStart { id: "remove_comments".into() });
+        let _ = tx.send(ProgressEvent::TransformStart {
+            id: "remove_comments".into(),
+        });
         let r = per_file_with_path(entries, "remove_comments", |path, content, _sha| {
             strip_comments::apply(path, content)
         });
         let _ = tx.send(ProgressEvent::TransformDone {
-            id: r.id.clone(), bytes_saved: r.bytes_saved, files_touched: r.files_touched,
+            id: r.id.clone(),
+            bytes_saved: r.bytes_saved,
+            files_touched: r.files_touched,
         });
         reports.push(r);
     }
     if opts.compress {
-        let _ = tx.send(ProgressEvent::TransformStart { id: "compress".into() });
+        let _ = tx.send(ProgressEvent::TransformStart {
+            id: "compress".into(),
+        });
         let r = per_file_with_path(entries, "compress", |path, content, _sha| {
             compress_skeleton::apply(path, content)
         });
         let _ = tx.send(ProgressEvent::TransformDone {
-            id: r.id.clone(), bytes_saved: r.bytes_saved, files_touched: r.files_touched,
+            id: r.id.clone(),
+            bytes_saved: r.bytes_saved,
+            files_touched: r.files_touched,
         });
         reports.push(r);
     }
     if opts.elide_type_only_exports {
-        let _ = tx.send(ProgressEvent::TransformStart { id: "elide_type_only_exports".into() });
+        let _ = tx.send(ProgressEvent::TransformStart {
+            id: "elide_type_only_exports".into(),
+        });
         let r = per_file_with_path(entries, "elide_type_only_exports", |path, content, _sha| {
             elide_types::apply(path, content)
         });
         let _ = tx.send(ProgressEvent::TransformDone {
-            id: r.id.clone(), bytes_saved: r.bytes_saved, files_touched: r.files_touched,
+            id: r.id.clone(),
+            bytes_saved: r.bytes_saved,
+            files_touched: r.files_touched,
         });
         reports.push(r);
     }
@@ -130,11 +178,7 @@ pub fn run_transform_phase(
 
 /// Apply a per-file fn returning Option<String> (None means unchanged) over
 /// every entry in parallel. Sums savings into a TransformReport.
-fn per_file(
-    entries: &mut [FileEntry],
-    id: &str,
-    f: fn(&str) -> Option<String>,
-) -> TransformReport {
+fn per_file(entries: &mut [FileEntry], id: &str, f: fn(&str) -> Option<String>) -> TransformReport {
     use rayon::prelude::*;
     let start = Instant::now();
     let changes: Vec<(usize, String, u64)> = entries
@@ -187,7 +231,9 @@ fn per_file_with_path(
         bytes_saved = bytes_saved.saturating_add(saved);
     }
     TransformReport {
-        id: id.into(), bytes_saved, files_touched,
+        id: id.into(),
+        bytes_saved,
+        files_touched,
         elapsed_ms: start.elapsed().as_millis() as u32,
     }
 }
@@ -199,17 +245,23 @@ mod tests {
 
     fn entry(path: &str, content: &str, hash: &str) -> FileEntry {
         FileEntry {
-            path: path.into(), content: content.into(), bytes: content.len() as u64,
-            tokens: None, hash: hash.into(),
+            path: path.into(),
+            content: content.into(),
+            bytes: content.len() as u64,
+            tokens: None,
+            hash: hash.into(),
         }
     }
 
     #[test]
     fn empty_pipeline_is_a_no_op() {
         let mut entries = vec![entry("a.rs", "fn x() {}\n", "deadbeef")];
-        let opts = PackOptions { // turn everything off
-            dedup_files: false, trim_trailing_ws: false,
-            collapse_blank_lines: false, normalize_line_endings: false,
+        let opts = PackOptions {
+            // turn everything off
+            dedup_files: false,
+            trim_trailing_ws: false,
+            collapse_blank_lines: false,
+            normalize_line_endings: false,
             ..PackOptions::default()
         };
         let (tx, _rx) = mpsc::channel();
@@ -219,44 +271,70 @@ mod tests {
 
     #[test]
     fn default_lossless_pipeline_emits_4_reports() {
-        let mut entries = vec![
-            entry("a.txt", "trail   \n\n\n\nthing\r\n", "h1"),
-        ];
+        let mut entries = vec![entry("a.txt", "trail   \n\n\n\nthing\r\n", "h1")];
         let opts = PackOptions::default(); // 4 lossless ON
         let (tx, _rx) = mpsc::channel();
         let (reports, _) = run_transform_phase(&mut entries, &opts, &tx);
         let ids: Vec<&str> = reports.iter().map(|r| r.id.as_str()).collect();
-        assert_eq!(ids, vec![
-            "trim_trailing_ws",
-            "collapse_blank_lines",
-            "normalize_line_endings",
-            "dedup_files",
-        ]);
+        assert_eq!(
+            ids,
+            vec![
+                "trim_trailing_ws",
+                "collapse_blank_lines",
+                "normalize_line_endings",
+                "dedup_files",
+            ]
+        );
     }
 
     #[test]
     fn semantic_transforms_engage_when_toggled_on() {
-        let big_lockfile = (0..100).map(|i| format!("  \"d{i}\": \"1.0\"")).collect::<Vec<_>>().join("\n");
+        let big_lockfile = (0..100)
+            .map(|i| format!("  \"d{i}\": \"1.0\""))
+            .collect::<Vec<_>>()
+            .join("\n");
         let minified: String = "a=1;".repeat(1000);
         let generated = "// @generated by build\nfunc x() {}\n".to_string();
         let mut entries = vec![
-            FileEntry { path: "package-lock.json".into(), content: big_lockfile.clone(),
-                        bytes: big_lockfile.len() as u64, tokens: None, hash: "h1h1h1h1h1h1h1h1".into() },
-            FileEntry { path: "bundle.min.js".into(), content: minified.clone(),
-                        bytes: minified.len() as u64, tokens: None, hash: "h2h2h2h2h2h2h2h2".into() },
-            FileEntry { path: "api.pb.go".into(), content: generated.clone(),
-                        bytes: generated.len() as u64, tokens: None, hash: "h3h3h3h3h3h3h3h3".into() },
+            FileEntry {
+                path: "package-lock.json".into(),
+                content: big_lockfile.clone(),
+                bytes: big_lockfile.len() as u64,
+                tokens: None,
+                hash: "h1h1h1h1h1h1h1h1".into(),
+            },
+            FileEntry {
+                path: "bundle.min.js".into(),
+                content: minified.clone(),
+                bytes: minified.len() as u64,
+                tokens: None,
+                hash: "h2h2h2h2h2h2h2h2".into(),
+            },
+            FileEntry {
+                path: "api.pb.go".into(),
+                content: generated.clone(),
+                bytes: generated.len() as u64,
+                tokens: None,
+                hash: "h3h3h3h3h3h3h3h3".into(),
+            },
         ];
         let opts = PackOptions {
-            dedup_files: false, trim_trailing_ws: false,
-            collapse_blank_lines: false, normalize_line_endings: false,
-            collapse_lockfiles: true, collapse_minified: true, mark_generated: true,
+            dedup_files: false,
+            trim_trailing_ws: false,
+            collapse_blank_lines: false,
+            normalize_line_endings: false,
+            collapse_lockfiles: true,
+            collapse_minified: true,
+            mark_generated: true,
             ..PackOptions::default()
         };
         let (tx, _rx) = mpsc::channel();
         let (reports, _) = run_transform_phase(&mut entries, &opts, &tx);
         let ids: Vec<&str> = reports.iter().map(|r| r.id.as_str()).collect();
-        assert_eq!(ids, vec!["collapse_lockfiles", "collapse_minified", "mark_generated"]);
+        assert_eq!(
+            ids,
+            vec!["collapse_lockfiles", "collapse_minified", "mark_generated"]
+        );
         assert!(entries[0].content.contains("[COMPRESSED: lockfile"));
         assert!(entries[1].content.contains("[MINIFIED BUNDLE:"));
         assert!(entries[2].content.contains("[GENERATED FILE"));

@@ -186,8 +186,7 @@ pub fn store_token(token: &str) -> Result<(), GithubError> {
             .map_err(|e| GithubError::Storage(format!("write tmp: {e}")))?;
     }
 
-    std::fs::rename(&tmp, &path)
-        .map_err(|e| GithubError::Storage(format!("rename: {e}")))?;
+    std::fs::rename(&tmp, &path).map_err(|e| GithubError::Storage(format!("rename: {e}")))?;
     log::info!("store_token: write succeeded");
     Ok(())
 }
@@ -380,10 +379,7 @@ fn auth_headers(token: &str) -> reqwest::header::HeaderMap {
 
 /// Authenticated GET against the GitHub API. Used by both `fetch_user`
 /// and the per-page `fetch_repos_page` below.
-async fn gh_get<T: serde::de::DeserializeOwned>(
-    path: &str,
-    token: &str,
-) -> Result<T, GithubError> {
+async fn gh_get<T: serde::de::DeserializeOwned>(path: &str, token: &str) -> Result<T, GithubError> {
     log::info!("gh_get: GET {path} starting");
     let res = client()
         .get(format!("https://api.github.com{path}"))
@@ -403,13 +399,11 @@ async fn gh_get<T: serde::de::DeserializeOwned>(
         return Err(map_response_error(res).await);
     }
 
-    res.json::<T>()
-        .await
-        .map_err(|e| {
-            let scrubbed = scrub_token(&e.to_string(), Some(token));
-            log::error!("gh_get: json decode failed: {scrubbed}");
-            GithubError::Network(scrubbed)
-        })
+    res.json::<T>().await.map_err(|e| {
+        let scrubbed = scrub_token(&e.to_string(), Some(token));
+        log::error!("gh_get: json decode failed: {scrubbed}");
+        GithubError::Network(scrubbed)
+    })
 }
 
 /// `GET /user` — also serves as the cheapest auth-check call.
