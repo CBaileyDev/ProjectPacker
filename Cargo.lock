@@ -4515,7 +4515,7 @@ checksum = "744a264d26b88a6a7e37cbad97953fa233b94d585236310bcbc88474b4092d79"
 
 [[package]]
 name = "projectpacker-app"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "dashmap",
  "dirs 5.0.1",
@@ -4546,7 +4546,7 @@ dependencies = [
 
 [[package]]
 name = "projectpacker-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "aho-corasick",
  "blake3",

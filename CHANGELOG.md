@@ -4,7 +4,7 @@ All notable changes to ProjectPacker are documented in this file. The format fol
 
 ## [Unreleased]
 
-## [0.1.0] - 2026-06-09
+## [1.0.0] - 2026-06-09
 
 First public release. Versions 0.1.0-dev through 0.6.0-dev below were internal development milestones and were never published; this release is the first build with binaries.
 
