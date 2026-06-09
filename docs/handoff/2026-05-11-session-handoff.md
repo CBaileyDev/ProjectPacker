@@ -75,7 +75,7 @@ Function `pack(target, opts, tx, job_id, cancel, github_token) -> CoreResult<Pac
 
 | Phase | Function | What |
 |---|---|---|
-| 1. Walk | `run_walk_phase` | `IgnoreMatcher` (3-tier: builtin / project gitignore / user `.repomixignore` + custom) → `walker::walk` → pin pre-pass (auto-includes `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`, `.claude/**`) |
+| 1. Walk | `run_walk_phase` | `IgnoreMatcher` (3-tier: builtin / project gitignore / user `.projectpackerignore` (or `.repomixignore` fallback) + custom) → `walker::walk` → pin pre-pass (auto-includes `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`, `.claude/**`) |
 | 2. Process | `run_process_phase` | Parallel (Rayon `par_iter`): read with encoding fallback (UTF-8 → UTF-16LE → UTF-16BE → Windows-1252), optional comment-removal (tree-sitter), optional skeleton compression, BLAKE3 hash |
 | 3. Pin reorder | `apply_pin_reorder` | Index permutation + `mem::take` (no `String` clones) to push pinned files to the front |
 | 4. Secret scan | `run_secret_scan_phase` | Parallel `par_iter_mut` running gitleaks `scan_and_redact` per file; serial post-pass for deterministic `SecretHit` event order + redaction aggregation |
@@ -212,7 +212,7 @@ The pack output ships post-redaction content (`[REDACTED:<rule-id>]` markers); t
 - All files under `.cursor/rules/`
 - All files under `.claude/**`
 
-User can override via `.repomixignore` (user-tier explicit excludes win over pinning).
+User can override via `.projectpackerignore` (user-tier explicit excludes win over pinning).
 
 ### Atomic settings save
 

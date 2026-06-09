@@ -44,7 +44,7 @@ ProjectPacker/
 ├── crates/
 │   ├── core/                      # Pure-Rust packing engine
 │   │   ├── walker/                # ignore-walk + parallel pipeline
-│   │   ├── ignore/                # 3-tier stacking, .repomixignore compat
+│   │   ├── ignore/                # 3-tier stacking, .projectpackerignore (+ .repomixignore compat)
 │   │   ├── detect/                # binary detection (5-layer)
 │   │   ├── hash/                  # BLAKE3 (replaces sha2)
 │   │   ├── secrets/               # vendored gitleaks rules + redactor
@@ -115,7 +115,7 @@ Seven phases, each shippable as a versioned release. Each phase has user-visible
   - Indented span tree in `RUST_LOG=debug` runs
 - **3-tier ignore stacking** in `core/ignore`
   - Stack: builtin defaults → project `.gitignore`/`.git/info/exclude` → user globs
-  - Read `.repomixignore` for migration compat (treat as user layer)
+  - Read `.projectpackerignore` (or `.repomixignore` for migration compat) as the user layer
   - File: `crates/core/src/ignore.rs`
 - **Layered binary detection** in `core/detect/`
   - Order: extension allow-list → extension deny-list → NUL-byte sniff → `infer` magic-number → `file-format` fallback
@@ -170,7 +170,7 @@ Seven phases, each shippable as a versioned release. Each phase has user-visible
 
 ```
 crates/core/Cargo.toml                       # +blake3, +tokio-util, +tracing-tree, +infer, +file-format; -sha2, -content_inspector
-crates/core/src/ignore.rs                    # 3-tier stack + .repomixignore compat
+crates/core/src/ignore.rs                    # 3-tier stack, .projectpackerignore + .repomixignore compat
 crates/core/src/detect.rs                    # NEW - 5-layer binary detection
 crates/core/src/pack/orchestrator.rs         # blake3 swaps, cancellation token, stats block, auto-pin pre-pass
 crates/core/src/pack/xml.rs                  # cxml schema, tail-priority ordering
