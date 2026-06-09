@@ -1,6 +1,7 @@
 import {
   Activity,
   AlertCircle,
+  ArrowRightLeft,
   Check,
   ChevronDown,
   Clock,
@@ -72,3 +73,4 @@ export const EyeIcon = wrap(Eye);
 export const EyeOffIcon = wrap(EyeOff);
 export const SearchIcon = wrap(Search);
 export const RefreshIcon = wrap(RefreshCw);
+export const BridgeIcon = wrap(ArrowRightLeft);

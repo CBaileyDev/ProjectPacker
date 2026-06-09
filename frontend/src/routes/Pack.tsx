@@ -5,6 +5,7 @@ import type { LucideProps } from "lucide-react";
 import type React from "react";
 import { type ComponentType, useEffect, useMemo, useState } from "react";
 import type { PackFormat, PackOptions, PackResult } from "../bindings";
+import { BridgeTab } from "../components/bridge/BridgeTab";
 import { AiContextTable } from "../components/pack/AiContextTable";
 import { CompressionPanel } from "../components/pack/CompressionPanel";
 import { CopyButton } from "../components/pack/CopyButton";
@@ -12,6 +13,7 @@ import { DropOverlay } from "../components/pack/DropOverlay";
 import { GithubConnector } from "../components/pack/GithubConnector";
 import {
   AlertIcon,
+  BridgeIcon,
   CheckIcon,
   FileTextIcon,
   FolderIcon,
@@ -54,7 +56,7 @@ import {
 import { usePackJob } from "../lib/use-pack-job";
 
 const FORMAT_LABELS: Record<PackFormat, string> = {
-  xml: "XML  (Claude Code / Grok)",
+  xml: "XML  (planner / executor)",
   markdown: "Markdown",
   plainText: "Plain Text",
 };
@@ -76,16 +78,18 @@ const GITHUB_URL_PATTERN =
 
 const MAX_FILE_SIZE_KB = 102_400;
 
-type PackTab = "packer" | "results" | "github" | "settings";
+type PackTab = "packer" | "results" | "bridge" | "github" | "settings";
 const TAB_LABELS: Record<PackTab, string> = {
   packer: "Packer",
   results: "Results",
+  bridge: "Bridge",
   github: "GitHub",
   settings: "Settings",
 };
 const TAB_HEADLINES: Record<PackTab, string> = {
   packer: "Pack a project",
   results: "Pack results",
+  bridge: "Validate a plan, build the executor prompt",
   github: "Browse your GitHub repositories",
   settings: "Settings",
 };
@@ -165,6 +169,12 @@ export default function Pack() {
         : "Detailed view after a run",
       Icon: FileTextIcon,
       disabled: !result,
+    },
+    {
+      id: "bridge",
+      label: "Bridge",
+      description: "Plan → executor prompt",
+      Icon: BridgeIcon,
     },
     {
       id: "github",
@@ -816,6 +826,9 @@ export default function Pack() {
                 />
               )}
 
+              {/* ── Bridge tab — validate plan, build executor prompt ── */}
+              {activeTab === "bridge" && <BridgeTab />}
+
               {/* ── GitHub tab ── */}
               {activeTab === "github" && (
                 <GithubConnector
@@ -1032,10 +1045,7 @@ function ResultsTab({
           suggestedFilename={SAVE_FILENAMES[options.format]}
           text={result.output}
         />
-        <CopyButton
-          label="Copy Claude Code Prompt"
-          text={result.claudeCodePrompt}
-        />
+        <CopyButton label="Copy Executor Prompt" text={result.executorPrompt} />
         <m.button
           type="button"
           className="flex items-center gap-1.5 rounded-lg border border-zinc-600/80 bg-zinc-800 px-4 py-2.5 text-sm text-zinc-300 hover:bg-zinc-700 hover:text-white transition-colors"
