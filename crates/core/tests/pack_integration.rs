@@ -173,7 +173,7 @@ fn tiny_fixture_includes_protocol_block() {
     .unwrap();
     assert!(result
         .output
-        .contains("<protocol version=\"grok-to-cc-v1\">"));
+        .contains("<protocol version=\"plan-exec-v1\">"));
     assert!(result.output.contains("<user_task>"));
     assert!(result.output.contains("Add docs"));
 }

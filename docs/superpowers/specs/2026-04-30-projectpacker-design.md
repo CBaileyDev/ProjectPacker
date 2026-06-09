@@ -10,15 +10,15 @@
 
 ## 1. Summary
 
-ProjectPacker is a Windows desktop app that turns a local folder or GitHub repository into a single self-describing XML "pack" file optimized for a two-AI workflow: a **planner** (Grok, web-based, multi-agent) reads the pack and produces a strict-format change plan with explicit per-step rationale; an **executor** (Claude Code, running directly in the target repo) reviews the plan, may challenge any step, and then carries it out. ProjectPacker itself never edits files — it is a packer, a protocol layer, and a validator that bridges the two AIs.
+ProjectPacker is a Windows desktop app that turns a local folder or GitHub repository into a single self-describing XML "pack" file optimized for a two-AI workflow: a **planner** (any web AI — Grok, ChatGPT, Gemini, Claude) reads the pack and produces a strict-format change plan with explicit per-step rationale; an **executor** (any coding agent — Claude Code, Cursor, aider — running directly in the target repo) reviews the plan, may challenge any step, and then carries it out. ProjectPacker itself never edits files — it is a packer, a protocol layer, and a validator that bridges the two AIs.
 
-ProjectPacker is the successor to V1 (CodeParser), reimplemented as a Tauri desktop app with a Rust core and a React + TypeScript front end. The rewrite delivers (a) a much higher visual ceiling for the UI, (b) a clean separation of the parsing core from the shell so it can be reused later, and (c) the new structured Grok ↔ Claude Code handoff that V1 cannot do.
+ProjectPacker is the successor to V1 (CodeParser), reimplemented as a Tauri desktop app with a Rust core and a React + TypeScript front end. The rewrite delivers (a) a much higher visual ceiling for the UI, (b) a clean separation of the parsing core from the shell so it can be reused later, and (c) the new structured planner ↔ executor handoff that V1 cannot do.
 
 ## 2. Goals
 
 - **Pack any local folder or GitHub URL** into a Repomix-style XML file, fully respecting `.gitignore`, `.codeparserignore`, and built-in defaults.
 - **Embed a strict protocol** in the pack telling the planner AI exactly how to structure its response, including a mandatory `Rationale` per step.
-- **Generate a Claude Code prompt** that instructs the executor AI to read the full plan, challenge weak rationales before executing, and verify after each step.
+- **Generate an executor prompt** that instructs the executor agent to read the full plan, challenge weak rationales before executing, and verify after each step.
 - **Validate planner output** before it reaches the executor — catch malformed plans early and regenerate them.
 - **Provide a visually polished, animation-rich UI** with room for design treatments well beyond V1.
 - **Match V1's feature set:** ignore handling, token counting, secret scanning, optional Tree-sitter compression, optional comment removal, optional git history, drag-and-drop, GitHub URL clones.
@@ -26,7 +26,7 @@ ProjectPacker is the successor to V1 (CodeParser), reimplemented as a Tauri desk
 
 ## 3. Non-goals (v1.0)
 
-- ProjectPacker does **not** apply changes to files. Claude Code does that.
+- ProjectPacker does **not** apply changes to files. The executor agent does that.
 - No built-in chat panel — users bring their own AI (Grok web, Claude.ai, etc.) via copy-paste.
 - No CLI binary in v1.
 - No macOS / Linux builds in v1.
@@ -34,7 +34,7 @@ ProjectPacker is the successor to V1 (CodeParser), reimplemented as a Tauri desk
 - No auto-update in v1 (manual download from GitHub Releases).
 - No telemetry or network calls except optional GitHub clones.
 - No multiple concurrent pack jobs.
-- No plugin system for handoff protocols (single `grok-to-cc-v1` shipped).
+- No plugin system for handoff protocols (single `plan-exec-v1` shipped).
 
 ## 4. Key design decisions
 
@@ -42,8 +42,8 @@ ProjectPacker is the successor to V1 (CodeParser), reimplemented as a Tauri desk
 |---|----------|--------|-----------|
 | 1 | Form factor | Tauri desktop app | Maximum UI ceiling, small binary, native feel, cross-platform-ready |
 | 2 | Parsing core | Full Rust rewrite (no Python sidecar) | One self-contained binary; no Python runtime; long-term clean foundation |
-| 3 | Workflow shape | Pack → Grok plans → Claude Code executes | Plays to each AI's strengths: Grok's multi-agent web reasoning + Claude Code's local file access and execution |
-| 4 | Plan format | Strict markdown schema with mandatory `Rationale` per step | Catches Grok errors early; lets Claude Code make informed second-opinion decisions |
+| 3 | Workflow shape | Pack → planner plans → executor executes | Plays to each AI's strengths: a web AI's long-context reasoning + a local agent's file access and execution |
+| 4 | Plan format | Strict markdown schema with mandatory `Rationale` per step | Catches planner errors early; lets the executor make informed second-opinion decisions |
 | 5 | AI integration | Clipboard / file only ("BYO AI") | Zero auth, zero billing, works with any AI the user already pays for |
 | 6 | Platform | Windows only for v1 | Mirrors V1's audience; cross-platform deferred |
 | 7 | CLI | None in v1 | GUI-only keeps scope tight |
@@ -149,7 +149,7 @@ ProjectPacker/
 │   │   └── 2026-04-30-projectpacker-design.md
 │   ├── superpowers/plans/
 │   └── protocol/
-│       └── grok-to-cc-v1.md
+│       └── plan-exec-v1.md
 ├── tests/
 │   ├── fixtures/
 │   │   ├── tiny/
@@ -201,7 +201,7 @@ pub struct PackOptions {
     pub max_file_size_kb: u32,         // default: 1024
     pub respect_gitignore: bool,
     pub custom_ignore_patterns: Vec<String>,
-    pub protocol_version: String,      // default: "grok-to-cc-v1"
+    pub protocol_version: String,      // default: "plan-exec-v1"
 }
 
 pub struct PackResult {
@@ -251,7 +251,7 @@ Streaming `quick-xml` writer producing a Repomix-compatible structure:
 
 ```xml
 <repository>
-  <protocol version="grok-to-cc-v1">…</protocol>     <!-- new in V2 -->
+  <protocol version="plan-exec-v1">…</protocol>     <!-- new in V2 -->
   <user_task>…</user_task>                            <!-- new in V2 -->
   <file_summary>…</file_summary>
   <directory_structure>…</directory_structure>
@@ -270,10 +270,10 @@ The heart of V2. Top-level module (not under `pack/`) because it's used both dur
 
 - `block_for_pack(goal: &str, version: &str) -> String` — builds the `<protocol>…</protocol>` block embedded in the pack XML.
 - `claude_code_prompt(version: &str) -> String` — returns the CC prompt template for that version.
-- `validate_plan(md: &str, version: &str) -> Result<(), Vec<PlanError>>` — checks a Grok response against the protocol grammar.
+- `validate_plan(md: &str, version: &str) -> Result<(), Vec<PlanError>>` — checks a planner response against the protocol grammar.
 - `build_combined_prompt(plan_md: &str, version: &str) -> String` — wraps a validated plan with the CC prompt template.
 
-Templates are loaded via `include_str!` from `docs/protocol/grok-to-cc-v{N}.md` so they're versioned, reviewable, and frozen on release. Full spec in §8.
+Templates are loaded via `include_str!` from `docs/protocol/plan-exec-v{N}.md` so they're versioned, reviewable, and frozen on release. Full spec in §8.
 
 #### 6.1.6 `secrets.rs` — secret scanner
 
@@ -329,8 +329,8 @@ Five routes:
 
 - **`Home`** — landing screen with "New Pack" CTA and recents list.
 - **`Pack`** — target picker (folder drop or GitHub URL), goal editor, options panel (toggles + advanced disclosure + presets), pack button, live progress panel during pack.
-- **`Result`** — shown after `Done`. Pack stats header, "Copy Pack XML" + "Copy Claude Code Prompt" + "Save as…" buttons, tabbed views for `Pack XML` / `CC Prompt` / `Warnings` / `Skipped Files`.
-- **`Bridge`** — paste Grok's plan; ProjectPacker validates against the protocol grammar, shows specific errors if malformed, generates a re-prompt for Grok to fix it; on success, wraps the plan with the Claude Code prompt template and exposes a single "Copy combined prompt" button.
+- **`Result`** — shown after `Done`. Pack stats header, "Copy Pack XML" + "Copy Executor Prompt" + "Save as…" buttons, tabbed views for `Pack XML` / `Executor Prompt` / `Warnings` / `Skipped Files`.
+- **`Bridge`** — paste the planner's plan; ProjectPacker validates against the protocol grammar, shows specific errors if malformed, generates a re-prompt for the planner to fix it; on success, wraps the plan with the executor prompt template and exposes a single "Copy combined prompt" button.
 - **`Settings`** — manage presets, edit ignore defaults, change theme, set default tokenizer model, edit goal templates.
 
 State is held in a Zustand store (`lib/store.ts`). Typed API wrappers (`lib/api.ts`) call `invoke()` using auto-generated `bindings/` types. Event subscription helpers (`lib/events.ts`) wrap Tauri's event bus.
@@ -393,7 +393,7 @@ State is held in a Zustand store (`lib/store.ts`). Typed API wrappers (`lib/api.
 Separate from pack flow:
 
 ```
-User runs Grok in browser → copies Grok's plan markdown
+User runs the planner AI in a browser → copies the plan markdown
    │
    ▼
 Bridge tab: paste plan into textarea
@@ -401,7 +401,7 @@ Bridge tab: paste plan into textarea
    ▼
 Frontend calls invoke("validate_plan", { plan_md, protocol_version })
    │
-   ├─ Invalid → render error list + "Copy re-prompt for Grok" button
+   ├─ Invalid → render error list + "Copy re-prompt for the planner" button
    │
    └─ Valid → invoke("build_combined_prompt", …) returns wrapped prompt
                 │
@@ -409,7 +409,7 @@ Frontend calls invoke("validate_plan", { plan_md, protocol_version })
        Render "Copy combined prompt" button
                 │
                 ▼
-       User pastes into Claude Code session in target repo
+       User pastes into the executor agent session in the target repo
 ```
 
 ### 7.4 Cancellation
@@ -431,11 +431,11 @@ A job is in exactly one state at a time; UI animates against transitions.
 
 ## 8. Protocol specification
 
-The protocol is the heart of V2. Three artifacts live in `docs/protocol/grok-to-cc-v1.md` and are baked into the binary at compile time.
+The protocol is the heart of V2. Three artifacts live in `docs/protocol/plan-exec-v1.md` and are baked into the binary at compile time.
 
 ### 8.1 Versioning
 
-- Versioned strings: `grok-to-cc-v1`, future `grok-to-cc-v2`, etc.
+- Versioned strings: `plan-exec-v1`, future `plan-exec-v2`, etc.
 - Each version is a frozen markdown file. Once shipped, never edited — only superseded.
 - Pack records its version in `<protocol version="…">` and in `claude_code_prompt`. Mismatched versions warn loudly.
 - Default = latest bundled. Settings allows pinning an older version per project.
@@ -444,17 +444,18 @@ The protocol is the heart of V2. Three artifacts live in `docs/protocol/grok-to-
 
 | Artifact | Audience | Where it lives | Purpose |
 |---|---|---|---|
-| Pack protocol block | Grok (planner) | Top of pack XML | Tells Grok: don't write code, produce strict-format plan with rationales |
-| Plan format spec | Grok (planner) | Inside the protocol block | Defines exact markdown structure Grok must emit |
-| Claude Code prompt | Claude Code (executor) | Returned alongside pack | Tells CC: read fully, challenge rationales before executing, verify after each step |
+| Pack protocol block | the planner | Top of pack XML | Tells the planner: don't write code, produce strict-format plan with rationales |
+| Plan format spec | the planner | Inside the protocol block | Defines exact markdown structure the planner must emit |
+| Executor prompt | the executor | Returned alongside pack | Tells the executor: read fully, challenge rationales before executing, verify after each step |
 
 ### 8.3 Pack protocol block (verbatim text)
 
 ```
-<protocol version="grok-to-cc-v1">
+<protocol version="plan-exec-v1">
 You are reading a snapshot of a software project. Your role in this
 workflow is PLANNER. You will NOT write the code yourself. Another AI
-agent (Claude Code) is operating directly inside this repository and will
+agent — the executor (e.g. Claude Code, Cursor, aider) — is operating
+directly inside this repository and will
 execute your plan, with the right to challenge any step.
 
 Your output must follow the PLAN FORMAT below exactly. Plans that deviate
@@ -468,13 +469,13 @@ you for correction.
 3. You produce a plan: a sequence of concrete steps that, taken together,
    accomplish the goal.
 4. For every step, you must include a `Rationale` explaining WHY that
-   step is needed. Claude Code will read your rationale and may challenge
+   step is needed. The executor will read your rationale and may challenge
    any step it disagrees with before executing — provide enough reasoning
    for an informed second opinion.
-5. The user pastes your plan into Claude Code. Claude Code reviews the
+5. The user pastes your plan into the executor agent. The executor reviews the
    full plan, challenges any weak rationale, and executes the rest.
 
-## What you can ask Claude Code to do
+## What you can ask the executor to do
 
 - Edit a specific file (provide enough context that the edit is unambiguous)
 - Create a new file (provide its full intended contents or a clear specification)
@@ -491,7 +492,7 @@ this order:
 One short paragraph (≤4 sentences) describing the overall approach.
 
 ### Risks
-A bulleted list of risks or open questions Claude Code should be aware
+A bulleted list of risks or open questions the executor should be aware
 of before executing. May be empty (`- None.`).
 
 ### Steps
@@ -502,13 +503,13 @@ EXACTLY these fields, in this order, each on its own line:
   **Target:** <file path relative to repo root, OR shell command if
               Action is `run`>
   **Rationale:** <one or two sentences. WHY this step is needed.
-                  Claude Code uses this to decide whether to challenge.>
+                  The executor uses this to decide whether to challenge.>
   **Details:**
   <freeform body — code blocks, diffs, full file contents, or prose
    describing the change. Use ```lang fenced blocks for code.>
 
 ### Verification
-A bulleted list of how Claude Code should verify the plan succeeded
+A bulleted list of how the executor should verify the plan succeeded
 (commands to run, things to check). At least one item.
 
 ### Rollback
@@ -586,14 +587,15 @@ Expect all existing tests to pass. New MFA-specific tests come in a follow-up pl
 - `git revert` the resulting commits — no DB migration in this plan.
 ````
 
-### 8.5 Claude Code prompt template (verbatim text)
+### 8.5 Executor prompt template (verbatim text)
 
 ```
 You are operating directly inside the repository this plan refers to.
 You have full file access — use it.
 
-Below is a plan produced by a planner AI (Grok) using protocol version
-grok-to-cc-v1. Your role in this workflow is EXECUTOR with veto power.
+Below is a plan produced by a planner AI (any web AI: Grok, ChatGPT,
+Gemini, Claude) using protocol version
+plan-exec-v1. Your role in this workflow is EXECUTOR with veto power.
 
 ## How to handle this plan
 
@@ -631,7 +633,7 @@ grok-to-cc-v1. Your role in this workflow is EXECUTOR with veto power.
 
 ---
 
-[The plan from Grok will be inserted here by the Bridge step.]
+[The plan from the planner will be inserted here by the Bridge step.]
 ```
 
 ### 8.6 Validator rules
@@ -647,7 +649,7 @@ grok-to-cc-v1. Your role in this workflow is EXECUTOR with veto power.
 | Verification has ≥1 item | "Verification section is empty" |
 | No prose outside the five top-level sections | "Unexpected text before/between sections" |
 
-On failure, the Bridge tab renders the error list and offers a copy button for a re-prompt: "Your previous response failed validation. Errors: ___. Please re-emit following protocol grok-to-cc-v1 exactly."
+On failure, the Bridge tab renders the error list and offers a copy button for a re-prompt: "Your previous response failed validation. Errors: ___. Please re-emit following protocol plan-exec-v1 exactly."
 
 ## 9. Error handling
 
@@ -734,7 +736,7 @@ Each test snapshots `PackStats` and the resulting XML. Snapshot review via `carg
 
 `crates/core/tests/protocol_golden.rs` snapshots:
 - Full `<protocol>` block for each version.
-- Claude Code prompt template.
+- Executor prompt template.
 - Fully-built pack XML for `tiny/` with goal "Add a hello endpoint."
 - A known-good plan parsing through `validate_plan`.
 - Ten known-bad plans (one per validator rule) with their exact error messages.
@@ -870,7 +872,7 @@ The following components are the design surface Claude Design will produce. Each
 | `<SecretWarningBanner>` | Shown when secrets > 0 |
 | `<RecentsList>` | Home screen card list |
 | `<PlanValidator>` | Bridge tab — paste plan, render errors or success |
-| `<RePromptBuilder>` | Bridge tab — copy "fix your plan" prompt for Grok |
+| `<RePromptBuilder>` | Bridge tab — copy "fix your plan" prompt for the planner |
 | `<CombinedPromptCopy>` | Bridge tab — copy wrapped CC prompt with embedded plan |
 | `<ToastQueue>` | Bottom-right transient notifications |
 | `<ErrorPanel>` | Full-screen fatal error treatment |
@@ -911,11 +913,11 @@ foundation; layer Aceternity UI / MagicUI where they elevate the moment.
    panel during pack. The progress panel is the visual centerpiece —
    animated stage indicator, file ticker, elapsed timer, cancel button.
 3. Result — pack stats header, two big "Copy" buttons side by side
-   ("Copy Pack XML" and "Copy Claude Code Prompt"), a "Save as…" button,
-   and tabs below for Pack XML / CC Prompt / Warnings / Skipped Files.
-4. Bridge — paste Grok's plan into a textarea; on submission, show
+   ("Copy Pack XML" and "Copy Executor Prompt"), a "Save as…" button,
+   and tabs below for Pack XML / Executor Prompt / Warnings / Skipped Files.
+4. Bridge — paste the planner's plan into a textarea; on submission, show
    either a cleanly-formatted error list (with a "Copy re-prompt for
-   Grok" button) or a success state with a single "Copy combined
+   the planner" button) or a success state with a single "Copy combined
    prompt" button. The transition between paste-pending → validating →
    success should feel rewarding.
 5. Settings — manage presets, edit ignore defaults, change theme, set

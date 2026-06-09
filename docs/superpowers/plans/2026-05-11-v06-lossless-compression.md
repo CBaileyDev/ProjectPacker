@@ -42,7 +42,7 @@
 - `frontend/src/lib/store.ts` — extend Zustand store
 - `frontend/src/bindings/index.ts` — regenerated
 - `frontend/src/styles/globals.css` — new theme token
-- `docs/protocol/grok-to-cc-v1.md` — markers section
+- `docs/protocol/plan-exec-v1.md` — markers section
 - `CHANGELOG.md` — Unreleased entry
 
 ---
@@ -72,7 +72,7 @@ fn pack_options_deserializes_with_missing_new_fields() {
         "compress": false,
         "remove_comments": false,
         "tokenizer_model": "claude",
-        "protocol_version": "grok-to-cc-v1",
+        "protocol_version": "plan-exec-v1",
         "max_file_size_kb": 512,
         "custom_ignore_patterns": []
     }"#;
@@ -2659,11 +2659,11 @@ EOF
 ### Task G1: Update protocol doc with marker reference
 
 **Files:**
-- Modify: `docs/protocol/grok-to-cc-v1.md`
+- Modify: `docs/protocol/plan-exec-v1.md`
 
 - [ ] **Step 1: Append the markers section**
 
-At the end of `docs/protocol/grok-to-cc-v1.md`, append:
+At the end of `docs/protocol/plan-exec-v1.md`, append:
 
 ```markdown
 ## Compression markers
@@ -2704,9 +2704,9 @@ Run: `cargo test --test protocol_golden`
 - [ ] **Step 3: Commit**
 
 ```bash
-git add docs/protocol/grok-to-cc-v1.md crates/core/tests/snapshots/
+git add docs/protocol/plan-exec-v1.md crates/core/tests/snapshots/
 git commit -m "$(cat <<'EOF'
-docs(protocol): document compression markers in grok-to-cc-v1
+docs(protocol): document compression markers in plan-exec-v1
 
 No version bump — markers are self-describing English. Adds reference for
 [DUPLICATE OF: …], [COMPRESSED: <reason> …], <document duplicate-of=…/>,

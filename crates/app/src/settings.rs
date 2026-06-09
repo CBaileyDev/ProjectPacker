@@ -39,7 +39,7 @@ pub const MAX_CUSTOM_IGNORE_LEN: usize = 4096;
 /// Protocol versions accepted by `default_protocol_version`. Mirrors the list
 /// in `projectpacker_core::protocol`. Kept here as a const so settings
 /// validation does not need to take a runtime dep on core's private list.
-pub const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["grok-to-cc-v1"];
+pub const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["plan-exec-v1"];
 
 /// Schema version embedded in serialized settings. Bumped together with a
 /// new `SettingsMigration` registration.
@@ -68,7 +68,7 @@ impl Settings {
     pub fn defaults() -> Self {
         Self {
             theme: Theme::Dark,
-            default_protocol_version: "grok-to-cc-v1".into(),
+            default_protocol_version: "plan-exec-v1".into(),
             default_tokenizer_model: "gpt-4o-mini".into(),
             recents: Vec::new(),
             goal_templates: Vec::new(),
@@ -572,7 +572,7 @@ mod tests {
         // Simulates JSON written by a pre-Stream-8 build.
         let raw = json!({
             "theme": "dark",
-            "defaultProtocolVersion": "grok-to-cc-v1",
+            "defaultProtocolVersion": "plan-exec-v1",
             "defaultTokenizerModel": "gpt-4o-mini",
             "recents": [],
             "goalTemplates": [],
@@ -580,7 +580,7 @@ mod tests {
         });
         let s: Settings = serde_json::from_value(raw).unwrap();
         assert_eq!(s.schema_version, 0);
-        assert_eq!(s.default_protocol_version, "grok-to-cc-v1");
+        assert_eq!(s.default_protocol_version, "plan-exec-v1");
     }
 
     // ---- validate ----------------------------------------------------------
@@ -716,7 +716,7 @@ mod tests {
         let mut s = Settings::defaults();
         s.default_protocol_version = "bogus".into();
         let fixes = s.apply_corrections();
-        assert_eq!(s.default_protocol_version, "grok-to-cc-v1");
+        assert_eq!(s.default_protocol_version, "plan-exec-v1");
         assert!(fixes
             .iter()
             .any(|e| matches!(e, ValidationError::UnsupportedProtocolVersion(_))));
@@ -761,7 +761,7 @@ mod tests {
         let d = tempdir().unwrap();
         let path = d.path().join("settings.json");
         let s = load_or_default(&path);
-        assert_eq!(s.default_protocol_version, "grok-to-cc-v1");
+        assert_eq!(s.default_protocol_version, "plan-exec-v1");
     }
 
     #[test]
@@ -770,7 +770,7 @@ mod tests {
         let path = d.path().join("settings.json");
         std::fs::write(&path, "this is not json").unwrap();
         let s = load_or_default(&path);
-        assert_eq!(s.default_protocol_version, "grok-to-cc-v1");
+        assert_eq!(s.default_protocol_version, "plan-exec-v1");
     }
 
     #[test]
@@ -812,7 +812,7 @@ mod tests {
         )
         .unwrap();
         let s = load_or_default(&path);
-        assert_eq!(s.default_protocol_version, "grok-to-cc-v1");
+        assert_eq!(s.default_protocol_version, "plan-exec-v1");
     }
 
     #[test]
@@ -894,7 +894,7 @@ mod tests {
         let path = d.path().join("settings.json");
         save(&path, &Settings::defaults()).unwrap();
         let s = load_sync_fallible(&path).unwrap();
-        assert_eq!(s.default_protocol_version, "grok-to-cc-v1");
+        assert_eq!(s.default_protocol_version, "plan-exec-v1");
     }
 
     #[test]

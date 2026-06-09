@@ -239,7 +239,7 @@ frontend/src/components/pack/
 
 ## 7. Protocol
 
-**No version bump.** Markers are self-describing English; an AI that's never seen them reads them correctly. Extend `docs/protocol/grok-to-cc-v1.md` with:
+**No version bump.** Markers are self-describing English; an AI that's never seen them reads them correctly. Extend `docs/protocol/plan-exec-v1.md` with:
 
 ```markdown
 ## Compression markers
@@ -378,7 +378,7 @@ Single PR is fine, but the work splits into 6 mechanical phases:
 
 | Risk | Mitigation |
 |---|---|
-| AI consumer misreads markers | Plain-English marker format + protocol doc update. Escape hatch: bump to `grok-to-cc-v1.1` later if needed. |
+| AI consumer misreads markers | Plain-English marker format + protocol doc update. Escape hatch: bump to `plan-exec-v1.1` later if needed. |
 | Minified detection false-positives on data files | Two-signal AND check (long-line *and* high length-variance) guards against single-line-CSV false positives. Fixture-tested. |
 | Generated detection false-positives on hand-written code that happens to contain the word "generated" | Banner detection is full-phrase match on 2KB scan, not substring. Path patterns gate the rest. |
 | BLAKE3 hash collision | Full 256-bit digest used for comparison; 12-char prefix is display-only. Collision-resistant beyond practical concern. |

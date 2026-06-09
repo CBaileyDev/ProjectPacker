@@ -1,6 +1,6 @@
 use crate::error::{CoreError, CoreResult};
 
-const V1: &str = include_str!("../../../docs/protocol/grok-to-cc-v1.md");
+const V1: &str = include_str!("../../../docs/protocol/plan-exec-v1.md");
 
 pub fn block_for_pack(goal: &str, version: &str) -> CoreResult<String> {
     let template = template_for(version)?;
@@ -17,23 +17,23 @@ pub fn block_for_pack(goal: &str, version: &str) -> CoreResult<String> {
     Ok(out)
 }
 
-pub fn claude_code_prompt(version: &str) -> CoreResult<String> {
+pub fn executor_prompt(version: &str) -> CoreResult<String> {
     let template = template_for(version)?;
-    let body = extract_section(template, "CLAUDE_CODE_PROMPT").ok_or_else(|| {
-        CoreError::Internal(format!("template {version} missing CLAUDE_CODE_PROMPT"))
+    let body = extract_section(template, "EXECUTOR_PROMPT").ok_or_else(|| {
+        CoreError::Internal(format!("template {version} missing EXECUTOR_PROMPT"))
     })?;
     Ok(body.to_string())
 }
 
 pub fn build_combined_prompt(plan_md: &str, version: &str) -> CoreResult<String> {
-    let prompt = claude_code_prompt(version)?;
-    let placeholder = "[The plan from Grok will be inserted here by the Bridge step.]";
+    let prompt = executor_prompt(version)?;
+    let placeholder = "[The plan from the planner will be inserted here by the Bridge step.]";
     Ok(prompt.replace(placeholder, plan_md.trim()))
 }
 
 fn template_for(version: &str) -> CoreResult<&'static str> {
     match version {
-        "grok-to-cc-v1" => Ok(V1),
+        "plan-exec-v1" => Ok(V1),
         other => Err(CoreError::Internal(format!(
             "unknown protocol version: {other}"
         ))),
@@ -70,7 +70,7 @@ const REQUIRED_SECTIONS: &[&str] = &["Summary", "Risks", "Steps", "Verification"
 const VALID_ACTIONS: &[&str] = &["edit", "create", "delete", "rename", "run"];
 
 pub fn validate_plan(md: &str, version: &str) -> CoreResult<PlanValidation> {
-    if version != "grok-to-cc-v1" {
+    if version != "plan-exec-v1" {
         return Err(CoreError::Internal(format!(
             "unknown protocol version: {version}"
         )));
@@ -247,8 +247,8 @@ mod tests {
 
     #[test]
     fn block_for_pack_wraps_with_protocol_tag() {
-        let s = block_for_pack("Add a feature", "grok-to-cc-v1").unwrap();
-        assert!(s.starts_with("<protocol version=\"grok-to-cc-v1\">"));
+        let s = block_for_pack("Add a feature", "plan-exec-v1").unwrap();
+        assert!(s.starts_with("<protocol version=\"plan-exec-v1\">"));
         assert!(s.contains("</protocol>"));
         assert!(s.contains("<user_task>"));
         assert!(s.contains("Add a feature"));
@@ -256,14 +256,14 @@ mod tests {
 
     #[test]
     fn block_for_pack_includes_strict_format_text() {
-        let s = block_for_pack("hi", "grok-to-cc-v1").unwrap();
+        let s = block_for_pack("hi", "plan-exec-v1").unwrap();
         assert!(s.contains("Plan format (STRICT)"));
         assert!(s.contains("Rationale"));
     }
 
     #[test]
-    fn claude_code_prompt_starts_correctly() {
-        let s = claude_code_prompt("grok-to-cc-v1").unwrap();
+    fn executor_prompt_starts_correctly() {
+        let s = executor_prompt("plan-exec-v1").unwrap();
         assert!(s.contains("EXECUTOR with veto power"));
         assert!(s.contains("Challenge before executing"));
     }
@@ -271,14 +271,14 @@ mod tests {
     #[test]
     fn build_combined_prompt_substitutes_plan() {
         let plan = "### Summary\nA tiny plan.\n";
-        let s = build_combined_prompt(plan, "grok-to-cc-v1").unwrap();
+        let s = build_combined_prompt(plan, "plan-exec-v1").unwrap();
         assert!(s.contains("### Summary"));
-        assert!(!s.contains("[The plan from Grok will be inserted here"));
+        assert!(!s.contains("[The plan from the planner will be inserted here"));
     }
 
     #[test]
     fn unknown_version_errors() {
-        let err = block_for_pack("hi", "grok-to-cc-v999").unwrap_err();
+        let err = block_for_pack("hi", "plan-exec-v999").unwrap_err();
         assert!(matches!(err, CoreError::Internal(_)));
     }
 
@@ -311,14 +311,14 @@ pub fn thing() {}
 
     #[test]
     fn validates_a_correct_plan() {
-        let v = validate_plan(good_plan(), "grok-to-cc-v1").unwrap();
+        let v = validate_plan(good_plan(), "plan-exec-v1").unwrap();
         assert!(v.ok, "errors: {:?}", v.errors);
     }
 
     #[test]
     fn flags_missing_summary_section() {
         let plan = good_plan().replace("### Summary\nA short overview.", "");
-        let v = validate_plan(&plan, "grok-to-cc-v1").unwrap();
+        let v = validate_plan(&plan, "plan-exec-v1").unwrap();
         assert!(!v.ok);
         assert!(v
             .errors
@@ -332,7 +332,7 @@ pub fn thing() {}
             "**Rationale:** This module is needed because there is currently no place for the thing logic.\n",
             "",
         );
-        let v = validate_plan(&plan, "grok-to-cc-v1").unwrap();
+        let v = validate_plan(&plan, "plan-exec-v1").unwrap();
         assert!(!v.ok);
         assert!(v
             .errors
@@ -346,7 +346,7 @@ pub fn thing() {}
             "**Rationale:** This module is needed because there is currently no place for the thing logic.",
             "**Rationale:** short",
         );
-        let v = validate_plan(&plan, "grok-to-cc-v1").unwrap();
+        let v = validate_plan(&plan, "plan-exec-v1").unwrap();
         assert!(!v.ok);
         assert!(v.errors.iter().any(|e| e.code == "rationale_too_short"));
     }
@@ -354,7 +354,7 @@ pub fn thing() {}
     #[test]
     fn flags_invalid_action() {
         let plan = good_plan().replace("**Action:** create", "**Action:** delete-everything");
-        let v = validate_plan(&plan, "grok-to-cc-v1").unwrap();
+        let v = validate_plan(&plan, "plan-exec-v1").unwrap();
         assert!(!v.ok);
         assert!(v.errors.iter().any(|e| e.code == "invalid_action"));
     }
@@ -362,7 +362,7 @@ pub fn thing() {}
     #[test]
     fn flags_empty_verification() {
         let plan = good_plan().replace("- `cargo test` passes.", "");
-        let v = validate_plan(&plan, "grok-to-cc-v1").unwrap();
+        let v = validate_plan(&plan, "plan-exec-v1").unwrap();
         assert!(!v.ok);
         assert!(v.errors.iter().any(|e| e.code == "verification_empty"));
     }
@@ -370,7 +370,7 @@ pub fn thing() {}
     #[test]
     fn flags_missing_steps() {
         let plan = "### Summary\nfoo\n### Risks\n- None.\n### Steps\n### Verification\n- yes\n### Rollback\n- yes\n";
-        let v = validate_plan(plan, "grok-to-cc-v1").unwrap();
+        let v = validate_plan(plan, "plan-exec-v1").unwrap();
         assert!(!v.ok);
         assert!(v.errors.iter().any(|e| e.code == "no_steps"));
     }

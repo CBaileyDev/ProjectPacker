@@ -2,14 +2,14 @@ use projectpacker_core::protocol;
 
 #[test]
 fn protocol_block_for_pack_v1_is_frozen() {
-    let s = protocol::block_for_pack("Add a hello endpoint", "grok-to-cc-v1").unwrap();
+    let s = protocol::block_for_pack("Add a hello endpoint", "plan-exec-v1").unwrap();
     insta::assert_snapshot!("v1_pack_block", s);
 }
 
 #[test]
-fn protocol_claude_code_prompt_v1_is_frozen() {
-    let s = protocol::claude_code_prompt("grok-to-cc-v1").unwrap();
-    insta::assert_snapshot!("v1_cc_prompt", s);
+fn protocol_executor_prompt_v1_is_frozen() {
+    let s = protocol::executor_prompt("plan-exec-v1").unwrap();
+    insta::assert_snapshot!("v1_executor_prompt", s);
 }
 
 #[test]
@@ -37,7 +37,7 @@ pub fn thing() {}
 ### Rollback
 - `git revert`.
 "#;
-    let s = protocol::build_combined_prompt(plan, "grok-to-cc-v1").unwrap();
+    let s = protocol::build_combined_prompt(plan, "plan-exec-v1").unwrap();
     insta::assert_snapshot!("v1_combined_prompt", s);
 }
 

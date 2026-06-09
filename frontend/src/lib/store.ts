@@ -10,6 +10,7 @@ import type {
 } from "./api";
 import { batchEvents } from "./events";
 import { tauriStoreAdapter } from "./persist-adapter";
+import { PROTOCOL_VERSION } from "./protocol";
 
 type PackingStatus = "idle" | "running" | "done" | "error" | "cancelled";
 
@@ -25,6 +26,13 @@ interface AppState {
    * panel reads `lastStats.transforms` for per-row savings chips. */
   lastStats: PackStats | null;
   options: PackOptions;
+  /** Plan markdown pasted into the Bridge tab. Lives in the store (not
+   * component state) because tab content unmounts on tab switch — a large
+   * pasted plan must survive a round-trip to Settings. Deliberately NOT
+   * persisted (see `partialize`): a pasted plan should not outlive the
+   * app session. */
+  bridgePlanMd: string;
+  setBridgePlanMd: (md: string) => void;
   setJob: (id: string) => void;
   pushEvent: (e: ProgressEvent) => void;
   /** Append a batch of events at once. The batch is first run through
@@ -68,7 +76,7 @@ const defaultOptions: PackOptions = {
   maxFileSizeKb: 1024,
   respectGitignore: true,
   customIgnorePatterns: [],
-  protocolVersion: "grok-to-cc-v1",
+  protocolVersion: PROTOCOL_VERSION,
   format: "xml",
   xmlSchema: "cxml",
 };
@@ -143,6 +151,8 @@ export const useApp = create<AppState>()(
       result: null,
       lastStats: null,
       options: defaultOptions,
+      bridgePlanMd: "",
+      setBridgePlanMd: (md) => set({ bridgePlanMd: md }),
       setJob: (id) =>
         set({
           jobId: id,

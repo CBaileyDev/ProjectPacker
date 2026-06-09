@@ -692,7 +692,7 @@ v0.1.0 — early scaffold. Not yet released.
 
 - [Design doc](docs/superpowers/specs/2026-04-30-projectpacker-design.md)
 - [Implementation plan](docs/superpowers/plans/2026-04-30-projectpacker-implementation.md)
-- [Protocol: grok-to-cc-v1](docs/protocol/grok-to-cc-v1.md)
+- [Protocol: plan-exec-v1](docs/protocol/plan-exec-v1.md)
 
 ## Development
 
@@ -828,7 +828,7 @@ impl Default for PackOptions {
             max_file_size_kb: 1024,
             respect_gitignore: true,
             custom_ignore_patterns: Vec::new(),
-            protocol_version: "grok-to-cc-v1".into(),
+            protocol_version: "plan-exec-v1".into(),
         }
     }
 }
@@ -913,7 +913,7 @@ mod tests {
     #[test]
     fn pack_options_default_has_v1_protocol() {
         let opts = PackOptions::default();
-        assert_eq!(opts.protocol_version, "grok-to-cc-v1");
+        assert_eq!(opts.protocol_version, "plan-exec-v1");
         assert_eq!(opts.tokenizer_model, "gpt-4o-mini");
         assert_eq!(opts.max_file_size_kb, 1024);
         assert!(opts.respect_gitignore);
@@ -2015,14 +2015,14 @@ git commit -m "feat(core): add github URL parser and shallow-clone wrapper via g
 ## Task 3.1: Write the protocol template files
 
 **Files:**
-- Create: `docs/protocol/grok-to-cc-v1.md`
+- Create: `docs/protocol/plan-exec-v1.md`
 
 - [ ] **Step 1: Create the protocol template**
 
-Copy the verbatim text from spec §8.3 (pack protocol block) and §8.5 (Claude Code prompt template) into `docs/protocol/grok-to-cc-v1.md`. Use the file format below — it has two named sections separated by a marker line, which the protocol module parses at compile time:
+Copy the verbatim text from spec §8.3 (pack protocol block) and §8.5 (Claude Code prompt template) into `docs/protocol/plan-exec-v1.md`. Use the file format below — it has two named sections separated by a marker line, which the protocol module parses at compile time:
 
 ```markdown
-<!-- PROTOCOL VERSION: grok-to-cc-v1 -->
+<!-- PROTOCOL VERSION: plan-exec-v1 -->
 
 ===PACK_PROTOCOL_BLOCK===
 You are reading a snapshot of a software project. Your role in this
@@ -2103,7 +2103,7 @@ You are operating directly inside the repository this plan refers to.
 You have full file access — use it.
 
 Below is a plan produced by a planner AI (Grok) using protocol version
-grok-to-cc-v1. Your role in this workflow is EXECUTOR with veto power.
+plan-exec-v1. Your role in this workflow is EXECUTOR with veto power.
 
 ## How to handle this plan
 
@@ -2148,8 +2148,8 @@ grok-to-cc-v1. Your role in this workflow is EXECUTOR with veto power.
 - [ ] **Step 2: Commit**
 
 ```bash
-git add docs/protocol/grok-to-cc-v1.md
-git commit -m "docs(protocol): add grok-to-cc-v1 protocol template"
+git add docs/protocol/plan-exec-v1.md
+git commit -m "docs(protocol): add plan-exec-v1 protocol template"
 ```
 
 ---
@@ -2167,7 +2167,7 @@ Create `crates/core/src/protocol.rs`:
 ```rust
 use crate::error::{CoreError, CoreResult};
 
-const V1: &str = include_str!("../../../docs/protocol/grok-to-cc-v1.md");
+const V1: &str = include_str!("../../../docs/protocol/plan-exec-v1.md");
 
 pub fn block_for_pack(goal: &str, version: &str) -> CoreResult<String> {
     let template = template_for(version)?;
@@ -2198,7 +2198,7 @@ pub fn build_combined_prompt(plan_md: &str, version: &str) -> CoreResult<String>
 
 fn template_for(version: &str) -> CoreResult<&'static str> {
     match version {
-        "grok-to-cc-v1" => Ok(V1),
+        "plan-exec-v1" => Ok(V1),
         other => Err(CoreError::Internal(format!("unknown protocol version: {other}"))),
     }
 }
@@ -2218,8 +2218,8 @@ mod tests {
 
     #[test]
     fn block_for_pack_wraps_with_protocol_tag() {
-        let s = block_for_pack("Add a feature", "grok-to-cc-v1").unwrap();
-        assert!(s.starts_with("<protocol version=\"grok-to-cc-v1\">"));
+        let s = block_for_pack("Add a feature", "plan-exec-v1").unwrap();
+        assert!(s.starts_with("<protocol version=\"plan-exec-v1\">"));
         assert!(s.contains("</protocol>"));
         assert!(s.contains("<user_task>"));
         assert!(s.contains("Add a feature"));
@@ -2227,14 +2227,14 @@ mod tests {
 
     #[test]
     fn block_for_pack_includes_strict_format_text() {
-        let s = block_for_pack("hi", "grok-to-cc-v1").unwrap();
+        let s = block_for_pack("hi", "plan-exec-v1").unwrap();
         assert!(s.contains("Plan format (STRICT)"));
         assert!(s.contains("Rationale"));
     }
 
     #[test]
     fn claude_code_prompt_starts_correctly() {
-        let s = claude_code_prompt("grok-to-cc-v1").unwrap();
+        let s = claude_code_prompt("plan-exec-v1").unwrap();
         assert!(s.contains("EXECUTOR with veto power"));
         assert!(s.contains("Challenge before executing"));
     }
@@ -2242,14 +2242,14 @@ mod tests {
     #[test]
     fn build_combined_prompt_substitutes_plan() {
         let plan = "### Summary\nA tiny plan.\n";
-        let s = build_combined_prompt(plan, "grok-to-cc-v1").unwrap();
+        let s = build_combined_prompt(plan, "plan-exec-v1").unwrap();
         assert!(s.contains("### Summary"));
         assert!(!s.contains("[The plan from Grok will be inserted here"));
     }
 
     #[test]
     fn unknown_version_errors() {
-        let err = block_for_pack("hi", "grok-to-cc-v999").unwrap_err();
+        let err = block_for_pack("hi", "plan-exec-v999").unwrap_err();
         assert!(matches!(err, CoreError::Internal(_)));
     }
 }
@@ -2317,7 +2317,7 @@ const REQUIRED_SECTIONS: &[&str] = &["Summary", "Risks", "Steps", "Verification"
 const VALID_ACTIONS: &[&str] = &["edit", "create", "delete", "rename", "run"];
 
 pub fn validate_plan(md: &str, version: &str) -> CoreResult<PlanValidation> {
-    if version != "grok-to-cc-v1" {
+    if version != "plan-exec-v1" {
         return Err(CoreError::Internal(format!("unknown protocol version: {version}")));
     }
     let mut errors = Vec::new();
@@ -2490,14 +2490,14 @@ pub fn thing() {}
 
     #[test]
     fn validates_a_correct_plan() {
-        let v = validate_plan(good_plan(), "grok-to-cc-v1").unwrap();
+        let v = validate_plan(good_plan(), "plan-exec-v1").unwrap();
         assert!(v.ok, "errors: {:?}", v.errors);
     }
 
     #[test]
     fn flags_missing_summary_section() {
         let plan = good_plan().replace("### Summary\nA short overview.", "");
-        let v = validate_plan(&plan, "grok-to-cc-v1").unwrap();
+        let v = validate_plan(&plan, "plan-exec-v1").unwrap();
         assert!(!v.ok);
         assert!(v.errors.iter().any(|e| e.code == "missing_section" && e.message.contains("Summary")));
     }
@@ -2508,7 +2508,7 @@ pub fn thing() {}
             "**Rationale:** This module is needed because there is currently no place for the thing logic.\n",
             "",
         );
-        let v = validate_plan(&plan, "grok-to-cc-v1").unwrap();
+        let v = validate_plan(&plan, "plan-exec-v1").unwrap();
         assert!(!v.ok);
         assert!(v.errors.iter().any(|e| e.message.contains("missing Rationale")));
     }
@@ -2519,7 +2519,7 @@ pub fn thing() {}
             "**Rationale:** This module is needed because there is currently no place for the thing logic.",
             "**Rationale:** short",
         );
-        let v = validate_plan(&plan, "grok-to-cc-v1").unwrap();
+        let v = validate_plan(&plan, "plan-exec-v1").unwrap();
         assert!(!v.ok);
         assert!(v.errors.iter().any(|e| e.code == "rationale_too_short"));
     }
@@ -2527,7 +2527,7 @@ pub fn thing() {}
     #[test]
     fn flags_invalid_action() {
         let plan = good_plan().replace("**Action:** create", "**Action:** delete-everything");
-        let v = validate_plan(&plan, "grok-to-cc-v1").unwrap();
+        let v = validate_plan(&plan, "plan-exec-v1").unwrap();
         assert!(!v.ok);
         assert!(v.errors.iter().any(|e| e.code == "invalid_action"));
     }
@@ -2535,7 +2535,7 @@ pub fn thing() {}
     #[test]
     fn flags_empty_verification() {
         let plan = good_plan().replace("- `cargo test` passes.", "");
-        let v = validate_plan(&plan, "grok-to-cc-v1").unwrap();
+        let v = validate_plan(&plan, "plan-exec-v1").unwrap();
         assert!(!v.ok);
         assert!(v.errors.iter().any(|e| e.code == "verification_empty"));
     }
@@ -2543,7 +2543,7 @@ pub fn thing() {}
     #[test]
     fn flags_missing_steps() {
         let plan = "### Summary\nfoo\n### Risks\n- None.\n### Steps\n### Verification\n- yes\n### Rollback\n- yes\n";
-        let v = validate_plan(plan, "grok-to-cc-v1").unwrap();
+        let v = validate_plan(plan, "plan-exec-v1").unwrap();
         assert!(!v.ok);
         assert!(v.errors.iter().any(|e| e.code == "no_steps"));
     }
@@ -2921,7 +2921,7 @@ mod tests {
         let opts = PackOptions { goal: "Add a hello".into(), ..PackOptions::default() };
         let (tx, _rx) = std::sync::mpsc::channel();
         let result = pack(d.path(), &opts, tx, "job-test").unwrap();
-        assert!(result.xml.contains("<protocol version=\"grok-to-cc-v1\">"));
+        assert!(result.xml.contains("<protocol version=\"plan-exec-v1\">"));
         assert!(result.xml.contains("<files>"));
         assert!(result.xml.contains("README.md"));
         assert!(result.xml.contains("a.rs"));
@@ -3010,7 +3010,7 @@ impl Settings {
     pub fn defaults() -> Self {
         Self {
             theme: Theme::Dark,
-            default_protocol_version: "grok-to-cc-v1".into(),
+            default_protocol_version: "plan-exec-v1".into(),
             default_tokenizer_model: "gpt-4o-mini".into(),
             recents: Vec::new(),
             goal_templates: Vec::new(),
@@ -3093,7 +3093,7 @@ mod tests {
         let d = tempdir().unwrap();
         let path = d.path().join("settings.json");
         let s = load_or_default(&path);
-        assert_eq!(s.default_protocol_version, "grok-to-cc-v1");
+        assert_eq!(s.default_protocol_version, "plan-exec-v1");
     }
 
     #[test]
@@ -3114,7 +3114,7 @@ mod tests {
         let path = d.path().join("settings.json");
         std::fs::write(&path, "this is not json").unwrap();
         let s = load_or_default(&path);
-        assert_eq!(s.default_protocol_version, "grok-to-cc-v1");
+        assert_eq!(s.default_protocol_version, "plan-exec-v1");
         assert!(!path.exists() || std::fs::read_to_string(&path).unwrap().contains("\"theme\""));
     }
 }
@@ -3559,7 +3559,7 @@ const defaultOptions: PackOptions = {
   maxFileSizeKb: 1024,
   respectGitignore: true,
   customIgnorePatterns: [],
-  protocolVersion: "grok-to-cc-v1",
+  protocolVersion: "plan-exec-v1",
 };
 
 export const useApp = create<AppState>((set) => ({
@@ -3771,10 +3771,10 @@ export default function Bridge() {
 
   async function check() {
     setErrors([]); setCombined(null);
-    const v = await commands.validatePlan(plan, "grok-to-cc-v1");
+    const v = await commands.validatePlan(plan, "plan-exec-v1");
     if (v.status !== "ok") return;
     if (!v.data.ok) { setErrors(v.data.errors as any); return; }
-    const w = await commands.buildCombinedPrompt(plan, "grok-to-cc-v1");
+    const w = await commands.buildCombinedPrompt(plan, "plan-exec-v1");
     if (w.status === "ok") setCombined(w.data);
   }
 
@@ -3905,7 +3905,7 @@ fn tiny_fixture_includes_protocol_block() {
     let opts = PackOptions { goal: "Add docs".into(), ..PackOptions::default() };
     let (tx, _rx) = std::sync::mpsc::channel();
     let result = pack::pack(&root, &opts, tx, "test-job").unwrap();
-    assert!(result.xml.contains("<protocol version=\"grok-to-cc-v1\">"));
+    assert!(result.xml.contains("<protocol version=\"plan-exec-v1\">"));
     assert!(result.xml.contains("<user_task>"));
     assert!(result.xml.contains("Add docs"));
 }
@@ -3942,13 +3942,13 @@ use projectpacker_core::protocol;
 
 #[test]
 fn protocol_block_for_pack_v1_is_frozen() {
-    let s = protocol::block_for_pack("Add a hello endpoint", "grok-to-cc-v1").unwrap();
+    let s = protocol::block_for_pack("Add a hello endpoint", "plan-exec-v1").unwrap();
     insta::assert_snapshot!("v1_pack_block", s);
 }
 
 #[test]
 fn protocol_claude_code_prompt_v1_is_frozen() {
-    let s = protocol::claude_code_prompt("grok-to-cc-v1").unwrap();
+    let s = protocol::claude_code_prompt("plan-exec-v1").unwrap();
     insta::assert_snapshot!("v1_cc_prompt", s);
 }
 
@@ -3977,7 +3977,7 @@ pub fn thing() {}
 ### Rollback
 - `git revert`.
 "#;
-    let s = protocol::build_combined_prompt(plan, "grok-to-cc-v1").unwrap();
+    let s = protocol::build_combined_prompt(plan, "plan-exec-v1").unwrap();
     insta::assert_snapshot!("v1_combined_prompt", s);
 }
 ```
@@ -4007,7 +4007,7 @@ git add crates/core/tests/protocol_golden.rs crates/core/tests/snapshots/
 git commit -m "test(core): add frozen snapshot tests for protocol v1 outputs"
 ```
 
-> **Frozen forever:** any change to these snapshots is a protocol breaking change. New behavior goes in a new protocol version (e.g., `grok-to-cc-v2`).
+> **Frozen forever:** any change to these snapshots is a protocol breaking change. New behavior goes in a new protocol version (e.g., `plan-exec-v2`).
 
 ---
 

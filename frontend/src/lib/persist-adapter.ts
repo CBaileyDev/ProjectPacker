@@ -1,12 +1,13 @@
 import { LazyStore } from "@tauri-apps/plugin-store";
 import type { StateStorage } from "zustand/middleware";
+import { PROTOCOL_VERSION } from "./protocol";
 
 const STORE_FILE = "projectpacker.settings.json";
 const DEBOUNCE_MS = 300;
 const RETRY_BACKOFF_BASE_MS = 500;
 const MAX_RETRIES = 3;
 
-const ALLOWED_PROTOCOL_VERSIONS = ["grok-to-cc-v1"] as const;
+const ALLOWED_PROTOCOL_VERSIONS = [PROTOCOL_VERSION] as const;
 const ALLOWED_FORMATS = ["xml", "markdown", "plainText"] as const;
 const MIN_FILE_SIZE_KB = 1;
 const MAX_FILE_SIZE_KB = 102_400;
@@ -25,7 +26,9 @@ function clamp(n: number, min: number, max: number): number {
  *
  * Validations:
  *  - `options.maxFileSizeKb` clamped to `[1, 102_400]`.
- *  - `options.protocolVersion` whitelisted; reset to `'grok-to-cc-v1'`.
+ *  - `options.protocolVersion` whitelisted; reset to the current
+ *    `PROTOCOL_VERSION` (this is also how installs persisted under a
+ *    retired version string migrate forward).
  *  - `options.format` whitelisted; reset to `'xml'`.
  *  - `options.goal` truncated to 8192 chars.
  *
@@ -64,7 +67,7 @@ function sanitize(raw: string): string {
       options.protocolVersion as (typeof ALLOWED_PROTOCOL_VERSIONS)[number],
     )
   ) {
-    options.protocolVersion = "grok-to-cc-v1";
+    options.protocolVersion = PROTOCOL_VERSION;
   }
 
   // format
