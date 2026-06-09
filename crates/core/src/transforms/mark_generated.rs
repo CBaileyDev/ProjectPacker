@@ -8,9 +8,7 @@ const BANNERS: &[&str] = &[
     "AUTO-GENERATED",
 ];
 
-const FILENAME_PATTERNS: &[&str] = &[
-    ".pb.go", ".gen.ts", ".gen.rs", "_pb2.py", ".pb.cc",
-];
+const FILENAME_PATTERNS: &[&str] = &[".pb.go", ".gen.ts", ".gen.rs", "_pb2.py", ".pb.cc"];
 
 const EXACT_FILENAMES: &[&str] = &["bindings/index.ts"];
 
@@ -47,7 +45,9 @@ pub fn detect<'a>(path: &str, content: &'a str) -> Option<Detection<'a>> {
         || EXACT_FILENAMES.iter().any(|p| path_l.ends_with(p));
     if pattern_match {
         let first_non_blank = content.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
-        return Some(Detection { banner_line: first_non_blank });
+        return Some(Detection {
+            banner_line: first_non_blank,
+        });
     }
 
     None

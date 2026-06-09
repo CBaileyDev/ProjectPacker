@@ -345,7 +345,11 @@ pub async fn github_clear_token() -> CmdResult<()> {
         .map_err(AppError::from);
     match &result {
         Ok(_) => log::info!("github_clear_token: cleared"),
-        Err(e) => log::error!("github_clear_token failed: code={} msg={}", e.code, e.message),
+        Err(e) => log::error!(
+            "github_clear_token failed: code={} msg={}",
+            e.code,
+            e.message
+        ),
     }
     result
 }

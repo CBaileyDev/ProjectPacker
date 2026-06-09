@@ -195,10 +195,7 @@ mod tests {
         let aws = rs
             .rules
             .iter()
-            .find(|r| {
-                r.id.starts_with("aws-")
-                    && (r.id.contains("token") || r.id.contains("key"))
-            })
+            .find(|r| r.id.starts_with("aws-") && (r.id.contains("token") || r.id.contains("key")))
             .expect("expected at least one AWS-related rule");
         assert!(
             !aws.keywords.is_empty(),

@@ -66,9 +66,8 @@ impl VendoredHfTokenizer {
     /// never pays this cost.
     fn count(&'static self, text: &str) -> CoreResult<u32> {
         let tok = self.slot.get_or_init(|| {
-            Tokenizer::from_bytes(self.bytes).unwrap_or_else(|e| {
-                panic!("vendored {} tokenizer.json must parse: {e}", self.name)
-            })
+            Tokenizer::from_bytes(self.bytes)
+                .unwrap_or_else(|e| panic!("vendored {} tokenizer.json must parse: {e}", self.name))
         });
         // `false` = no BOS/EOS — we count raw content tokens, not after-templating.
         let encoded = tok
@@ -78,14 +77,22 @@ impl VendoredHfTokenizer {
     }
 }
 
-static LLAMA_3: VendoredHfTokenizer =
-    VendoredHfTokenizer::new("llama-3", include_bytes!("../assets/tokenizers/llama-3.json"));
-static QWEN_2_5: VendoredHfTokenizer =
-    VendoredHfTokenizer::new("qwen-2.5", include_bytes!("../assets/tokenizers/qwen-2.5.json"));
-static DEEPSEEK: VendoredHfTokenizer =
-    VendoredHfTokenizer::new("deepseek", include_bytes!("../assets/tokenizers/deepseek.json"));
-static MISTRAL: VendoredHfTokenizer =
-    VendoredHfTokenizer::new("mistral", include_bytes!("../assets/tokenizers/mistral.json"));
+static LLAMA_3: VendoredHfTokenizer = VendoredHfTokenizer::new(
+    "llama-3",
+    include_bytes!("../assets/tokenizers/llama-3.json"),
+);
+static QWEN_2_5: VendoredHfTokenizer = VendoredHfTokenizer::new(
+    "qwen-2.5",
+    include_bytes!("../assets/tokenizers/qwen-2.5.json"),
+);
+static DEEPSEEK: VendoredHfTokenizer = VendoredHfTokenizer::new(
+    "deepseek",
+    include_bytes!("../assets/tokenizers/deepseek.json"),
+);
+static MISTRAL: VendoredHfTokenizer = VendoredHfTokenizer::new(
+    "mistral",
+    include_bytes!("../assets/tokenizers/mistral.json"),
+);
 
 /// Tokenizer family selector for the typed API.
 ///
@@ -179,10 +186,7 @@ pub fn count_all(text: &str) -> CoreResult<TokensPerModel> {
 /// is deterministic and produces the same `TokensPerModel` as the
 /// purely-sequential alternative.
 pub fn count_all_parallel(text: &str) -> CoreResult<TokensPerModel> {
-    let (tiktoken, hf) = rayon::join(
-        || count_tiktoken_group(text),
-        || count_hf_group(text),
-    );
+    let (tiktoken, hf) = rayon::join(|| count_tiktoken_group(text), || count_hf_group(text));
     let (gpt4o, claude, gemini_approx) = tiktoken?;
     let (llama3, qwen2_5, deep_seek, mistral) = hf?;
     Ok(TokensPerModel {
@@ -272,15 +276,13 @@ pub fn count_by_name(model: &str, text: &str) -> CoreResult<u32> {
 }
 
 fn o200k_encoder() -> &'static CoreBPE {
-    O200K_BASE.get_or_init(|| {
-        tiktoken_rs::o200k_base().expect("o200k_base encoder must initialize")
-    })
+    O200K_BASE
+        .get_or_init(|| tiktoken_rs::o200k_base().expect("o200k_base encoder must initialize"))
 }
 
 fn cl100k_encoder() -> &'static CoreBPE {
-    CL100K_BASE.get_or_init(|| {
-        tiktoken_rs::cl100k_base().expect("cl100k_base encoder must initialize")
-    })
+    CL100K_BASE
+        .get_or_init(|| tiktoken_rs::cl100k_base().expect("cl100k_base encoder must initialize"))
 }
 
 #[cfg(test)]
@@ -344,7 +346,10 @@ mod tests {
         let input = "fn main() { println!(\"hello, world!\"); } // a comment";
         let typed = count(input, TokenModel::Gpt4o).unwrap();
         let legacy = count_by_name("gpt-4o-mini", input).unwrap();
-        assert_eq!(typed, legacy, "Gpt4o typed API and gpt-4o-mini legacy API must share o200k_base");
+        assert_eq!(
+            typed, legacy,
+            "Gpt4o typed API and gpt-4o-mini legacy API must share o200k_base"
+        );
     }
 
     #[test]
@@ -357,7 +362,10 @@ mod tests {
                      pies, costing $42.99 each. Café résumé naïve façade.";
         let g = count(input, TokenModel::Gpt4o).unwrap();
         let c = count(input, TokenModel::Claude).unwrap();
-        assert_ne!(g, c, "Gpt4o (o200k) and Claude (cl100k) must use distinct encoders");
+        assert_ne!(
+            g, c,
+            "Gpt4o (o200k) and Claude (cl100k) must use distinct encoders"
+        );
     }
 
     #[test]
@@ -428,7 +436,10 @@ mod tests {
         // mis-wired and are routing every model through the same encoder.
         let input = "The quick brown fox jumps over 12 lazy dogs — and 3.14 \
                      pies, costing $42.99 each. Café résumé naïve façade.";
-        let counts: Vec<u32> = HF_MODELS.iter().map(|m| count(input, *m).unwrap()).collect();
+        let counts: Vec<u32> = HF_MODELS
+            .iter()
+            .map(|m| count(input, *m).unwrap())
+            .collect();
         assert!(
             counts.iter().any(|c| *c != counts[0]),
             "all 4 HF models returned identical counts {counts:?} — vocabularies should differ"
@@ -448,16 +459,25 @@ mod tests {
     #[test]
     fn token_model_wire_strings_are_stable() {
         use serde_json::to_string;
-        assert_eq!(to_string(&TokenModel::Gpt4o).unwrap(),        "\"gpt4o\"");
-        assert_eq!(to_string(&TokenModel::Claude).unwrap(),       "\"claude\"");
-        assert_eq!(to_string(&TokenModel::Llama3).unwrap(),       "\"llama3\"");
-        assert_eq!(to_string(&TokenModel::Qwen2_5).unwrap(),      "\"qwen2_5\"");
-        assert_eq!(to_string(&TokenModel::DeepSeek).unwrap(),     "\"deepSeek\"");
-        assert_eq!(to_string(&TokenModel::Mistral).unwrap(),      "\"mistral\"");
-        assert_eq!(to_string(&TokenModel::GeminiApprox).unwrap(), "\"geminiApprox\"");
+        assert_eq!(to_string(&TokenModel::Gpt4o).unwrap(), "\"gpt4o\"");
+        assert_eq!(to_string(&TokenModel::Claude).unwrap(), "\"claude\"");
+        assert_eq!(to_string(&TokenModel::Llama3).unwrap(), "\"llama3\"");
+        assert_eq!(to_string(&TokenModel::Qwen2_5).unwrap(), "\"qwen2_5\"");
+        assert_eq!(to_string(&TokenModel::DeepSeek).unwrap(), "\"deepSeek\"");
+        assert_eq!(to_string(&TokenModel::Mistral).unwrap(), "\"mistral\"");
+        assert_eq!(
+            to_string(&TokenModel::GeminiApprox).unwrap(),
+            "\"geminiApprox\""
+        );
         // round-trip
-        assert_eq!(serde_json::from_str::<TokenModel>("\"gpt4o\"").unwrap(),    TokenModel::Gpt4o);
-        assert_eq!(serde_json::from_str::<TokenModel>("\"qwen2_5\"").unwrap(),  TokenModel::Qwen2_5);
+        assert_eq!(
+            serde_json::from_str::<TokenModel>("\"gpt4o\"").unwrap(),
+            TokenModel::Gpt4o
+        );
+        assert_eq!(
+            serde_json::from_str::<TokenModel>("\"qwen2_5\"").unwrap(),
+            TokenModel::Qwen2_5
+        );
     }
 
     // --- count_all (per-model batch) ---------------------------------------
@@ -498,7 +518,11 @@ mod tests {
                      aliqua. Ut enim ad minim veniam, quis nostrud exercitation \
                      ullamco laboris nisi ut aliquip ex ea commodo consequat.";
         let counts = count_all(input).unwrap();
-        assert!(counts.gpt4o >= 40, "test corpus too short: got {} tokens", counts.gpt4o);
+        assert!(
+            counts.gpt4o >= 40,
+            "test corpus too short: got {} tokens",
+            counts.gpt4o
+        );
         let expected = (u64::from(counts.gpt4o) * 105).div_ceil(100) as u32;
         assert_eq!(counts.gemini_approx, expected);
         assert!(counts.gemini_approx > counts.gpt4o);
@@ -513,7 +537,12 @@ mod tests {
         let input = "The quick brown fox jumps over 12 lazy dogs — and 3.14 \
                      pies, costing $42.99 each. Café résumé naïve façade.";
         let counts = count_all(input).unwrap();
-        let hf = [counts.llama3, counts.qwen2_5, counts.deep_seek, counts.mistral];
+        let hf = [
+            counts.llama3,
+            counts.qwen2_5,
+            counts.deep_seek,
+            counts.mistral,
+        ];
         assert!(
             hf.iter().any(|c| *c != hf[0]),
             "all 4 HF models returned identical counts {hf:?} — vocabularies should differ"
@@ -601,12 +630,12 @@ mod tests {
         let seq = count_all_sequential_oracle(input).unwrap();
         // Per-model parity: one assert per model gives a clean error
         // message when something drifts.
-        assert_eq!(par.gpt4o,         seq.gpt4o,         "gpt4o");
-        assert_eq!(par.claude,        seq.claude,        "claude");
+        assert_eq!(par.gpt4o, seq.gpt4o, "gpt4o");
+        assert_eq!(par.claude, seq.claude, "claude");
         assert_eq!(par.gemini_approx, seq.gemini_approx, "gemini_approx");
-        assert_eq!(par.llama3,        seq.llama3,        "llama3");
-        assert_eq!(par.qwen2_5,       seq.qwen2_5,       "qwen2_5");
-        assert_eq!(par.deep_seek,     seq.deep_seek,     "deep_seek");
-        assert_eq!(par.mistral,       seq.mistral,       "mistral");
+        assert_eq!(par.llama3, seq.llama3, "llama3");
+        assert_eq!(par.qwen2_5, seq.qwen2_5, "qwen2_5");
+        assert_eq!(par.deep_seek, seq.deep_seek, "deep_seek");
+        assert_eq!(par.mistral, seq.mistral, "mistral");
     }
 }

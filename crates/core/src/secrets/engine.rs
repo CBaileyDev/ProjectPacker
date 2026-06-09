@@ -309,8 +309,7 @@ pub fn scan_and_redact(content: &str, ruleset: &RuleSet) -> ScanResult {
     // Walk the original content once, producing both the redacted
     // string and the list of `Redaction` records (with line numbers
     // computed from the original content's newline positions).
-    let mut redacted_content =
-        String::with_capacity(content.len() + kept.len() * 24);
+    let mut redacted_content = String::with_capacity(content.len() + kept.len() * 24);
     let mut redactions: Vec<Redaction> = Vec::with_capacity(kept.len());
 
     let mut cursor: usize = 0;
@@ -427,7 +426,9 @@ mod tests {
         );
         assert_eq!(r.line, 1);
         assert!(
-            result.redacted_content.contains("[REDACTED:aws-access-token]"),
+            result
+                .redacted_content
+                .contains("[REDACTED:aws-access-token]"),
             "redacted content missing token marker: {:?}",
             result.redacted_content,
         );
@@ -585,7 +586,10 @@ keywords = ["aaaa"]
         // The vendored AWS rule keyword is "akia" (lowercase) but real keys use "AKIA".
         // This locks down the AhoCorasick `ascii_case_insensitive(true)` setting against
         // accidental flips during future refactors.
-        let result = scan_and_redact("AKIAIOSFODNN7EXAMPLE\n", crate::secrets::ruleset::vendored());
+        let result = scan_and_redact(
+            "AKIAIOSFODNN7EXAMPLE\n",
+            crate::secrets::ruleset::vendored(),
+        );
         assert_eq!(result.redactions.len(), 1, "exactly one redaction");
         assert_eq!(result.redactions[0].rule_id, "aws-access-token");
     }
@@ -598,7 +602,10 @@ keywords = ["aaaa"]
         let result = scan_and_redact(content, crate::secrets::ruleset::vendored());
         assert_eq!(result.redactions.len(), 1);
         let offset = result.redactions[0].byte_offset as usize;
-        assert!(content.is_char_boundary(offset), "byte_offset {offset} must land on a UTF-8 boundary");
+        assert!(
+            content.is_char_boundary(offset),
+            "byte_offset {offset} must land on a UTF-8 boundary"
+        );
     }
 
     // -----------------------------------------------------------------
@@ -638,7 +645,8 @@ keywords = ["aaaa"]
                 "redacted_content disagrees at index {i}",
             );
             assert_eq!(
-                batch[i].redactions.len(), seq.redactions.len(),
+                batch[i].redactions.len(),
+                seq.redactions.len(),
                 "redactions count disagrees at index {i}",
             );
         }

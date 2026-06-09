@@ -24,7 +24,15 @@ fn tiny_fixture_packs_with_expected_files() {
         ..PackOptions::default()
     };
     let (tx, _rx) = std::sync::mpsc::channel();
-    let result = pack::pack(&PackTarget::Folder(root.clone()), &opts, tx, "test-job", CancellationToken::new(), None).unwrap();
+    let result = pack::pack(
+        &PackTarget::Folder(root.clone()),
+        &opts,
+        tx,
+        "test-job",
+        CancellationToken::new(),
+        None,
+    )
+    .unwrap();
 
     assert!(result.output.contains("README.md"));
     assert!(result.output.contains("src/main.rs"));
@@ -44,7 +52,15 @@ fn tiny_fixture_detects_secret() {
         ..PackOptions::default()
     };
     let (tx, _rx) = std::sync::mpsc::channel();
-    let result = pack::pack(&PackTarget::Folder(root.clone()), &opts, tx, "test-job", CancellationToken::new(), None).unwrap();
+    let result = pack::pack(
+        &PackTarget::Folder(root.clone()),
+        &opts,
+        tx,
+        "test-job",
+        CancellationToken::new(),
+        None,
+    )
+    .unwrap();
     assert!(
         result.stats.secrets_found >= 1,
         "expected at least one secret hit"
@@ -85,11 +101,7 @@ fn pack_emits_security_report_and_redactions_for_xml() {
     use tempfile::tempdir;
 
     let d = tempdir().unwrap();
-    fs::write(
-        d.path().join("danger.txt"),
-        "key = AKIAIOSFODNN7EXAMPLE\n",
-    )
-    .unwrap();
+    fs::write(d.path().join("danger.txt"), "key = AKIAIOSFODNN7EXAMPLE\n").unwrap();
 
     let opts = PackOptions {
         goal: "x".into(),
@@ -105,14 +117,17 @@ fn pack_emits_security_report_and_redactions_for_xml() {
         &opts,
         tx,
         "job-secrep-xml",
-        CancellationToken::new(), None,
+        CancellationToken::new(),
+        None,
     )
     .unwrap();
 
     // Structured surface
     assert!(
-        result.redactions.iter().any(|r| r.rule_id == "aws-access-token"
-            && r.file == "danger.txt"),
+        result
+            .redactions
+            .iter()
+            .any(|r| r.rule_id == "aws-access-token" && r.file == "danger.txt"),
         "expected aws-access-token redaction on danger.txt, got: {:?}",
         result.redactions,
     );
@@ -147,8 +162,18 @@ fn tiny_fixture_includes_protocol_block() {
         ..PackOptions::default()
     };
     let (tx, _rx) = std::sync::mpsc::channel();
-    let result = pack::pack(&PackTarget::Folder(root.clone()), &opts, tx, "test-job", CancellationToken::new(), None).unwrap();
-    assert!(result.output.contains("<protocol version=\"grok-to-cc-v1\">"));
+    let result = pack::pack(
+        &PackTarget::Folder(root.clone()),
+        &opts,
+        tx,
+        "test-job",
+        CancellationToken::new(),
+        None,
+    )
+    .unwrap();
+    assert!(result
+        .output
+        .contains("<protocol version=\"grok-to-cc-v1\">"));
     assert!(result.output.contains("<user_task>"));
     assert!(result.output.contains("Add docs"));
 }
@@ -169,7 +194,8 @@ fn tiny_fixture_packs_as_markdown() {
         &opts,
         tx,
         "test-job-md",
-        CancellationToken::new(), None,
+        CancellationToken::new(),
+        None,
     )
     .unwrap();
 
@@ -178,7 +204,10 @@ fn tiny_fixture_packs_as_markdown() {
         "Markdown output must start with '# Repository Pack', got: {:?}",
         &result.output[..result.output.len().min(120)],
     );
-    assert!(result.output.contains("## Files"), "missing '## Files' section");
+    assert!(
+        result.output.contains("## Files"),
+        "missing '## Files' section"
+    );
     assert!(
         result.output.contains("```rust"),
         "expected a ```rust fenced code block (src/main.rs is Rust)",
@@ -206,7 +235,8 @@ fn tiny_fixture_packs_as_plain_text() {
         &opts,
         tx,
         "test-job-plain",
-        CancellationToken::new(), None,
+        CancellationToken::new(),
+        None,
     )
     .unwrap();
 

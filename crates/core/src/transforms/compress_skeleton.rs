@@ -7,7 +7,11 @@ use crate::tree_sitter_compress;
 pub fn apply(path: &str, content: &str) -> Option<String> {
     let lang = tree_sitter_compress::detect_language(path)?;
     let new = tree_sitter_compress::compress(content, lang);
-    if new == content { None } else { Some(new) }
+    if new == content {
+        None
+    } else {
+        Some(new)
+    }
 }
 
 #[cfg(test)]
