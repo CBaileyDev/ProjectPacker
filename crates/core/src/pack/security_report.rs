@@ -212,7 +212,9 @@ mod tests {
         assert!(out.contains("weird\\|path/file.rs"));
         // The literal pipe-with-slash should not appear unescaped in any data cell.
         let table_lines: Vec<&str> = out.lines().filter(|l| l.starts_with("| ")).collect();
-        let data_row = table_lines.last().unwrap();
+        let data_row = table_lines
+            .last()
+            .expect("markdown security report must contain at least one `| `-prefixed table row");
         // Count only un-escaped column separators (i.e. `|` not preceded by `\`).
         let cell_count = data_row.matches('|').count() - data_row.matches("\\|").count();
         // 5 separators expected for a 4-column row (`| a | b | c | d |`).
@@ -224,7 +226,10 @@ mod tests {
         let reds = vec![r("src/danger.txt", "aws-access-token", 2, 6)];
         let out = emit_plain(&reds);
         assert!(out.contains("=== SECURITY REPORT ==="));
-        assert!(out.contains("(offset 6)"), "missing (offset N) label: {out}");
+        assert!(
+            out.contains("(offset 6)"),
+            "missing (offset N) label: {out}"
+        );
         assert!(out.contains("aws-access-token"));
         assert!(out.contains("src/danger.txt:2"));
     }

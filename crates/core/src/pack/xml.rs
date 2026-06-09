@@ -69,11 +69,7 @@ impl XmlBuilder {
             escape_text(&block.target_label)
         );
         if !block.goal.is_empty() {
-            let _ = writeln!(
-                self.out,
-                "  <goal>{}</goal>",
-                escape_text(&block.goal)
-            );
+            let _ = writeln!(self.out, "  <goal>{}</goal>", escape_text(&block.goal));
         }
         let _ = writeln!(
             self.out,
@@ -103,11 +99,7 @@ impl XmlBuilder {
             "  <redactions>{}</redactions>",
             block.redacted_bytes
         );
-        let _ = writeln!(
-            self.out,
-            "  <cache_hits>{}</cache_hits>",
-            block.cache_hits
-        );
+        let _ = writeln!(self.out, "  <cache_hits>{}</cache_hits>", block.cache_hits);
         let _ = writeln!(
             self.out,
             "  <duration_ms>{}</duration_ms>",
@@ -159,7 +151,10 @@ impl XmlBuilder {
         self
     }
 
-    pub fn directory_structure(&mut self, paths: &[String]) -> &mut Self {
+    pub fn directory_structure<'a>(
+        &mut self,
+        paths: impl IntoIterator<Item = &'a str>,
+    ) -> &mut Self {
         self.out.push_str("<directory_structure>\n");
         for p in paths {
             self.out.push_str(p);
@@ -242,7 +237,7 @@ impl XmlBuilder {
                 self.out,
                 "<file path=\"{}\"{tokens_attr} hash=\"{}\">",
                 escape_attr(&f.path),
-                f.hash
+                escape_attr(&f.hash)
             );
             self.out.push_str(&escape_text(&f.content));
             if !f.content.ends_with('\n') {
@@ -292,39 +287,20 @@ fn parse_dup_marker(content: &str) -> Option<(&str, &str)> {
     Some((path_part, sha_part))
 }
 
-/// Single-pass-allocation XML text escape. Replaces `&`, `<`, `>` with
-/// their entities. Implemented as two scans — the first counts the
-/// extra bytes the escaped output will need, the second writes the
-/// result into a `String` pre-sized to exactly `s.len() + extra` bytes
-/// — which avoids the chained-`replace` quadratic-realloc behaviour and
-/// over-allocation of the previous implementation.
+/// Single-allocation XML text escape. Replaces `&`, `<`, `>` with their
+/// entities via the shared span-copying scanner in `pack::xml_escape_with`:
+/// one counting pass sizes the output exactly, then the unchanged spans
+/// between specials are copied as whole `&str` slices (multibyte UTF-8 safe
+/// — the specials are single-byte ASCII, so slice boundaries always land on
+/// char boundaries). Inputs with no specials return a plain copy without
+/// per-char work.
 fn escape_text(s: &str) -> String {
-    // Pass 1: count extra bytes needed.
-    //   `&` → `&amp;`  (+4)
-    //   `<` → `&lt;`   (+3)
-    //   `>` → `&gt;`   (+3)
-    let mut extra = 0usize;
-    for &b in s.as_bytes() {
-        match b {
-            b'&' => extra += 4,
-            b'<' | b'>' => extra += 3,
-            _ => {}
-        }
-    }
-    if extra == 0 {
-        return s.to_owned();
-    }
-    // Pass 2: build the output exactly once.
-    let mut out = String::with_capacity(s.len() + extra);
-    for c in s.chars() {
-        match c {
-            '&' => out.push_str("&amp;"),
-            '<' => out.push_str("&lt;"),
-            '>' => out.push_str("&gt;"),
-            other => out.push(other),
-        }
-    }
-    out
+    crate::pack::xml_escape_with(s, |b| match b {
+        b'&' => Some("&amp;"),
+        b'<' => Some("&lt;"),
+        b'>' => Some("&gt;"),
+        _ => None,
+    })
 }
 
 #[cfg(test)]
@@ -364,6 +340,24 @@ mod tests {
         b.files_legacy(&[entry]);
         let s = b.finish();
         assert!(s.contains(r#"path="a&quot;b.txt""#));
+    }
+
+    /// Hashes are hex in practice, but the attribute must still be escaped
+    /// for consistency/defense — a `"` in the value must not break out of
+    /// the attribute.
+    #[test]
+    fn escapes_hash_attribute_in_legacy_schema() {
+        let entry = FileEntry {
+            path: "a.txt".into(),
+            content: "hi".into(),
+            bytes: 2,
+            tokens: None,
+            hash: r#"x"y"#.into(),
+        };
+        let mut b = XmlBuilder::new();
+        b.files_legacy(&[entry]);
+        let s = b.finish();
+        assert!(s.contains(r#"hash="x&quot;y""#));
     }
 
     #[test]
@@ -496,12 +490,21 @@ mod tests {
 
         assert!(s.contains("<documents>"), "must contain <documents>");
         assert!(s.contains("<document index=\"1\">"), "must contain index=1");
-        assert!(s.contains("<source>src/main.rs</source>"), "must contain <source>");
-        assert!(s.contains("<document_content>"), "must contain <document_content>");
+        assert!(
+            s.contains("<source>src/main.rs</source>"),
+            "must contain <source>"
+        );
+        assert!(
+            s.contains("<document_content>"),
+            "must contain <document_content>"
+        );
         assert!(s.contains("<document index=\"2\">"), "must contain index=2");
         // Legacy tags must NOT appear.
         assert!(!s.contains("<files>"), "must NOT contain legacy <files>");
-        assert!(!s.contains("<file path="), "must NOT contain legacy <file path=");
+        assert!(
+            !s.contains("<file path="),
+            "must NOT contain legacy <file path="
+        );
     }
 
     /// F1-2: index attribute is 1-based and monotonically increasing.
@@ -535,15 +538,21 @@ mod tests {
         let s = b.finish();
 
         // doc 1 must have <tokens>5</tokens>
-        assert!(s.contains("<tokens>5</tokens>"), "doc 1 must contain <tokens>5</tokens>");
+        assert!(
+            s.contains("<tokens>5</tokens>"),
+            "doc 1 must contain <tokens>5</tokens>"
+        );
 
         // doc 2 must NOT have any <tokens> child element.
         // Find the second document block and check within it.
         let doc2_start = s.find("index=\"2\"").expect("index=2 missing");
-        let doc2_end = s.find("</document>").and_then(|p| {
-            // find the second </document>
-            s[p + 1..].find("</document>").map(|q| p + 1 + q)
-        }).unwrap_or(s.len());
+        let doc2_end = s
+            .find("</document>")
+            .and_then(|p| {
+                // find the second </document>
+                s[p + 1..].find("</document>").map(|q| p + 1 + q)
+            })
+            .unwrap_or(s.len());
         let doc2_text = &s[doc2_start..doc2_end];
         assert!(
             !doc2_text.contains("<tokens>"),
@@ -600,6 +609,21 @@ mod tests {
     fn escape_text_mixed_content() {
         let out = escape_text("a < b && c > d");
         assert_eq!(out, "a &lt; b &amp;&amp; c &gt; d");
+    }
+
+    /// Multibyte UTF-8 mixed with specials must survive the byte-position
+    /// span-copy path intact — a naive byte-iteration escaper that pushed
+    /// `*b as char` would corrupt `é` here.
+    #[test]
+    fn escape_text_multibyte_utf8_mixed_with_specials() {
+        assert_eq!(
+            escape_text("café & friends < 10"),
+            "café &amp; friends &lt; 10"
+        );
+        // Specials directly adjacent to multibyte chars on both sides.
+        assert_eq!(escape_text("日本<語>&雪"), "日本&lt;語&gt;&amp;雪");
+        // No specials at all: multibyte input returned unchanged.
+        assert_eq!(escape_text("naïve café 日本語"), "naïve café 日本語");
     }
 
     #[test]

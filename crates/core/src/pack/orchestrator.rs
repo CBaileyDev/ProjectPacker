@@ -2,15 +2,15 @@ use crate::error::{CoreError, CoreResult};
 use crate::ignore::IgnoreMatcher;
 use crate::pack::pin;
 use crate::pack::xml::XmlBuilder;
-use crate::pack::{markdown, plain};
 use crate::pack::FileEntry;
+use crate::pack::{markdown, plain};
 use crate::protocol;
 use crate::secrets;
 use crate::tokens;
 use crate::tokens::TokensPerModel;
 use crate::types::{
-    FileFound, PackFormat, PackOptions, PackRedaction, PackResult, PackStats,
-    PackTarget, PackWarning, ProgressEvent, WarningKind, XmlSchema,
+    FileFound, PackFormat, PackOptions, PackRedaction, PackResult, PackStats, PackTarget,
+    PackWarning, ProgressEvent, WarningKind, XmlSchema,
 };
 use crate::walker::{self, WalkOptions};
 use rayon::prelude::*;
@@ -30,20 +30,6 @@ pub type PackEvent = ProgressEvent;
 /// (or on `flush_all` / drop).
 const THROTTLE_WINDOW: Duration = Duration::from_millis(100);
 const FILE_FOUND_BATCH: usize = 50;
-
-/// Internal classification used while batching. Variants that need throttling
-/// carry the minimal data needed to reconstruct the public `ProgressEvent`;
-/// `Other` is a pass-through bucket for events that ship unchanged.
-///
-/// This enum is private — the wire format is `ProgressEvent` and is not
-/// affected.
-#[allow(dead_code)]
-enum ProgressEventDelta {
-    Walking(u32),
-    FileFound(FileFound),
-    SecretHit { path: String, kind: String, line: u32 },
-    Other(ProgressEvent),
-}
 
 /// IPC event throttler. Cuts UI flooding from three sources:
 ///
@@ -82,12 +68,14 @@ impl EventThrottler {
         }
     }
 
-    /// Borrow the underlying tx for low-frequency pass-through events
-    /// (transform lifecycle, etc.). The throttler's own buffers are NOT
-    /// flushed first — callers must ensure that's correct for their event.
-    /// For TransformStart/Done this is safe: those events have no ordering
-    /// constraint with FileFound or SecretHit.
-    fn passthrough_tx(&self) -> &Sender<ProgressEvent> {
+    /// Flush all buffered throttled state, then hand out the underlying tx
+    /// for low-frequency pass-through events (transform lifecycle, etc.).
+    /// Flushing first keeps the wire-order invariants safe by construction —
+    /// no buffered FileFoundBatch/SecretHit can be reordered after events
+    /// sent on the returned sender, so callers carry no manual-flush
+    /// responsibility.
+    fn passthrough_tx(&mut self) -> &Sender<ProgressEvent> {
+        self.flush_all();
         &self.tx
     }
 
@@ -116,7 +104,9 @@ impl EventThrottler {
 
     fn flush_walking_now(&mut self) {
         if let Some(scanned) = self.pending_walking.take() {
-            let _ = self.tx.send(ProgressEvent::Walking { files_scanned: scanned });
+            let _ = self.tx.send(ProgressEvent::Walking {
+                files_scanned: scanned,
+            });
             self.last_walking_emit = Some(Instant::now());
         }
     }
@@ -139,9 +129,11 @@ impl EventThrottler {
 
     /// Buffer one SecretHit. Flushes the buffered group once at most every
     /// [`THROTTLE_WINDOW`]; each flush emits individual `SecretHit` events
-    /// back-to-back (preserves wire format).
-    fn push_secret_hit(&mut self, path: String, kind: String, line: u32) {
-        self.secret_hit_buf.push((path, kind, line));
+    /// back-to-back (preserves wire format). Takes `&str` so callers don't
+    /// have to pre-clone; the owned copy for the buffer is made here.
+    fn push_secret_hit(&mut self, path: &str, kind: &str, line: u32) {
+        self.secret_hit_buf
+            .push((path.to_owned(), kind.to_owned(), line));
         let now = Instant::now();
         let due = self
             .last_secret_emit
@@ -213,11 +205,24 @@ pub fn pack(
         target_label: label.clone(),
     });
 
-    let (outcome, pinned_rel_paths, pinned_set, walk_ms) = run_walk_phase(&root, opts);
+    let (mut outcome, pinned_rel_paths, walk_ms) = run_walk_phase(&root, opts);
+    let pinned_set: HashSet<&str> = pinned_rel_paths.iter().map(String::as_str).collect();
+
+    // files_total accounting numbers, captured before `outcome.included` is
+    // consumed by the process phase below.
+    let files_total = (outcome.included.len() + outcome.skipped.len()) as u32;
+    let files_skipped = outcome.skipped.len() as u32;
 
     // Coalesce + batch the walk-phase events. `push_walking` may drop intermediate
     // values; `push_file_found` flushes at every FILE_FOUND_BATCH boundary and the
     // remainder ships when `BuildingOutput` triggers a flush below.
+    //
+    // One owned copy per file is unavoidable here: the IPC channel takes
+    // ownership of each FileFound while the process phase below also needs
+    // the path. This used to cost two String clones per file (event clone +
+    // a second `f.path.clone()` into the FileEntry); `run_process_phase` now
+    // consumes `outcome.included` and moves the path into the entry, so this
+    // clone is the only one left.
     throttler.push_walking(outcome.included.len() as u32);
     for f in &outcome.included {
         throttler.push_file_found(f.clone());
@@ -239,7 +244,7 @@ pub fn pack(
     throttler.send_passthrough(ProgressEvent::BuildingOutput);
 
     let (mut entries, process_warnings, process_ms) =
-        run_process_phase(&outcome, opts, &root, &cancel);
+        run_process_phase(std::mem::take(&mut outcome.included), opts, &root, &cancel);
     warnings.extend(process_warnings);
 
     // Checkpoint 2: after process loop.
@@ -260,8 +265,7 @@ pub fn pack(
     let (secrets_found, all_redactions, secret_scan_ms) =
         run_secret_scan_phase(&mut entries, opts, &mut throttler);
 
-    let (tokens_per_model, tokenize_ms, tokenize_warnings) =
-        run_tokenize_phase(&mut entries, opts);
+    let (tokens_per_model, tokenize_ms, tokenize_warnings) = run_tokenize_phase(&mut entries, opts);
     warnings.extend(tokenize_warnings);
 
     let (bytes_total, tokens_total) = accumulate_byte_token_totals(&entries);
@@ -281,9 +285,9 @@ pub fn pack(
     // the pre-emit version, but its `emit_ms` is never serialized into the
     // pack output (renderers don't read that field today).
     let stats = PackStats {
-        files_total: (outcome.included.len() + outcome.skipped.len()) as u32,
+        files_total,
         files_included: entries.len() as u32,
-        files_skipped: outcome.skipped.len() as u32,
+        files_skipped,
         bytes_total,
         tokens_total: opts.count_tokens.then_some(tokens_total),
         tokens_per_model,
@@ -294,12 +298,18 @@ pub fn pack(
         secret_scan_ms,
         tokenize_ms,
         emit_ms: 0,
-        transforms: transform_reports.clone(),
+        transforms: transform_reports,
         transform_phase_ms,
     };
 
-    let (output, emit_ms) =
-        run_emit_phase(&entries, &stats, opts, &label, &all_redactions, pinned_count)?;
+    let (output, emit_ms) = run_emit_phase(
+        &entries,
+        &stats,
+        opts,
+        &label,
+        &all_redactions,
+        pinned_count,
+    )?;
 
     // Refresh stats with real emit_ms and updated total duration_ms.
     let stats = PackStats {
@@ -342,11 +352,10 @@ pub fn pack(
 /// in `pack()` directly so the historical event order (`Cloning` →
 /// `Started` → walker) is preserved without threading the channel down here.
 ///
-/// Returns `(outcome, pinned_rel_paths, pinned_set, walk_ms)`.
-fn run_walk_phase(
-    root: &Path,
-    opts: &PackOptions,
-) -> (walker::WalkOutcome, Vec<String>, HashSet<String>, u32) {
+/// Returns `(outcome, pinned_rel_paths, walk_ms)`. The pinned-path lookup
+/// set used by the later reorder is built by the caller as `HashSet<&str>`
+/// borrowing from `pinned_rel_paths` (avoids cloning every pinned path).
+fn run_walk_phase(root: &Path, opts: &PackOptions) -> (walker::WalkOutcome, Vec<String>, u32) {
     let walk_start = Instant::now();
     let matcher = IgnoreMatcher::new(root, &opts.custom_ignore_patterns, opts.respect_gitignore);
     let mut outcome = walker::walk(
@@ -364,31 +373,27 @@ fn run_walk_phase(
     // afterwards (pinned entries render first).
     let pinned_rel_paths: Vec<String> = pin::pinned_files(root);
 
-    // Build a fast lookup of paths already in outcome.included.
-    let mut already_included: HashSet<String> = outcome
-        .included
-        .iter()
-        .map(|f| f.path.clone())
-        .collect();
+    // Selection pass (borrow-only): decide which pinned paths need
+    // force-inclusion. `already_included` keys borrow straight from
+    // `outcome.included` — no per-path clone — so the actual pushes happen
+    // in a second pass once the borrows end. A pinned path is force-included
+    // when the walker missed it, the user tier doesn't explicitly exclude
+    // it, and it hasn't been chosen already (dedup).
+    let to_force: Vec<&String> = {
+        let already_included: HashSet<&str> =
+            outcome.included.iter().map(|f| f.path.as_str()).collect();
+        let mut chosen: HashSet<&str> = HashSet::new();
+        pinned_rel_paths
+            .iter()
+            .filter(|p| {
+                !already_included.contains(p.as_str())
+                    && !matcher.is_user_ignored(Path::new(p.as_str()), false)
+                    && chosen.insert(p.as_str())
+            })
+            .collect()
+    };
 
-    let mut pinned_set: HashSet<String> = HashSet::new();
-
-    for pinned_path in &pinned_rel_paths {
-        pinned_set.insert(pinned_path.clone());
-
-        if already_included.contains(pinned_path) {
-            // Already included by the walker — nothing to add, just track it.
-            continue;
-        }
-
-        // Not included by the walker. Check whether the user tier explicitly
-        // excludes it. If so, respect that and skip.
-        let native_path = std::path::Path::new(pinned_path);
-        if matcher.is_user_ignored(native_path, false) {
-            // User explicitly excluded this pinned file — honour it.
-            continue;
-        }
-
+    for pinned_path in to_force {
         // Force-include: the file exists (pinned_files already checked) and
         // the user hasn't blocked it. Read metadata for bytes.
         let abs = root.join(pinned_path.replace('/', std::path::MAIN_SEPARATOR_STR));
@@ -401,30 +406,30 @@ fn run_walk_phase(
             path: pinned_path.clone(),
             bytes,
         });
-        already_included.insert(pinned_path.clone());
     }
     // ── End pin pre-pass ──────────────────────────────────────────────────────
     let walk_ms = walk_start.elapsed().as_millis() as u32;
 
-    (outcome, pinned_rel_paths, pinned_set, walk_ms)
+    (outcome, pinned_rel_paths, walk_ms)
 }
 
-/// Per-file processing in `par_iter`: read + encoding-fallback + hash.
+/// Per-file processing in `into_par_iter`: read + encoding-fallback + hash.
+/// Consumes the walker's `included` list so each `FileFound.path` is moved
+/// (not cloned) into its `FileEntry`.
 /// Returns `(entries, accumulated_warnings, process_ms)`.
 ///
 /// Note: `_opts` is retained for signature stability; comment-strip and
 /// skeleton-compress have moved to the transform phase but other future
 /// per-file opts may live here.
 fn run_process_phase(
-    outcome: &walker::WalkOutcome,
+    included: Vec<FileFound>,
     _opts: &PackOptions,
     root: &Path,
     cancel: &CancellationToken,
 ) -> (Vec<FileEntry>, Vec<PackWarning>, u32) {
     let process_start = Instant::now();
-    let results: Vec<(FileEntry, Vec<PackWarning>)> = outcome
-        .included
-        .par_iter()
+    let results: Vec<(FileEntry, Vec<PackWarning>)> = included
+        .into_par_iter()
         .map(|f| {
             let abs = root.join(&f.path);
             let mut file_warnings: Vec<PackWarning> = Vec::new();
@@ -433,7 +438,7 @@ fn run_process_phase(
             if cancel.is_cancelled() {
                 return (
                     FileEntry {
-                        path: f.path.clone(),
+                        path: f.path,
                         content: String::new(),
                         bytes: 0,
                         tokens: None,
@@ -479,7 +484,7 @@ fn run_process_phase(
 
             (
                 FileEntry {
-                    path: f.path.clone(),
+                    path: f.path,
                     content,
                     bytes: f.bytes,
                     tokens: None,
@@ -515,11 +520,10 @@ fn run_process_phase(
 fn apply_pin_reorder(
     entries: &mut Vec<FileEntry>,
     pinned_rel_paths: &[String],
-    pinned_set: &HashSet<String>,
+    pinned_set: &HashSet<&str>,
 ) -> usize {
     // Build a lookup from path → index in the `entries` Vec.
-    let mut path_to_idx: std::collections::HashMap<&str, usize> =
-        std::collections::HashMap::new();
+    let mut path_to_idx: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
     for (i, e) in entries.iter().enumerate() {
         path_to_idx.insert(e.path.as_str(), i);
     }
@@ -567,11 +571,14 @@ fn apply_pin_reorder(
     // refactor that breaks that contiguity.
     let pinned_count = entries
         .iter()
-        .take_while(|e| pinned_set.contains(&e.path))
+        .take_while(|e| pinned_set.contains(e.path.as_str()))
         .count();
     debug_assert_eq!(
         pinned_count,
-        entries.iter().filter(|e| pinned_set.contains(&e.path)).count(),
+        entries
+            .iter()
+            .filter(|e| pinned_set.contains(e.path.as_str()))
+            .count(),
         "pin reorder must produce a contiguous pinned prefix",
     );
     pinned_count
@@ -619,7 +626,7 @@ fn run_secret_scan_phase(
         for (e, redactions) in entries.iter().zip(per_file.iter()) {
             for r in redactions {
                 secrets_found += 1;
-                throttler.push_secret_hit(e.path.clone(), r.rule_id.clone(), r.line);
+                throttler.push_secret_hit(&e.path, &r.rule_id, r.line);
                 all_redactions.push(PackRedaction {
                     file: e.path.clone(),
                     rule_id: r.rule_id.clone(),
@@ -677,8 +684,8 @@ fn run_tokenize_phase(
     // preserve order) and flattened back into `warnings` after.
     let tokenize_warnings: Vec<Option<PackWarning>> = entries
         .par_iter_mut()
-        .map(|e| {
-            match tokens::count_by_name(&opts.tokenizer_model, &e.content) {
+        .map(
+            |e| match tokens::count_by_name(&opts.tokenizer_model, &e.content) {
                 Ok(n) => {
                     e.tokens = Some(n);
                     None
@@ -691,8 +698,8 @@ fn run_tokenize_phase(
                         message: format!("token count failed: {err}"),
                     })
                 }
-            }
-        })
+            },
+        )
         .collect();
     let warnings: Vec<PackWarning> = tokenize_warnings.into_iter().flatten().collect();
 
@@ -714,7 +721,11 @@ fn run_tokenize_phase(
         acc.mistral = acc.mistral.saturating_add(c.mistral);
         acc.gemini_approx = acc.gemini_approx.saturating_add(c.gemini_approx);
     }
-    (Some(acc), Some(tokenize_start.elapsed().as_millis() as u32), warnings)
+    (
+        Some(acc),
+        Some(tokenize_start.elapsed().as_millis() as u32),
+        warnings,
+    )
 }
 
 /// Accumulate `bytes_total` + `tokens_total` across `entries`.
@@ -750,24 +761,27 @@ fn run_emit_phase(
     all_redactions: &[PackRedaction],
     pinned_count: usize,
 ) -> CoreResult<(String, u32)> {
-    let dir_paths: Vec<String> = entries.iter().map(|e| e.path.clone()).collect();
-
     let emit_start = Instant::now();
     let output = match opts.format {
         PackFormat::Xml => {
             let protocol_block = protocol::block_for_pack(&opts.goal, &opts.protocol_version)?;
-            let mut builder = XmlBuilder::with_capacity((stats.bytes_total as usize).saturating_mul(2));
+            let mut builder =
+                XmlBuilder::with_capacity((stats.bytes_total as usize).saturating_mul(2));
             builder
                 .open_repository()
                 .raw_block(&protocol_block)
                 .stats_block(label, opts, stats, entries, all_redactions)
                 .security_report_block(all_redactions)
                 .compression_report_block(stats)
-                .directory_structure(&dir_paths);
+                .directory_structure(entries.iter().map(|e| e.path.as_str()));
             // Route to the Anthropic cxml schema (default) or the legacy schema.
             match opts.xml_schema {
-                XmlSchema::Cxml => { builder.documents(entries); }
-                XmlSchema::Legacy => { builder.files_legacy(entries); }
+                XmlSchema::Cxml => {
+                    builder.documents(entries);
+                }
+                XmlSchema::Legacy => {
+                    builder.files_legacy(entries);
+                }
             }
             builder.close_repository();
             builder.finish()
@@ -809,7 +823,11 @@ fn resolve_target(
     job_id: &str,
     tx: &Sender<PackEvent>,
     github_token: Option<&str>,
-) -> CoreResult<(std::path::PathBuf, String, Option<crate::github::ClonedRepo>)> {
+) -> CoreResult<(
+    std::path::PathBuf,
+    String,
+    Option<crate::github::ClonedRepo>,
+)> {
     match target {
         PackTarget::Folder(p) => Ok((p.clone(), p.display().to_string(), None)),
         PackTarget::GitHub(url) => {
@@ -890,8 +908,18 @@ mod tests {
             ..PackOptions::default()
         };
         let (tx, _rx) = std::sync::mpsc::channel();
-        let result = pack(&PackTarget::Folder(d.path().to_path_buf()), &opts, tx, "job-test", CancellationToken::new(), None).unwrap();
-        assert!(result.output.contains("<protocol version=\"grok-to-cc-v1\">"));
+        let result = pack(
+            &PackTarget::Folder(d.path().to_path_buf()),
+            &opts,
+            tx,
+            "job-test",
+            CancellationToken::new(),
+            None,
+        )
+        .unwrap();
+        assert!(result
+            .output
+            .contains("<protocol version=\"grok-to-cc-v1\">"));
         assert!(result.output.contains("<documents>"));
         assert!(result.output.contains("<document "));
         assert!(result.output.contains("README.md"));
@@ -912,7 +940,15 @@ mod tests {
             ..PackOptions::default()
         };
         let (tx, rx) = std::sync::mpsc::channel();
-        let _ = pack(&PackTarget::Folder(d.path().to_path_buf()), &opts, tx, "job-test", CancellationToken::new(), None).unwrap();
+        let _ = pack(
+            &PackTarget::Folder(d.path().to_path_buf()),
+            &opts,
+            tx,
+            "job-test",
+            CancellationToken::new(),
+            None,
+        )
+        .unwrap();
         let mut events: Vec<&'static str> = Vec::new();
         for ev in rx.try_iter() {
             events.push(match ev {
@@ -974,7 +1010,8 @@ mod tests {
             &opts,
             tx,
             "job-skip-flood",
-            CancellationToken::new(), None,
+            CancellationToken::new(),
+            None,
         )
         .unwrap();
         let skipped_event_count = rx
@@ -1066,7 +1103,15 @@ mod tests {
             ..PackOptions::default()
         };
         let (tx, _rx) = std::sync::mpsc::channel();
-        let result = pack(&PackTarget::Folder(d.path().to_path_buf()), &opts, tx, "job-test", CancellationToken::new(), None).unwrap();
+        let result = pack(
+            &PackTarget::Folder(d.path().to_path_buf()),
+            &opts,
+            tx,
+            "job-test",
+            CancellationToken::new(),
+            None,
+        )
+        .unwrap();
 
         assert!(
             result
@@ -1081,9 +1126,8 @@ mod tests {
 
     #[test]
     fn read_text_with_fallback_errors_on_missing_file() {
-        let result = read_text_with_fallback(std::path::Path::new(
-            "/definitely/does/not/exist/xyz.txt",
-        ));
+        let result =
+            read_text_with_fallback(std::path::Path::new("/definitely/does/not/exist/xyz.txt"));
         assert!(matches!(result, Err(CoreError::FileIo { .. })));
     }
 
@@ -1099,12 +1143,20 @@ mod tests {
         let (tx, _rx) = std::sync::mpsc::channel();
         let result = pack(
             &PackTarget::Folder(d.path().to_path_buf()),
-            &opts, tx, "job-test", CancellationToken::new(), None,
-        ).unwrap();
+            &opts,
+            tx,
+            "job-test",
+            CancellationToken::new(),
+            None,
+        )
+        .unwrap();
         // Phase ran (even if reports vec is empty until individual transforms wire in).
-        assert!(result.stats.transform_phase_ms <= result.stats.duration_ms,
+        assert!(
+            result.stats.transform_phase_ms <= result.stats.duration_ms,
             "transform_phase_ms ({}) must fit within duration_ms ({})",
-            result.stats.transform_phase_ms, result.stats.duration_ms);
+            result.stats.transform_phase_ms,
+            result.stats.duration_ms
+        );
     }
 
     #[test]
@@ -1119,10 +1171,21 @@ mod tests {
         let (tx, _rx) = std::sync::mpsc::channel();
         let result = pack(
             &PackTarget::Folder(d.path().to_path_buf()),
-            &opts, tx, "job-test", CancellationToken::new(), None,
-        ).unwrap();
-        assert!(result.stats.secret_scan_ms.is_some(), "secret_scan_ms must be Some when enabled, got None");
-        assert!(result.stats.tokenize_ms.is_some(), "tokenize_ms must be Some when enabled, got None");
+            &opts,
+            tx,
+            "job-test",
+            CancellationToken::new(),
+            None,
+        )
+        .unwrap();
+        assert!(
+            result.stats.secret_scan_ms.is_some(),
+            "secret_scan_ms must be Some when enabled, got None"
+        );
+        assert!(
+            result.stats.tokenize_ms.is_some(),
+            "tokenize_ms must be Some when enabled, got None"
+        );
 
         // Real timing sanity check: phases run sequentially inside pack(), so
         // their elapsed-times must sum to no more than the total wall clock
@@ -1166,9 +1229,18 @@ mod tests {
         let (tx, _rx) = std::sync::mpsc::channel();
         let result = pack(
             &PackTarget::Folder(d.path().to_path_buf()),
-            &opts, tx, "job-test", CancellationToken::new(), None,
-        ).unwrap();
-        assert!(result.stats.secret_scan_ms.is_none(), "secret_scan_ms must be None when disabled, got {:?}", result.stats.secret_scan_ms);
+            &opts,
+            tx,
+            "job-test",
+            CancellationToken::new(),
+            None,
+        )
+        .unwrap();
+        assert!(
+            result.stats.secret_scan_ms.is_none(),
+            "secret_scan_ms must be None when disabled, got {:?}",
+            result.stats.secret_scan_ms
+        );
         assert!(result.stats.tokenize_ms.is_some());
     }
 
@@ -1184,9 +1256,18 @@ mod tests {
         let (tx, _rx) = std::sync::mpsc::channel();
         let result = pack(
             &PackTarget::Folder(d.path().to_path_buf()),
-            &opts, tx, "job-test", CancellationToken::new(), None,
-        ).unwrap();
-        assert!(result.stats.tokenize_ms.is_none(), "tokenize_ms must be None when disabled, got {:?}", result.stats.tokenize_ms);
+            &opts,
+            tx,
+            "job-test",
+            CancellationToken::new(),
+            None,
+        )
+        .unwrap();
+        assert!(
+            result.stats.tokenize_ms.is_none(),
+            "tokenize_ms must be None when disabled, got {:?}",
+            result.stats.tokenize_ms
+        );
         assert!(result.stats.secret_scan_ms.is_some());
     }
 
@@ -1206,7 +1287,14 @@ mod tests {
         cancel.cancel(); // signal before pack() starts
 
         let start = std::time::Instant::now();
-        let result = pack(&PackTarget::Folder(d.path().to_path_buf()), &opts, tx, "job-cancel-test", cancel, None);
+        let result = pack(
+            &PackTarget::Folder(d.path().to_path_buf()),
+            &opts,
+            tx,
+            "job-cancel-test",
+            cancel,
+            None,
+        );
         let elapsed = start.elapsed();
 
         assert!(
@@ -1244,13 +1332,20 @@ mod tests {
             &opts,
             tx,
             "job-pin-order",
-            CancellationToken::new(), None,
+            CancellationToken::new(),
+            None,
         )
         .unwrap();
 
         // The output must contain AGENTS.md before random.md.
-        let agents_pos = result.output.find("AGENTS.md").expect("AGENTS.md not in output");
-        let random_pos = result.output.find("random.md").expect("random.md not in output");
+        let agents_pos = result
+            .output
+            .find("AGENTS.md")
+            .expect("AGENTS.md not in output");
+        let random_pos = result
+            .output
+            .find("random.md")
+            .expect("random.md not in output");
         assert!(
             agents_pos < random_pos,
             "AGENTS.md must appear before random.md in the output"
@@ -1275,7 +1370,8 @@ mod tests {
             &opts,
             tx,
             "job-tokens-per-model",
-            CancellationToken::new(), None,
+            CancellationToken::new(),
+            None,
         )
         .unwrap();
 
@@ -1320,7 +1416,8 @@ mod tests {
             &opts,
             tx,
             "job-tokens-per-model-empty",
-            CancellationToken::new(), None,
+            CancellationToken::new(),
+            None,
         )
         .unwrap();
 
@@ -1355,7 +1452,8 @@ mod tests {
             &opts,
             tx,
             "job-tokens-per-model-off",
-            CancellationToken::new(), None,
+            CancellationToken::new(),
+            None,
         )
         .unwrap();
 
@@ -1387,7 +1485,8 @@ mod tests {
             &opts,
             tx,
             "job-pin-excluded",
-            CancellationToken::new(), None,
+            CancellationToken::new(),
+            None,
         )
         .unwrap();
 
@@ -1457,7 +1556,11 @@ mod tests {
             "expected 1 full batch + 1 buffered (drop-flushed) = 2; got {batches:?}"
         );
         assert_eq!(batches[0].len(), 50, "first batch must hit the 50-item cap");
-        assert_eq!(batches[1].len(), 1, "trailing batch must contain the 1 buffered item");
+        assert_eq!(
+            batches[1].len(),
+            1,
+            "trailing batch must contain the 1 buffered item"
+        );
     }
 
     /// SecretHits emitted with a delay between groups should fire as
@@ -1473,14 +1576,14 @@ mod tests {
         // (no `last_secret_emit` yet); subsequent pushes stay buffered until
         // the next allowed flush.
         for i in 0..5u32 {
-            throttler.push_secret_hit("a.rs".into(), "aws_access_key".into(), i);
+            throttler.push_secret_hit("a.rs", "aws_access_key", i);
         }
 
         // Wait beyond the throttle window before pushing the second group.
         std::thread::sleep(THROTTLE_WINDOW + Duration::from_millis(20));
 
         for i in 0..5u32 {
-            throttler.push_secret_hit("b.rs".into(), "github_token".into(), i);
+            throttler.push_secret_hit("b.rs", "github_token", i);
         }
         // Drop flushes any tail.
         drop(throttler);
@@ -1505,15 +1608,27 @@ mod tests {
         let (tx, rx) = std::sync::mpsc::channel();
         let mut throttler = EventThrottler::new(tx);
         throttler.push_walking(7);
-        throttler.push_file_found(FileFound { path: "x.rs".into(), bytes: 1 });
-        throttler.push_secret_hit("x.rs".into(), "rule".into(), 1);
+        throttler.push_file_found(FileFound {
+            path: "x.rs".into(),
+            bytes: 1,
+        });
+        throttler.push_secret_hit("x.rs", "rule", 1);
         throttler.flush_all();
         drop(throttler);
 
         let events: Vec<ProgressEvent> = rx.try_iter().collect();
-        let walking = events.iter().filter(|e| matches!(e, ProgressEvent::Walking { .. })).count();
-        let batches = events.iter().filter(|e| matches!(e, ProgressEvent::FileFoundBatch { .. })).count();
-        let hits = events.iter().filter(|e| matches!(e, ProgressEvent::SecretHit { .. })).count();
+        let walking = events
+            .iter()
+            .filter(|e| matches!(e, ProgressEvent::Walking { .. }))
+            .count();
+        let batches = events
+            .iter()
+            .filter(|e| matches!(e, ProgressEvent::FileFoundBatch { .. }))
+            .count();
+        let hits = events
+            .iter()
+            .filter(|e| matches!(e, ProgressEvent::SecretHit { .. }))
+            .count();
         assert!(walking >= 1, "walking must be flushed");
         assert!(batches >= 1, "file-found batch must be flushed");
         assert!(hits >= 1, "secret hits must be flushed");
@@ -1604,7 +1719,10 @@ mod tests {
     fn throttler_passthrough_flushes_first() {
         let (tx, rx) = std::sync::mpsc::channel();
         let mut throttler = EventThrottler::new(tx);
-        throttler.push_file_found(FileFound { path: "x.rs".into(), bytes: 1 });
+        throttler.push_file_found(FileFound {
+            path: "x.rs".into(),
+            bytes: 1,
+        });
         throttler.send_passthrough(ProgressEvent::BuildingOutput);
         drop(throttler);
 

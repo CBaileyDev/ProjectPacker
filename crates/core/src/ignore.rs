@@ -23,15 +23,15 @@ pub struct IgnoreMatcher {
 
 impl IgnoreMatcher {
     pub fn new(project_root: &Path, custom_patterns: &[String], respect_gitignore: bool) -> Self {
-        let builtin = build_builtin_tier();
-
-        let project = if respect_gitignore {
-            Some(build_project_tier(project_root))
-        } else {
-            None
-        };
-
-        let custom = build_user_tier(project_root, custom_patterns);
+        // The three tiers are independent compiles (builtin is a large
+        // embedded pattern list; project/user hit the filesystem), so build
+        // them in parallel.
+        let (builtin, (project, custom)) = rayon::join(build_builtin_tier, || {
+            rayon::join(
+                || respect_gitignore.then(|| build_project_tier(project_root)),
+                || build_user_tier(project_root, custom_patterns),
+            )
+        });
 
         Self {
             builtin,
@@ -46,6 +46,10 @@ impl IgnoreMatcher {
     /// Does NOT consult Tier 1 (builtin) or Tier 2 (project / gitignore).
     /// Used by the pin pre-pass to decide whether a pinned file has been
     /// explicitly excluded by the user.
+    ///
+    /// Negation (`!pattern`) is honoured: the user tier's `Gitignore`
+    /// applies gitignore last-match-wins internally, so a whitelisted path
+    /// yields a non-ignore match here and is reported as NOT user-ignored.
     pub fn is_user_ignored(&self, path: &Path, is_dir: bool) -> bool {
         if let Some(c) = &self.custom {
             let m = c.matched_path_or_any_parents(path, is_dir);
@@ -56,10 +60,23 @@ impl IgnoreMatcher {
         false
     }
 
+    /// Tier precedence: user (Tier 3, highest) → project (Tier 2) →
+    /// builtin (Tier 1, lowest).
+    ///
+    /// Within a tier the `ignore` crate applies gitignore last-match-wins;
+    /// across tiers the highest-priority tier with a definitive match
+    /// (ignore OR whitelist) decides. This lets e.g. a user `!important.log`
+    /// re-include a file the builtin defaults (`*.log`) would drop, and a
+    /// user ignore beat a project-level `!negation`.
     pub fn is_ignored(&self, path: &Path, is_dir: bool) -> bool {
-        let m = self.builtin.matched_path_or_any_parents(path, is_dir);
-        if m.is_ignore() {
-            return true;
+        if let Some(c) = &self.custom {
+            let m = c.matched_path_or_any_parents(path, is_dir);
+            if m.is_ignore() {
+                return true;
+            }
+            if m.is_whitelist() {
+                return false;
+            }
         }
 
         if let Some(p) = &self.project {
@@ -72,17 +89,9 @@ impl IgnoreMatcher {
             }
         }
 
-        if let Some(c) = &self.custom {
-            let m = c.matched_path_or_any_parents(path, is_dir);
-            if m.is_ignore() {
-                return true;
-            }
-            if m.is_whitelist() {
-                return false;
-            }
-        }
-
-        false
+        self.builtin
+            .matched_path_or_any_parents(path, is_dir)
+            .is_ignore()
     }
 }
 
@@ -266,6 +275,31 @@ mod tests {
         );
     }
 
+    /// User-tier negation must be honoured by BOTH `is_ignored` and
+    /// `is_user_ignored`: `*.log` + `!important.log` keeps important.log.
+    /// Within the user tier `Gitignore` applies last-match-wins (whitelist
+    /// beats the earlier `*.log`); across tiers the user whitelist must also
+    /// beat the BUILTIN `*.log` default — i.e. user tier outranks Tier 1.
+    #[test]
+    fn custom_patterns_whitelist_overrides_ignore() {
+        let m = IgnoreMatcher::new(
+            Path::new("/tmp/empty"),
+            &["*.log".into(), "!important.log".into()],
+            false,
+        );
+        assert!(m.is_ignored(Path::new("debug.log"), false));
+        assert!(
+            !m.is_ignored(Path::new("important.log"), false),
+            "!important.log must override *.log in is_ignored"
+        );
+        // The pin pre-pass path must see the same negation semantics.
+        assert!(m.is_user_ignored(Path::new("debug.log"), false));
+        assert!(
+            !m.is_user_ignored(Path::new("important.log"), false),
+            "!important.log must override *.log in is_user_ignored"
+        );
+    }
+
     /// Tier 3: `custom_patterns` can negate (`!pattern`) lines from `.repomixignore`.
     /// This proves the user tier honours whitelist semantics, just like the project tier.
     /// (Note: gitignore semantics forbid re-including a file under an excluded
@@ -331,5 +365,4 @@ mod tests {
             "bar.foo must NOT be ignored — .codeparserignore is no longer read"
         );
     }
-
 }
