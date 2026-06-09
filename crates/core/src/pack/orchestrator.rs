@@ -318,7 +318,7 @@ pub fn pack(
         ..stats
     };
 
-    let claude_code_prompt = protocol::claude_code_prompt(&opts.protocol_version)?;
+    let executor_prompt = protocol::executor_prompt(&opts.protocol_version)?;
 
     // Checkpoint 3: after emit, before returning result.
     if cancel.is_cancelled() {
@@ -341,7 +341,7 @@ pub fn pack(
 
     Ok(PackResult {
         output,
-        claude_code_prompt,
+        executor_prompt,
         stats,
         warnings,
         redactions: all_redactions,
@@ -919,15 +919,13 @@ mod tests {
         .unwrap();
         assert!(result
             .output
-            .contains("<protocol version=\"grok-to-cc-v1\">"));
+            .contains("<protocol version=\"plan-exec-v1\">"));
         assert!(result.output.contains("<documents>"));
         assert!(result.output.contains("<document "));
         assert!(result.output.contains("README.md"));
         assert!(result.output.contains("a.rs"));
         assert_eq!(result.stats.files_included, 2);
-        assert!(result
-            .claude_code_prompt
-            .contains("EXECUTOR with veto power"));
+        assert!(result.executor_prompt.contains("EXECUTOR with veto power"));
     }
 
     #[test]

@@ -29,7 +29,7 @@ vi.mock("../../lib/store", () => {
     maxFileSizeKb: 1024,
     respectGitignore: true,
     customIgnorePatterns: [],
-    protocolVersion: "grok-to-cc-v1",
+    protocolVersion: "plan-exec-v1",
     format: "xml",
     xmlSchema: "cxml",
   };

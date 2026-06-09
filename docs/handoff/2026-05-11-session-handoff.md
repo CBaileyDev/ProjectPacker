@@ -17,7 +17,7 @@ ProjectPacker is a **Windows Tauri 2 desktop app** (Rust core + React frontend) 
 1. **Plan with Grok** — paste the pack into Grok, get back a structured plan in a strict format.
 2. **Execute with Claude Code** — paste the plan + pack into Claude Code, which validates the plan against the embedded protocol and executes step-by-step.
 
-The "protocol" is the `grok-to-cc-v1` format embedded in every pack (`docs/protocol/grok-to-cc-v1.md`). It's the contract between the two AIs.
+The "protocol" is the `plan-exec-v1` format embedded in every pack (`docs/protocol/plan-exec-v1.md`). It's the contract between the two AIs.
 
 **Hard constraints (fixed in `PLAN.md`):**
 - **GUI-only.** No CLI mode, no `-0` flag, no headless binary, no MCP server mode.
@@ -75,7 +75,7 @@ Function `pack(target, opts, tx, job_id, cancel, github_token) -> CoreResult<Pac
 
 | Phase | Function | What |
 |---|---|---|
-| 1. Walk | `run_walk_phase` | `IgnoreMatcher` (3-tier: builtin / project gitignore / user `.repomixignore` + custom) → `walker::walk` → pin pre-pass (auto-includes `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`, `.claude/**`) |
+| 1. Walk | `run_walk_phase` | `IgnoreMatcher` (3-tier: builtin / project gitignore / user `.projectpackerignore` (or `.repomixignore` fallback) + custom) → `walker::walk` → pin pre-pass (auto-includes `AGENTS.md`, `CLAUDE.md`, `.cursor/rules/`, `.claude/**`) |
 | 2. Process | `run_process_phase` | Parallel (Rayon `par_iter`): read with encoding fallback (UTF-8 → UTF-16LE → UTF-16BE → Windows-1252), optional comment-removal (tree-sitter), optional skeleton compression, BLAKE3 hash |
 | 3. Pin reorder | `apply_pin_reorder` | Index permutation + `mem::take` (no `String` clones) to push pinned files to the front |
 | 4. Secret scan | `run_secret_scan_phase` | Parallel `par_iter_mut` running gitleaks `scan_and_redact` per file; serial post-pass for deterministic `SecretHit` event order + redaction aggregation |
@@ -157,7 +157,7 @@ This runs Vite dev server on `localhost:1420` AND launches the Tauri app pointin
 | `projectpacker-app` lib tests | 38 | App-shell tests (`settings.rs` atomic save, `jobs.rs` JobRegistry, etc.) |
 | `projectpacker-core` lib tests | 203 | All `#[cfg(test)] mod tests` inside core source files (types, ignore, walker, secrets engine, tokens, tree-sitter, protocol, pack phases) |
 | `pack_integration.rs` | 6 | End-to-end against the `tests/fixtures/tiny` fixture — covers XML, Markdown, and Plain output paths + secret redaction |
-| `protocol_golden.rs` | 3 | Insta snapshot tests for `grok-to-cc-v1` template stability |
+| `protocol_golden.rs` | 3 | Insta snapshot tests for `plan-exec-v1` template stability |
 | Ignored (release-only) | 1 | `secrets::engine::tests::perf_100k_under_two_seconds` — regex backtracking is debug-build slow; runs only with `--release --include-ignored`. Passes in ~2s release. |
 
 **Always-green verification gate before push:**
@@ -212,7 +212,7 @@ The pack output ships post-redaction content (`[REDACTED:<rule-id>]` markers); t
 - All files under `.cursor/rules/`
 - All files under `.claude/**`
 
-User can override via `.repomixignore` (user-tier explicit excludes win over pinning).
+User can override via `.projectpackerignore` (user-tier explicit excludes win over pinning).
 
 ### Atomic settings save
 

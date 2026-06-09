@@ -88,7 +88,7 @@ mod tests {
 
         let result = PackResult {
             output: "x".into(),
-            claude_code_prompt: String::new(),
+            executor_prompt: String::new(),
             stats: projectpacker_core::types::PackStats {
                 files_total: 0,
                 files_included: 0,

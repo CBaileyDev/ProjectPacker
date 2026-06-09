@@ -5,8 +5,9 @@ expression: s
 You are operating directly inside the repository this plan refers to.
 You have full file access — use it.
 
-Below is a plan produced by a planner AI (Grok) using protocol version
-grok-to-cc-v1. Your role in this workflow is EXECUTOR with veto power.
+Below is a plan produced by a planner AI (any web AI: Grok, ChatGPT,
+Gemini, Claude) using protocol version plan-exec-v1. Your role in this
+workflow is EXECUTOR with veto power.
 
 ## How to handle this plan
 
@@ -44,4 +45,4 @@ grok-to-cc-v1. Your role in this workflow is EXECUTOR with veto power.
 
 ---
 
-[The plan from Grok will be inserted here by the Bridge step.]
+[The plan from the planner will be inserted here by the Bridge step.]

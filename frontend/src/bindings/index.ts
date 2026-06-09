@@ -152,7 +152,7 @@ xmlSchema?: XmlSchema }
  * secrets, even partially.
  */
 export type PackRedaction = { file: string; ruleId: string; line: number; byteOffset: number }
-export type PackResult = { output: string; claudeCodePrompt: string; stats: PackStats; warnings: PackWarning[]; redactions: PackRedaction[] }
+export type PackResult = { output: string; executorPrompt: string; stats: PackStats; warnings: PackWarning[]; redactions: PackRedaction[] }
 export type PackStats = { filesTotal: number; filesIncluded: number; filesSkipped: number; bytesTotal: number; 
 /**
  * Token count under the user-selected tokenizer (`opts.tokenizer_model`),

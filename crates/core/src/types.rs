@@ -100,7 +100,7 @@ impl Default for PackOptions {
             max_file_size_kb: 1024,
             respect_gitignore: true,
             custom_ignore_patterns: Vec::new(),
-            protocol_version: "grok-to-cc-v1".into(),
+            protocol_version: "plan-exec-v1".into(),
             format: PackFormat::Xml,
             xml_schema: XmlSchema::Cxml,
         }
@@ -247,7 +247,7 @@ pub struct PackRedaction {
 #[serde(rename_all = "camelCase")]
 pub struct PackResult {
     pub output: String,
-    pub claude_code_prompt: String,
+    pub executor_prompt: String,
     pub stats: PackStats,
     pub warnings: Vec<PackWarning>,
     pub redactions: Vec<PackRedaction>,
@@ -260,7 +260,7 @@ mod tests {
     #[test]
     fn pack_options_default_has_v1_protocol() {
         let opts = PackOptions::default();
-        assert_eq!(opts.protocol_version, "grok-to-cc-v1");
+        assert_eq!(opts.protocol_version, "plan-exec-v1");
         assert_eq!(opts.tokenizer_model, "gpt-4o-mini");
         assert_eq!(opts.max_file_size_kb, 1024);
         assert!(opts.respect_gitignore);
@@ -304,7 +304,7 @@ mod tests {
             "compress": false,
             "removeComments": false,
             "tokenizerModel": "claude",
-            "protocolVersion": "grok-to-cc-v1",
+            "protocolVersion": "plan-exec-v1",
             "maxFileSizeKb": 512,
             "customIgnorePatterns": []
         }"#;

@@ -12,9 +12,10 @@ const BUILTIN_DEFAULTS: &str = include_str!("ignore_defaults.txt");
 ///   Source: `<root>/.gitignore` and `<root>/.git/info/exclude`.
 ///
 /// Tier 3 — User-level (always active when any user input exists).
-///   Source: `<root>/.repomixignore` (if present) merged with
-///            the caller-supplied `custom_patterns` slice.
-///   `.repomixignore` lines come first so custom_patterns can override them.
+///   Source: `<root>/.projectpackerignore` (or `.repomixignore` as a
+///            fallback) merged with the caller-supplied `custom_patterns`
+///            slice. File lines come first so custom_patterns can override
+///            them.
 pub struct IgnoreMatcher {
     builtin: Gitignore,
     project: Option<Gitignore>,
@@ -40,7 +41,7 @@ impl IgnoreMatcher {
         }
     }
 
-    /// Check only the user tier (Tier 3: `.repomixignore` + `custom_patterns`).
+    /// Check only the user tier (Tier 3: user ignore file + `custom_patterns`).
     ///
     /// Returns `true` if the path is explicitly ignored by the user tier.
     /// Does NOT consult Tier 1 (builtin) or Tier 2 (project / gitignore).
@@ -110,26 +111,32 @@ fn build_project_tier(root: &Path) -> Gitignore {
 }
 
 /// Tier 3: user-level patterns.
-/// Merges `.repomixignore` (if present) with caller-supplied `custom_patterns`.
-/// `.repomixignore` lines come first so `custom_patterns` can override them
-/// — including via gitignore-style negation (`!pattern`), which `is_ignored`
-/// honours uniformly across project and user tiers.
+/// Merges the user ignore file (if present) with caller-supplied
+/// `custom_patterns`. File lines come first so `custom_patterns` can
+/// override them — including via gitignore-style negation (`!pattern`),
+/// which `is_ignored` honours uniformly across project and user tiers.
+///
+/// `.projectpackerignore` is the native filename; `.repomixignore` is read
+/// as a fallback so repos already configured for Repomix work unchanged.
+/// When both exist, only `.projectpackerignore` is consulted.
 fn build_user_tier(root: &Path, custom_patterns: &[String]) -> Option<Gitignore> {
-    let repomix_path = root.join(".repomixignore");
-    let repomix_lines: Vec<String> = std::fs::read_to_string(&repomix_path)
+    let file_lines: Vec<String> = [".projectpackerignore", ".repomixignore"]
+        .iter()
+        .map(|name| std::fs::read_to_string(root.join(name)).unwrap_or_default())
+        .find(|content| !content.trim().is_empty())
         .unwrap_or_default()
         .lines()
         .map(String::from)
         .collect();
 
-    let has_repomix = !repomix_lines.is_empty();
+    let has_file = !file_lines.is_empty();
     let has_custom = !custom_patterns.is_empty();
 
-    if !has_repomix && !has_custom {
+    if !has_file && !has_custom {
         return None;
     }
 
-    let all_lines = repomix_lines
+    let all_lines = file_lines
         .iter()
         .map(String::as_str)
         .chain(custom_patterns.iter().map(String::as_str));
@@ -234,18 +241,18 @@ mod tests {
         );
     }
 
-    /// Tier 3: `.repomixignore` applies even when `respect_gitignore = false`,
-    /// proving it is user-tier, not project-tier.
+    /// Tier 3: `.projectpackerignore` applies even when
+    /// `respect_gitignore = false`, proving it is user-tier, not project-tier.
     #[test]
-    fn repomixignore_takes_effect_as_user_layer() {
+    fn projectpackerignore_takes_effect_as_user_layer() {
         let dir = tempdir().unwrap();
-        std::fs::write(dir.path().join(".repomixignore"), "*.bak\n").unwrap();
+        std::fs::write(dir.path().join(".projectpackerignore"), "*.bak\n").unwrap();
 
         // Crucially: respect_gitignore = false — project tier is disabled.
         let m = IgnoreMatcher::new(dir.path(), &[], false);
         assert!(
             m.is_ignored(Path::new("foo.bak"), false),
-            "foo.bak must be ignored via .repomixignore even with respect_gitignore=false"
+            "foo.bak must be ignored via .projectpackerignore even with respect_gitignore=false"
         );
         assert!(
             !m.is_ignored(Path::new("foo.txt"), false),
@@ -253,17 +260,51 @@ mod tests {
         );
     }
 
-    /// Tier 3: `.repomixignore` and `custom_patterns` both contribute to the
-    /// user-level matcher; patterns from both sources must fire.
+    /// Tier 3 fallback: `.repomixignore` is honoured when no
+    /// `.projectpackerignore` exists, so Repomix-configured repos work
+    /// unchanged.
     #[test]
-    fn repomixignore_and_custom_patterns_combine() {
+    fn repomixignore_read_as_fallback() {
         let dir = tempdir().unwrap();
-        std::fs::write(dir.path().join(".repomixignore"), "dist/\n").unwrap();
+        std::fs::write(dir.path().join(".repomixignore"), "*.bak\n").unwrap();
+
+        let m = IgnoreMatcher::new(dir.path(), &[], false);
+        assert!(
+            m.is_ignored(Path::new("foo.bak"), false),
+            "foo.bak must be ignored via the .repomixignore fallback"
+        );
+    }
+
+    /// Tier 3 precedence: when both files exist, `.projectpackerignore`
+    /// wins and `.repomixignore` is not consulted.
+    #[test]
+    fn projectpackerignore_wins_over_repomixignore() {
+        let dir = tempdir().unwrap();
+        std::fs::write(dir.path().join(".projectpackerignore"), "*.native\n").unwrap();
+        std::fs::write(dir.path().join(".repomixignore"), "*.fallback\n").unwrap();
+
+        let m = IgnoreMatcher::new(dir.path(), &[], false);
+        assert!(
+            m.is_ignored(Path::new("a.native"), false),
+            "patterns from .projectpackerignore must apply"
+        );
+        assert!(
+            !m.is_ignored(Path::new("a.fallback"), false),
+            ".repomixignore must be ignored when .projectpackerignore exists"
+        );
+    }
+
+    /// Tier 3: the user ignore file and `custom_patterns` both contribute to
+    /// the user-level matcher; patterns from both sources must fire.
+    #[test]
+    fn user_ignore_file_and_custom_patterns_combine() {
+        let dir = tempdir().unwrap();
+        std::fs::write(dir.path().join(".projectpackerignore"), "dist/\n").unwrap();
 
         let m = IgnoreMatcher::new(dir.path(), &["build/".into()], false);
         assert!(
             m.is_ignored(Path::new("dist/bundle.js"), false),
-            "dist/bundle.js must be ignored via .repomixignore"
+            "dist/bundle.js must be ignored via .projectpackerignore"
         );
         assert!(
             m.is_ignored(Path::new("build/output.js"), false),
@@ -300,19 +341,20 @@ mod tests {
         );
     }
 
-    /// Tier 3: `custom_patterns` can negate (`!pattern`) lines from `.repomixignore`.
-    /// This proves the user tier honours whitelist semantics, just like the project tier.
+    /// Tier 3: `custom_patterns` can negate (`!pattern`) lines from the user
+    /// ignore file. This proves the user tier honours whitelist semantics,
+    /// just like the project tier.
     /// (Note: gitignore semantics forbid re-including a file under an excluded
     /// directory, so this exercises the file-pattern path which is allowed.)
     #[test]
-    fn user_tier_negation_overrides_repomixignore() {
+    fn user_tier_negation_overrides_ignore_file() {
         let dir = tempdir().unwrap();
-        std::fs::write(dir.path().join(".repomixignore"), "*.bak\n").unwrap();
+        std::fs::write(dir.path().join(".projectpackerignore"), "*.bak\n").unwrap();
 
         let m = IgnoreMatcher::new(dir.path(), &["!keep.bak".into()], false);
         assert!(
             !m.is_ignored(Path::new("keep.bak"), false),
-            "!keep.bak in custom_patterns must override *.bak from .repomixignore"
+            "!keep.bak in custom_patterns must override *.bak from .projectpackerignore"
         );
         assert!(
             m.is_ignored(Path::new("other.bak"), false),

@@ -4,8 +4,34 @@ All notable changes to ProjectPacker are documented in this file. The format fol
 
 ## [Unreleased]
 
-### Added
-- **Compression pipeline (v0.6)** — 10 individually-toggleable content transforms with per-transform savings telemetry.
+## [1.0.0] - 2026-06-09
+
+First public release. Versions 0.1.0-dev through 0.6.0-dev below were internal development milestones and were never published; this release is the first build with binaries.
+
+### Highlights
+
+- **Pack any repo into AI-ready output** — point ProjectPacker at a local folder or public GitHub URL and get a single self-describing XML (or Markdown / plain-text) file: directory tree, per-file contents, stats, and warnings.
+- **Validated planner→executor protocol (`plan-exec-v1`)** — every pack embeds a versioned protocol block instructing the planner AI (any web AI: Grok, ChatGPT, Gemini, Claude) to emit a strict-format plan with mandatory per-step rationales. The **Bridge tab** validates pasted plans against the protocol grammar before they reach your executor agent (Claude Code, Cursor, aider): valid plans become a one-click combined executor prompt; invalid plans get a ready-made re-prompt naming every violation.
+- **Secret scanning** — vendored gitleaks v8.25.0 ruleset (~167 rules) with entropy gating and in-place `[REDACTED:<rule-id>]` substitution, plus a `<security_report>` block listing every redaction.
+- **Multi-model token counts** — authentic tokenizers for GPT-4o, Llama 3, Qwen 2.5, DeepSeek, and Mistral (vendored, offline), with proxy estimates for Claude and Gemini.
+- **Compression pipeline** — 10 individually-toggleable content transforms (4 lossless on by default, 3 semantic, 3 code-shaping including tree-sitter skeleton compression), with per-transform savings telemetry and a `<compression_report>` block.
+- **Fully offline, zero telemetry, BYO AI** — no accounts, no API keys, no network calls except the optional GitHub clone you ask for. ProjectPacker never edits your files.
+- **Cross-platform** — Windows (MSI + NSIS installer), macOS (Apple Silicon dmg), and Linux (AppImage + deb).
+- `.projectpackerignore` for user-level ignore patterns; `.repomixignore` is honoured as a fallback so Repomix-configured repos work unchanged. `.gitignore` and built-in defaults stack underneath.
+
+### Installation notes
+
+- **Binaries are unsigned at this stage.** Windows SmartScreen will warn on first run — click "More info" → "Run anyway". On macOS, Gatekeeper quarantines the app: run `xattr -cr /Applications/ProjectPacker.app` after installing, or right-click → Open.
+- Verify your download against the published `.sha256` file for each asset: `sha256sum -c <asset>.sha256` (Linux), `shasum -a 256 -c <asset>.sha256` (macOS), or `Get-FileHash` (Windows).
+
+---
+
+## Pre-release development history (never published)
+
+### 0.6.0-dev
+
+#### Added
+- **Compression pipeline** — 10 individually-toggleable content transforms with per-transform savings telemetry.
   - 4 lossless (default ON): `dedup_files`, `trim_trailing_ws`, `collapse_blank_lines`, `normalize_line_endings`.
   - 3 semantic (default OFF): `collapse_lockfiles`, `collapse_minified`, `mark_generated`.
   - 3 code-shaping / lossy (default OFF): `compress` (skeleton, renamed in UI to "Skeleton-compress functions"), `remove_comments`, `elide_type_only_exports` (new).
@@ -14,24 +40,24 @@ All notable changes to ProjectPacker are documented in this file. The format fol
 - New `ProgressEvent::TransformStart` / `TransformDone` events for live UI updates.
 - First Vitest test in the frontend (`CompressionPanel.test.tsx`).
 
-### Changed
+#### Changed
 - `PackOptions` gains 8 new fields. Old presets deserialize cleanly thanks to `#[serde(default)]`.
 - `compress` and `remove_comments` continue to use those exact field names on disk for preset compatibility; UI labels them as "Skeleton-compress functions" and "Strip comments" respectively.
 
-### Internal
+#### Internal
 - New `crates/core/src/transforms/` module — one file per transform.
 - New pack pipeline phase between `process` and `pin-reorder` (`run_transform_phase`).
 - `PackStats` gains `transforms: Vec<TransformReport>` and `transform_phase_ms: u32`.
 - New `WarningKind::TransformFailed` for per-file per-transform failures.
 
-## [0.5.0] - 2026-05-06
+### 0.5.0-dev — 2026-05-06
 
-### Refactored
+#### Refactored
 - **`crates/core/src/pack/orchestrator.rs::pack`** decomposed from a ~420-line inline body into a 122-line orchestrator that calls 7 private phase helpers in dataflow order: `run_walk_phase`, `run_process_phase`, `apply_pin_reorder`, `run_secret_scan_phase`, `run_tokenize_phase`, `accumulate_byte_token_totals`, `run_emit_phase`. Cancel checkpoints, event order, `_clone_guard` lifetime, and post-emit stats refresh all preserved. No behavior change.
 - **`frontend/src/routes/Pack.tsx`** slimmed from 711 → 324 LoC. Sub-components extracted into `frontend/src/components/pack/{Toggle,CopyButton,StatsBar,PhaseBreakdown,AiContextTable,ProgressLog,DropOverlay}.tsx`; format helpers into `frontend/src/lib/format.ts`; AI model data into `frontend/src/lib/ai-models.ts`.
 - **`usePackJob` hook** extracted into `frontend/src/lib/use-pack-job.ts` (106 LoC). Owns Channel<ProgressEvent> reuse across runs, runPack lifecycle, errorMsg state, and re-entry guards. Pack.tsx now just calls `const { run, errorMsg, isRunning } = usePackJob();`.
 
-### Removed
+#### Removed
 - **Dead Rust deps:** `parking_lot`, `arboard`, `anyhow` (app crate), `proptest` (core dev-deps). Verified zero `use` statements anywhere in the workspace.
 - **Dead frontend deps (~10):** `sonner`, `react-hook-form`, `@hookform/resolvers`, `zod`, `class-variance-authority`, `lucide-react`, `tailwind-merge`, `clsx`, `tw-animate-css`, and the `radix-ui` meta-package. All were transitive of the unused shadcn primitives.
 - **`frontend/src/components/ui/`** (entire directory, 14 vendored shadcn primitives, ~1063 LoC). Zero imports outside the folder itself.
@@ -41,12 +67,12 @@ All notable changes to ProjectPacker are documented in this file. The format fol
 - **`PackOptions.include_git_history`** field — declared but never read by the orchestrator.
 - **`#[cfg(test)] pub fn files`** test alias in `pack/xml.rs` (rewired 2 callers to `files_legacy`).
 
-### Changed
+#### Changed
 - **`use crate::types::*;` glob in `pack/orchestrator.rs`** replaced with explicit list of the 11 actually-used identifiers.
 - **`format!`-into-`push_str` patterns in `markdown.rs` and `plain.rs`** migrated to `writeln!`/`write!` (xml.rs already used this pattern). Same output, fewer heap allocations per pack.
 - **`pushEvent` Zustand action** caps the `events` array at 256 entries (UI only renders the last 16; prevents O(n²) growth on long-running packs).
 
-### Performance
+#### Performance
 - Release-profile `panic = "abort"` (5–15% smaller release binary; verified no `catch_unwind` callers, only a logging panic hook).
 - **Parallelized secret-scan loop** via Rayon `par_iter_mut`. Each file's `scan_and_redact` runs on its own thread; a short serial post-pass preserves deterministic `SecretHit` event order and `all_redactions` indexing. On a 12-core box with 10k files, ~10–15 s saved on the secret-scan phase alone.
 - **Parallelized per-file tokenize loop** via Rayon. `count_by_name` is pure and `CoreBPE` is `Send + Sync` (returned via `OnceLock<CoreBPE>`). On 10k files at ~5 ms/file, this is ~30–45 s saved sequential → ~5 s on 12 cores.
@@ -56,9 +82,9 @@ All notable changes to ProjectPacker are documented in this file. The format fol
 - **Pin reorder via index permutation + `mem::take`** instead of clone-and-rebuild. Each `FileEntry` is moved exactly once; no `String` clones on `path`/`content`/`hash`. `FileEntry` gains `#[derive(Default)]` to enable the `mem::take` pattern.
 - **Per-file `tokens_per_model` sum replaces joined-string encode**. Previously `tokens_per_model` allocated a single `joined: String` of all entry contents (~content-bytes peak memory) and ran `count_all` over it. Now: parallel per-file `count_all` + saturating-add into a single `TokensPerModel` accumulator. ~content-size peak-memory reduction, plus parallelism. Behavior caveat: per-file sum diverges from joined-encode by typically <1% due to inter-file token-merge effects at file boundaries; users who snapshot-tested exact pre-v0.5 numbers will see slight drift.
 
-## [0.4.0] - 2026-05-05
+### 0.4.0-dev — 2026-05-05
 
-### Added
+#### Added
 - Drag-and-drop folder selection — drop a folder anywhere on the app window to set it as the pack target. Files are resolved to their parent directory; multi-drop takes the first.
 - Per-phase timing in `PackStats`: `walk_ms`, `process_ms`, `secret_scan_ms` (optional), `tokenize_ms` (optional), `emit_ms`. Surfaced as an inline breakdown row in the result panel; gives evidence for future perf decisions without doing premature optimization.
 - `WarningKind::TokenizeFailed` — per-file tokenizer errors (e.g. an unknown `tokenizer_model`) now surface as `PackWarning`s instead of being silently swallowed. `tokens_total` undercount is no longer invisible.
@@ -66,14 +92,14 @@ All notable changes to ProjectPacker are documented in this file. The format fol
 - Integration tests for `PackFormat::Markdown` and `PackFormat::PlainText` (previously only `Xml` was end-to-end tested).
 - Settings save now atomic via write-tmp-then-rename; two new regression tests pin the behaviour.
 
-### Changed
+#### Changed
 - Pack screen auto-switches from GitHub URL mode to Folder mode when a folder is dropped onto the window.
 - `TokenModel::Gpt4o` now uses `o200k_base` (the actual GPT-4o tokenizer) instead of `cl100k_base`. This aligns the typed API's `gpt4o` count with the legacy `count_by_name("gpt-4o-mini")` count, so per-file `tokens_total` and `tokens_per_model.gpt4o` finally agree on encoder. `TokenModel::GeminiApprox` follows (now `o200k_base × 1.05`). `TokenModel::Claude` continues to use `cl100k_base` (Anthropic ships no public tokenizer; cl100k is the closest public proxy). Observable token counts for `Gpt4o`/`GeminiApprox` will shift slightly vs. v0.3.0 — they're now correct for GPT-4o.
 - Per-file `tokens_total` is accumulated as `u64` and saturated to `u32` only at the cast site. Multi-billion-token packs no longer wrap.
 - `useDragDrop` registers its IPC listener once per mount (was once per render); `setIsDragging(true)` only fires on the leading edge of a drag.
 - The pack screen's Channel is now reused across runs via `useRef` (was a fresh Channel per pack — Tauri's IPC handler map leaked one entry per run).
 
-### Fixed
+#### Fixed
 - **Security:** `save_to_file` removed and replaced with `save_pack_output(suggested_filename, contents)`. The new command shows the OS save dialog from the Rust side, so a compromised renderer can't supply an arbitrary write path.
 - **Frontend race:** the pack-progress Channel handler is now installed before `await commands.packStart(...)` (was after). Events fired between the await resolving and the JS continuation reassigning `onmessage` are no longer dropped — `jobId` is captured from the `Started` event payload instead of the await's return value.
 - Settings `save()` is now atomic (write-tmp-then-rename) — a power-loss mid-write no longer produces a 0-byte settings.json that silently loses the user's recents/presets/theme on next load.
@@ -82,9 +108,9 @@ All notable changes to ProjectPacker are documented in this file. The format fol
 - Tighter capabilities — dropped the unused `fs:default` scope (the frontend doesn't call any `@tauri-apps/plugin-fs` API).
 - The 3 v0.4 per-phase timing tests now actually verify timing correctness (sum of phases ≤ duration_ms + slack, each phase ≤ duration_ms). Previously they only type-asserted that the fields existed.
 
-## [0.3.0] - 2026-05-01
+### 0.3.0-dev — 2026-05-01
 
-### Added
+#### Added
 
 #### Tokens — multi-model accuracy
 - Typed `core::tokens::count(text, TokenModel)` API; `TokenModel` enum with 7 variants (`Gpt4o | Claude | Llama3 | Qwen2_5 | DeepSeek | Mistral | GeminiApprox`).
@@ -107,19 +133,19 @@ All notable changes to ProjectPacker are documented in this file. The format fol
 - Performance: warmed scan ~200 µs on a 100 KB fixture (release build); meets the <2s target for 100k LOC.
 - `aho-corasick = "1"` added as core dep.
 
-### Changed
+#### Changed
 - `core::secrets::scan(content) -> Vec<SecretHit>` now backs onto the new engine + vendored ruleset (was hand-rolled 10-rule list). Public API and shape preserved; rule IDs renamed to gitleaks canonical (`aws-access-key` → `aws-access-token`, `github-token` → `github-pat`, `private-key-pem` → `private-key`, etc.).
 - `tests/fixtures/tiny/src/danger.txt` updated from `AKIA0000…` to canonical `AKIAIOSFODNN7EXAMPLE` (the new gitleaks AWS regex enforces the base32 alphabet).
 - Orchestrator now mutates each entry's content to its redacted form before emission; pack output ships `[REDACTED:<rule-id>]` markers in place of secrets.
 
-### Deferred
+#### Deferred
 - The legacy `core::secrets::scan` wrapper remains as orphaned-but-harmless compat for any out-of-tree callers. Removal is on the v0.4+ backlog.
 - `path_filter` (gitleaks `[rules.allowlist].paths`) is not yet modeled in `Rule`; gitleaks allowlists with `regexes`/`commits`/`stopwords` are also ignored. Worth revisiting if false-positive volume grows.
 - The single gitleaks rule `pypi-upload-token` is skipped at load time because its compiled NFA exceeds the 32 MiB regex size limit.
 
-## [0.2.0] - 2026-04-30
+### 0.2.0-dev — 2026-04-30
 
-### Added
+#### Added
 - `PackFormat` enum (`Xml | Markdown | PlainText`) with camelCase JSON serialization and TypeScript bindings.
 - `core::pack::markdown` — Markdown emitter producing fenced code blocks with directory structure and summary table.
 - `core::pack::plain` — Plain-text emitter using `=== path ===` separator format.
@@ -133,16 +159,16 @@ All notable changes to ProjectPacker are documented in this file. The format fol
 - Fatal-error surfacing — orchestrator failures now emit `ProgressEvent::Error { fatal: true }` instead of being silently dropped.
 - Frontend target-mode toggle (Folder / GitHub URL) with GitHub URL validation.
 
-### Changed
+#### Changed
 - `PackResult.xml` renamed to `PackResult.output` throughout Rust core and TypeScript bindings.
 - Frontend redesigned as a single-screen packing tool; removed multi-tab routing (Bridge, Home, Result routes deleted, `react-router-dom` removed).
 - Orchestrator now branches on `PackFormat` to dispatch the correct emitter.
 - `pack()` signature changed from `pack(root: &Path, ...)` to `pack(target: &PackTarget, ...)`. Target resolution (including GitHub clone) now lives in core.
 - `ProgressEvent::BuildingXml` renamed to `ProgressEvent::BuildingOutput` (now correct for all 3 output formats).
 
-## [0.1.0] - 2026-04-30
+### 0.1.0-dev — 2026-04-30
 
-### Added
+#### Added
 - Initial workspace scaffold (Rust workspace + Tauri shell + React/Vite/Tailwind frontend).
 - Design doc and implementation plan committed.
 - MIT license.
@@ -167,7 +193,7 @@ All notable changes to ProjectPacker are documented in this file. The format fol
 - `scripts/build-release.ps1` for local releases.
 - Claude Design handoff prompt at `docs/handoff/claude-design-prompt.md`.
 
-### Deferred to follow-up plans
+#### Deferred to follow-up plans
 - GitHub URL packing wired through the orchestrator (parsing exists; pack rejects with a `not_implemented` error).
 - Comment removal, git history embedding, drag-and-drop folder targeting.
 - Encoding fallback beyond UTF-16LE (Windows-1252 etc.).

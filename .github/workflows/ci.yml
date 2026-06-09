@@ -44,3 +44,28 @@ jobs:
 
       - name: vitest
         run: pnpm --filter projectpacker-frontend test
+
+  # Keeps the Linux release leg from regressing between releases. fmt and
+  # the frontend checks are OS-agnostic and already covered above.
+  test-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux build deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev build-essential libxdo-dev \
+            libssl-dev librsvg2-dev
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: cargo test
+        run: cargo test --workspace --no-fail-fast
