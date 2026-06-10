@@ -10,10 +10,21 @@ import * as m from "framer-motion/m";
 import type { LucideProps } from "lucide-react";
 import { type ComponentType, useEffect, useState } from "react";
 import { ErrorBoundary } from "react-error-boundary";
+import { DropOverlay } from "./components/pack/DropOverlay";
+import { GithubConnector } from "./components/pack/GithubConnector";
 import { AlertIcon, CheckIcon, XIcon } from "./components/pack/icons";
+import { Settings } from "./components/pack/Settings";
+import { Sheet } from "./components/shell/Sheet";
+import { TitleBar } from "./components/shell/TitleBar";
+import { PackJobProvider, usePackJobContext } from "./lib/pack-job-context";
 import { useApp } from "./lib/store";
 import { useToast } from "./lib/toast";
-import Pack from "./routes/Pack";
+import { useDragDrop } from "./lib/use-drag-drop";
+import { useKeyboardShortcuts } from "./lib/use-keyboard-shortcuts";
+import Bridge from "./routes/Bridge";
+import Home from "./routes/Home";
+import Packing from "./routes/Packing";
+import Results from "./routes/Results";
 
 /**
  * Sync the document `<html>` `.dark` class with the OS-level
@@ -128,9 +139,10 @@ function Toaster() {
       // pointer-events-none on the wrapper so the toast stack doesn't
       // capture clicks meant for the underlying UI; individual toast
       // children re-enable pointer events for their own click handlers.
+      // z-[300]: toasts must stay visible above the sheet overlay (z-[200]).
       aria-live="polite"
       aria-atomic="false"
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-[60] flex flex-col items-center gap-2 px-4 pb-4"
+      className="pointer-events-none fixed inset-x-0 bottom-0 z-[300] flex flex-col items-center gap-2 px-4 pb-4"
     >
       <AnimatePresence>
         {toasts.map((t) => {
@@ -211,6 +223,100 @@ function ErrorFallback({
   );
 }
 
+const MOMENTS = {
+  home: Home,
+  packing: Packing,
+  results: Results,
+  bridge: Bridge,
+} as const;
+
+function MomentView() {
+  const moment = useApp((s) => s.moment);
+  const Active = MOMENTS[moment];
+  return (
+    <AnimatePresence mode="wait">
+      <m.div
+        key={moment}
+        initial={{ opacity: 0, y: 12 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -12 }}
+        transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+      >
+        <Active />
+      </m.div>
+    </AnimatePresence>
+  );
+}
+
+function Shell() {
+  const activeSheet = useApp((s) => s.activeSheet);
+  const setSheet = useApp((s) => s.setSheet);
+  const setMoment = useApp((s) => s.setMoment);
+  const patchOptions = useApp((s) => s.patchOptions);
+  const status = useApp((s) => s.status);
+  const { cancel } = usePackJobContext();
+
+  const { isDragging, dropState } = useDragDrop({
+    onDrop: (folderPath: string) => {
+      if (useApp.getState().status === "running") return;
+      patchOptions({ target: { kind: "folder", value: folderPath } });
+      setMoment("home");
+    },
+  });
+
+  useKeyboardShortcuts({
+    "mod+k": () => {
+      setSheet(null);
+      if (useApp.getState().status !== "running") setMoment("home");
+      requestAnimationFrame(() =>
+        document.getElementById("target-input")?.focus(),
+      );
+    },
+    escape: () => {
+      // Single Esc policy for the whole app (Packing registers no Esc
+      // handler so two window listeners can't race on one keypress):
+      // an open sheet closes first; otherwise a running pack cancels.
+      if (useApp.getState().activeSheet) {
+        setSheet(null);
+        return;
+      }
+      if (useApp.getState().status === "running") void cancel();
+    },
+  });
+
+  return (
+    <div className="min-h-screen text-zinc-100">
+      <DropOverlay
+        visible={isDragging && status !== "running"}
+        dropState={dropState}
+      />
+      <TitleBar />
+      <MomentView />
+      <Sheet
+        open={activeSheet === "github"}
+        title="GitHub"
+        onClose={() => setSheet(null)}
+      >
+        <GithubConnector
+          onSelectRepo={(htmlUrl) => {
+            patchOptions({ target: { kind: "github", value: htmlUrl } });
+            setSheet(null);
+            if (useApp.getState().status !== "running") setMoment("home");
+          }}
+          onGoToSettings={() => setSheet("settings")}
+        />
+      </Sheet>
+      <Sheet
+        open={activeSheet === "settings"}
+        title="Settings"
+        onClose={() => setSheet(null)}
+      >
+        <Settings />
+      </Sheet>
+    </div>
+  );
+}
+
 export default function App() {
   useSystemTheme();
   useSingleInstance();
@@ -221,8 +327,10 @@ export default function App() {
           reducedMotion="user"
           transition={{ duration: 0.18, ease: [0.2, 0, 0, 1] }}
         >
-          <Pack />
-          <Toaster />
+          <PackJobProvider>
+            <Shell />
+            <Toaster />
+          </PackJobProvider>
         </MotionConfig>
       </LazyMotion>
     </ErrorBoundary>

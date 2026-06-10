@@ -23,11 +23,16 @@ export function Sheet({ open, title, onClose, children }: SheetProps) {
       restoreRef.current = document.activeElement as HTMLElement | null;
       panelRef.current?.focus();
     } else {
-      restoreRef.current?.focus?.();
+      const el = restoreRef.current;
+      // The element may have unmounted while the sheet was open (moments
+      // swap underneath sheets); restoring focus to a detached node is a
+      // silent no-op, so only bother when it's still in the document.
+      if (el && document.contains(el)) el.focus();
     }
   }, [open]);
 
-  // z-[200]: above DropOverlay (z-50) and the toast stack (z-[60]).
+  // z-[200]: above DropOverlay (z-50); the toast stack rides above the
+  // sheet at z-[300] so toasts stay visible while a sheet is open.
   return (
     <AnimatePresence>
       {open && (

@@ -8,9 +8,9 @@ import { FolderIcon, GithubIcon } from "../pack/icons";
 import { SectionTitle } from "./SectionTitle";
 
 // ─────────────────────────────────────────────────────────────────────────
-// Target + Goal sections — extracted with field-level store selectors so a
-// keystroke in these inputs subscribes only the owning component to the
-// changed field, mirroring the LiveProgress isolation pattern above.
+// TargetSection — the folder / GitHub-URL target picker. Uses field-level
+// store selectors so a keystroke in these inputs re-renders only this
+// component (subscribed to `options.target`), not the whole Home moment.
 // ─────────────────────────────────────────────────────────────────────────
 
 export function TargetSection({
@@ -82,6 +82,7 @@ export function TargetSection({
             }}
           >
             <input
+              id="target-input"
               className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800/60 px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 transition-colors focus:border-emerald-500/50 focus:outline-none"
               value={targetVal}
               placeholder="/path/to/project"
@@ -116,6 +117,7 @@ export function TargetSection({
           >
             <div className="flex gap-2">
               <input
+                id="target-input"
                 className={`flex-1 rounded-lg border bg-zinc-800/60 px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 transition-colors focus:outline-none ${
                   targetVal && !isValidTarget
                     ? "border-red-600 focus:border-red-500"
