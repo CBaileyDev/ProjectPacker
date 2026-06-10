@@ -3,7 +3,7 @@ import { AnimatePresence } from "framer-motion";
 import * as m from "framer-motion/m";
 import { memo, useCallback, useRef, useState } from "react";
 import { springButton } from "../../lib/motion";
-import { useToast } from "../../lib/toast";
+import { useShowToast } from "../../lib/toast";
 import { useKeyboardShortcuts } from "../../lib/use-keyboard-shortcuts";
 import { CheckIcon, CopyIcon, XIcon } from "./icons";
 
@@ -36,7 +36,7 @@ const ERROR_TIMEOUT_MS = 4_000;
 function CopyButtonInner({ label, text }: CopyButtonProps) {
   const [status, setStatus] = useState<CopyStatus>({ kind: "idle" });
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { showToast } = useToast();
+  const showToast = useShowToast();
 
   const doCopy = useCallback(async () => {
     if (resetTimerRef.current !== null) {

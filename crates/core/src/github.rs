@@ -45,12 +45,12 @@ pub struct ClonedRepo {
 }
 
 /// Strip the PAT from any string. Used on every error path that crosses
-/// out of `shallow_clone` so a connection failure doesn't echo the token
-/// into a log/UI/event.
-fn scrub_token(s: String, token: Option<&str>) -> String {
+/// out of `shallow_clone_with_auth` so a connection failure doesn't echo
+/// the token into a log/UI/event.
+pub fn scrub_token(s: &str, token: Option<&str>) -> String {
     match token {
         Some(t) if !t.is_empty() => s.replace(t, "<redacted>"),
-        _ => s,
+        _ => s.to_string(),
     }
 }
 
@@ -69,11 +69,6 @@ fn build_clone_url(parsed: &ParsedGithubUrl, token: Option<&str>) -> String {
     }
 }
 
-/// Backwards-compatible: clone without auth.
-pub fn shallow_clone(url: &str, job_id: &str) -> CoreResult<ClonedRepo> {
-    shallow_clone_with_auth(url, job_id, None)
-}
-
 /// Clone, optionally embedding a PAT for private-repo access. The token
 /// is scrubbed from any error message before it leaves this function so
 /// gix's URL-prefixed errors don't surface the credential.
@@ -90,11 +85,11 @@ pub fn shallow_clone_with_auth(
     let target = temp.path().join(&parsed.repo);
     let clone_url = build_clone_url(&parsed, token);
 
-    let scrub = |e: gix::clone::Error| CoreError::CloneFailed(scrub_token(e.to_string(), token));
+    let scrub = |e: gix::clone::Error| CoreError::CloneFailed(scrub_token(&e.to_string(), token));
     let scrub_fetch =
-        |e: gix::clone::fetch::Error| CoreError::CloneFailed(scrub_token(e.to_string(), token));
+        |e: gix::clone::fetch::Error| CoreError::CloneFailed(scrub_token(&e.to_string(), token));
     let scrub_worktree = |e: gix::clone::checkout::main_worktree::Error| {
-        CoreError::CloneFailed(scrub_token(e.to_string(), token))
+        CoreError::CloneFailed(scrub_token(&e.to_string(), token))
     };
 
     gix::prepare_clone(clone_url.as_str(), &target)

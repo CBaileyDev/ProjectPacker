@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { PackOptions } from "../../bindings";
+import { fmtBytesSaved } from "../../lib/format";
 import { useLastStats, usePackOptions } from "../../lib/store";
 import { TransformRow } from "./TransformRow";
 
@@ -105,13 +106,6 @@ const LOSSY: TransformSpec[] = [
 ];
 
 const ALL_SPECS: TransformSpec[] = [...LOSSLESS, ...SEMANTIC, ...LOSSY];
-
-function formatBytes(n: number): string {
-  if (n === 0) return "0 B";
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(2)} MB`;
-}
 
 /**
  * Collapsible disclosure that bundles all 10 compression toggles into one
@@ -222,7 +216,7 @@ export function CompressionPanel() {
           className="nums text-xs text-transform-savings"
         >
           {transforms.length > 0
-            ? `Last run: ${formatBytes(totalSaved)} saved`
+            ? `Last run: ${fmtBytesSaved(totalSaved)} saved`
             : ""}
         </span>
       </button>

@@ -1,6 +1,7 @@
 import * as m from "framer-motion/m";
 import { useEffect, useMemo, useState } from "react";
 import { commands, type GithubRepo } from "../../bindings";
+import { fmtNum } from "../../lib/format";
 import { fadeUp, springButton } from "../../lib/motion";
 import { useGithubToken } from "../../lib/use-github-token";
 import {
@@ -253,7 +254,7 @@ function RepoRow({ repo, onClick }: { repo: GithubRepo; onClick: () => void }) {
           {repo.stargazersCount > 0 && (
             <span className="flex items-center gap-1">
               <StarIcon size={10} />
-              {repo.stargazersCount.toLocaleString()}
+              {fmtNum(repo.stargazersCount)}
             </span>
           )}
           <span>updated {new Date(repo.pushedAt).toLocaleDateString()}</span>

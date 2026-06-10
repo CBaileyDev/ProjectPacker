@@ -33,13 +33,9 @@
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-/// Sub-directory under the platform's app-data dir where ProjectPacker
-/// keeps its state. Mirrors Tauri's `app_data_dir` for the same
-/// `identifier` in `tauri.conf.json`.
-const APP_DATA_SUBDIR: &str = "dev.cbailey.projectpacker";
 const TOKEN_FILE: &str = "github-token";
 
 /// User-Agent string sent on every GitHub API call. GitHub requires one.
@@ -118,28 +114,21 @@ pub fn validate_token_format(token: &str) -> Result<(), GithubError> {
 
 /// Replace the token value with `<redacted>` in any string. Used on every
 /// error path that might surface upstream — clone errors, API responses,
-/// header dumps — so the PAT never reaches a log/UI/event.
-pub fn scrub_token(s: &str, token: Option<&str>) -> String {
-    match token {
-        Some(t) if !t.is_empty() => s.replace(t, "<redacted>"),
-        _ => s.to_string(),
-    }
-}
+/// header dumps — so the PAT never reaches a log/UI/event. Shared with the
+/// core crate's clone path, which has the same redaction contract.
+pub use projectpacker_core::github::scrub_token;
 
 // ─────────────────────────────────────────────────────────────────────────
 // File storage
 // ─────────────────────────────────────────────────────────────────────────
 
-/// Resolve the absolute path to the token file, creating any missing
-/// parent directories as a side effect. The path mirrors Tauri's
-/// `app_data_dir` for the same bundle identifier:
+/// Resolve the absolute path to the token file inside `dir` (the Tauri
+/// `app_data_dir`, resolved once by the command layer and threaded down),
+/// creating any missing parent directories as a side effect:
 ///   - macOS: `~/Library/Application Support/dev.cbailey.projectpacker/github-token`
 ///   - Windows: `%APPDATA%\dev.cbailey.projectpacker\github-token`
-fn token_path() -> Result<PathBuf, GithubError> {
-    let base = dirs::data_dir()
-        .ok_or_else(|| GithubError::Storage("could not resolve OS data dir".into()))?;
-    let dir = base.join(APP_DATA_SUBDIR);
-    std::fs::create_dir_all(&dir)
+fn token_path(dir: &Path) -> Result<PathBuf, GithubError> {
+    std::fs::create_dir_all(dir)
         .map_err(|e| GithubError::Storage(format!("create_dir_all: {e}")))?;
     Ok(dir.join(TOKEN_FILE))
 }
@@ -147,7 +136,7 @@ fn token_path() -> Result<PathBuf, GithubError> {
 /// Write the token to disk atomically (`tmp + rename`) and lock down
 /// permissions to user-only. The 0600 mode on Unix and per-user app-data
 /// ACL on Windows together approximate "only this user can read it".
-pub fn store_token(token: &str) -> Result<(), GithubError> {
+pub fn store_token(dir: &Path, token: &str) -> Result<(), GithubError> {
     let trimmed = token.trim();
     let prefix: String = trimmed.chars().take(4).collect();
     log::info!(
@@ -158,7 +147,7 @@ pub fn store_token(token: &str) -> Result<(), GithubError> {
         log::error!("store_token: format validation failed: {e}");
     })?;
 
-    let path = token_path()?;
+    let path = token_path(dir)?;
     let tmp = path.with_extension("tmp");
     log::info!("store_token: writing to {}", path.display());
 
@@ -194,8 +183,8 @@ pub fn store_token(token: &str) -> Result<(), GithubError> {
 /// Read the stored PAT. Returns `Ok(None)` when the file doesn't exist
 /// (the normal "not connected" state). Trims whitespace defensively in
 /// case the file ever gains a trailing newline.
-pub fn read_token() -> Result<Option<String>, GithubError> {
-    let path = match token_path() {
+pub fn read_token(dir: &Path) -> Result<Option<String>, GithubError> {
+    let path = match token_path(dir) {
         Ok(p) => p,
         Err(e) => {
             log::error!("read_token: cannot resolve path: {e}");
@@ -227,8 +216,8 @@ pub fn read_token() -> Result<Option<String>, GithubError> {
 
 /// Delete the stored PAT. Idempotent — a missing file is treated as
 /// success.
-pub fn clear_token() -> Result<(), GithubError> {
-    let path = token_path()?;
+pub fn clear_token(dir: &Path) -> Result<(), GithubError> {
+    let path = token_path(dir)?;
     match std::fs::remove_file(&path) {
         Ok(_) => Ok(()),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
@@ -239,8 +228,8 @@ pub fn clear_token() -> Result<(), GithubError> {
 /// Cheap check used by the renderer's status hook so the GitHub tab can
 /// show the empty state vs. fetching repos without round-tripping the
 /// token itself.
-pub fn has_token() -> bool {
-    matches!(read_token(), Ok(Some(_)))
+pub fn has_token(dir: &Path) -> bool {
+    matches!(read_token(dir), Ok(Some(_)))
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -325,7 +314,17 @@ fn client() -> &'static reqwest::Client {
 /// 401/403/rate-limit pulled apart so the UI can show the right hint.
 async fn map_response_error(res: reqwest::Response) -> GithubError {
     let status = res.status();
-    let headers = res.headers().clone();
+    // Pull the two rate-limit values out before `text()` consumes the
+    // response — cheaper than cloning the whole HeaderMap just to read
+    // two entries afterwards.
+    let header_u64 = |name: &str| {
+        res.headers()
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<u64>().ok())
+    };
+    let remaining = header_u64("x-ratelimit-remaining");
+    let reset = header_u64("x-ratelimit-reset").unwrap_or(0);
     let body = res.text().await.unwrap_or_default();
 
     if status == reqwest::StatusCode::UNAUTHORIZED {
@@ -337,16 +336,7 @@ async fn map_response_error(res: reqwest::Response) -> GithubError {
         // `X-RateLimit-Remaining: 0` header (or `Retry-After`) is the
         // reliable signal that this is a rate-limit, not a permission
         // problem.
-        let remaining = headers
-            .get("x-ratelimit-remaining")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|s| s.parse::<i64>().ok());
         if remaining == Some(0) {
-            let reset = headers
-                .get("x-ratelimit-reset")
-                .and_then(|v| v.to_str().ok())
-                .and_then(|s| s.parse::<u64>().ok())
-                .unwrap_or(0);
             return GithubError::RateLimit { reset };
         }
         return GithubError::Forbidden(body);

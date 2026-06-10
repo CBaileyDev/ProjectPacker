@@ -5,11 +5,9 @@ import { AI_MODELS } from "../../lib/ai-models";
 import { fmtNum } from "../../lib/format";
 import { fadeUp, prefersReducedMotion } from "../../lib/motion";
 import { CheckIcon, XIcon } from "./icons";
-import { SkeletonRow } from "./Skeleton";
 
 interface AiContextTableProps {
   tokensPerModel: TokensPerModel | null;
-  loading?: boolean;
 }
 
 /**
@@ -20,36 +18,11 @@ interface AiContextTableProps {
  *  - Each row shows: model name + optional "approx" badge + animated
  *    progress bar (green <80%, amber 80-100%, red >100%) + token /
  *    context-limit numbers + fit/misfit indicator.
- *  - Three states:
- *      loading=true → skeleton with one SkeletonRow per AI_MODELS entry
- *      loading=false + tokensPerModel=null → "Enable Count tokens..."
+ *  - Two states:
+ *      tokensPerModel=null → "Enable Count tokens..."
  *      tokensPerModel != null → real content
  */
-function AiContextTableInner({ tokensPerModel, loading }: AiContextTableProps) {
-  if (loading) {
-    return (
-      <m.div
-        className="overflow-hidden rounded-xl border border-zinc-700/80 bg-zinc-800/40"
-        variants={fadeUp}
-        initial="hidden"
-        animate="visible"
-        aria-busy="true"
-        aria-label="Loading AI context window compatibility"
-      >
-        <div className="border-b border-zinc-700/60 bg-zinc-800/80 px-4 py-3">
-          <span className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
-            AI Context Window Compatibility
-          </span>
-        </div>
-        <div className="divide-y divide-zinc-800/60 px-4">
-          {AI_MODELS.map((m) => (
-            <SkeletonRow key={m.name} />
-          ))}
-        </div>
-      </m.div>
-    );
-  }
-
+function AiContextTableInner({ tokensPerModel }: AiContextTableProps) {
   if (!tokensPerModel) {
     return (
       <m.div

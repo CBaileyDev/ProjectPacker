@@ -7,6 +7,45 @@ pub mod settings;
 
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
+use tauri_specta::collect_commands;
+
+/// Single source of truth for the command surface and the wire types
+/// exported to TypeScript. `run()` wires it into the Tauri invoke handler
+/// and `emit-bindings` exports the same builder, so the two lists can
+/// never drift apart.
+pub fn specta_builder() -> tauri_specta::Builder<tauri::Wry> {
+    tauri_specta::Builder::<tauri::Wry>::new()
+        .commands(collect_commands![
+            commands::pack_start,
+            commands::pack_cancel,
+            commands::pack_get_result,
+            commands::validate_plan,
+            commands::build_combined_prompt,
+            commands::get_settings,
+            commands::save_settings,
+            commands::save_pack_output,
+            commands::github_set_token,
+            commands::github_clear_token,
+            commands::github_token_status,
+            commands::github_get_user,
+            commands::github_list_repos,
+        ])
+        .typ::<projectpacker_core::types::ProgressEvent>()
+        .typ::<projectpacker_core::tokens::TokenModel>()
+        .typ::<projectpacker_core::tokens::TokensPerModel>()
+        // The engine-level `Redaction` (with `matched_excerpt`) is internal
+        // to `secrets::engine`; the pack surface uses `PackRedaction` (no
+        // excerpt by design — excerpts would echo the very secret we just
+        // redacted into the security report). Don't expose `Redaction` to
+        // TS to keep the wire surface tight.
+        .typ::<projectpacker_core::types::PackRedaction>()
+        // GitHub wire types — also flow into commands above. Listed
+        // explicitly so TS imports stay tidy even if a command surface
+        // shifts later.
+        .typ::<github::GithubUser>()
+        .typ::<github::GithubRepo>()
+        .typ::<github::GithubRepoOwner>()
+}
 
 pub fn run() {
     let registry = Arc::new(jobs::JobRegistry::new());
@@ -38,21 +77,7 @@ pub fn run() {
                 })
                 .build(),
         )
-        .invoke_handler(tauri::generate_handler![
-            commands::pack_start,
-            commands::pack_cancel,
-            commands::pack_get_result,
-            commands::validate_plan,
-            commands::build_combined_prompt,
-            commands::get_settings,
-            commands::save_settings,
-            commands::save_pack_output,
-            commands::github_set_token,
-            commands::github_clear_token,
-            commands::github_token_status,
-            commands::github_get_user,
-            commands::github_list_repos,
-        ])
+        .invoke_handler(specta_builder().invoke_handler())
         .setup(|app| {
             log::info!(
                 "ProjectPacker started, version {}",

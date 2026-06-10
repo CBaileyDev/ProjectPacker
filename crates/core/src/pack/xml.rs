@@ -26,13 +26,6 @@ impl XmlBuilder {
         }
     }
 
-    /// Construct a builder pre-sized to `estimate` bytes. Sugar over
-    /// [`Self::with_capacity`] paired with [`estimated_xml_capacity`] for
-    /// callers that already know the entries' total byte count.
-    pub fn with_capacity_estimate(estimate: usize) -> Self {
-        Self::with_capacity(estimate)
-    }
-
     pub fn open_repository(&mut self) -> &mut Self {
         self.out.push_str("<repository>\n");
         self
@@ -211,7 +204,7 @@ impl XmlBuilder {
             }
             let _ = writeln!(self.out, "  <hash>{}</hash>", escape_text(&f.hash));
             self.out.push_str("  <document_content>");
-            self.out.push_str(&escape_text(&f.content));
+            escape_text_into(&mut self.out, &f.content);
             if !f.content.ends_with('\n') {
                 self.out.push('\n');
             }
@@ -239,7 +232,7 @@ impl XmlBuilder {
                 escape_attr(&f.path),
                 escape_attr(&f.hash)
             );
-            self.out.push_str(&escape_text(&f.content));
+            escape_text_into(&mut self.out, &f.content);
             if !f.content.ends_with('\n') {
                 self.out.push('\n');
             }
@@ -295,12 +288,23 @@ fn parse_dup_marker(content: &str) -> Option<(&str, &str)> {
 /// char boundaries). Inputs with no specials return a plain copy without
 /// per-char work.
 fn escape_text(s: &str) -> String {
-    crate::pack::xml_escape_with(s, |b| match b {
+    crate::pack::xml_escape_with(s, text_entity)
+}
+
+/// Appending variant of [`escape_text`] for the file-content hot path:
+/// writes straight into the (pre-reserved) builder buffer instead of
+/// allocating an escaped temporary and copying it a second time.
+fn escape_text_into(out: &mut String, s: &str) {
+    crate::pack::xml_escape_into(out, s, text_entity);
+}
+
+fn text_entity(b: u8) -> Option<&'static str> {
+    match b {
         b'&' => Some("&amp;"),
         b'<' => Some("&lt;"),
         b'>' => Some("&gt;"),
         _ => None,
-    })
+    }
 }
 
 #[cfg(test)]

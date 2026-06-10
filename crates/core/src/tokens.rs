@@ -26,7 +26,6 @@
 //! switches to an HF-backed model never pays the parse cost at all.
 
 use crate::error::{CoreError, CoreResult};
-use rayon::prelude::*;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::sync::OnceLock;
@@ -148,6 +147,23 @@ pub struct TokensPerModel {
     pub gemini_approx: u32,
 }
 
+impl TokensPerModel {
+    /// Field-wise saturating sum. Lives next to the struct so the model
+    /// field list stays in one place — adding a model row only touches
+    /// this file.
+    pub fn saturating_add(self, o: Self) -> Self {
+        Self {
+            gpt4o: self.gpt4o.saturating_add(o.gpt4o),
+            claude: self.claude.saturating_add(o.claude),
+            llama3: self.llama3.saturating_add(o.llama3),
+            qwen2_5: self.qwen2_5.saturating_add(o.qwen2_5),
+            deep_seek: self.deep_seek.saturating_add(o.deep_seek),
+            mistral: self.mistral.saturating_add(o.mistral),
+            gemini_approx: self.gemini_approx.saturating_add(o.gemini_approx),
+        }
+    }
+}
+
 /// Tokenize `text` once per model and return the seven counts.
 ///
 /// `Gpt4o` and `GeminiApprox` share `o200k_base` (one real encode + one
@@ -206,7 +222,10 @@ pub fn count_all_parallel(text: &str) -> CoreResult<TokensPerModel> {
 fn count_tiktoken_group(text: &str) -> CoreResult<(u32, u32, u32)> {
     let gpt4o = count(text, TokenModel::Gpt4o)?;
     let claude = count(text, TokenModel::Claude)?;
-    let gemini_approx = count(text, TokenModel::GeminiApprox)?;
+    // GeminiApprox is defined as ceil(gpt4o * 1.05) over the same o200k
+    // encode — derive it from the count we already have instead of
+    // re-encoding the whole text a third time.
+    let gemini_approx = (u64::from(gpt4o) * 105).div_ceil(100) as u32;
     Ok((gpt4o, claude, gemini_approx))
 }
 
@@ -218,20 +237,6 @@ fn count_hf_group(text: &str) -> CoreResult<(u32, u32, u32, u32)> {
     let deep_seek = count(text, TokenModel::DeepSeek)?;
     let mistral = count(text, TokenModel::Mistral)?;
     Ok((llama3, qwen2_5, deep_seek, mistral))
-}
-
-/// Apply [`count_all_parallel`] to every entry in `texts` in parallel.
-///
-/// Returns a `Vec<TokensPerModel>` of the same length as `texts`, in
-/// the same order. Per-text errors are silently mapped to
-/// `TokensPerModel::default()` so a single problem entry doesn't
-/// poison the whole batch — the orchestrator's existing call site
-/// already swallows token errors with `.ok()` for the same reason.
-pub fn count_batch(texts: &[&str]) -> Vec<TokensPerModel> {
-    texts
-        .par_iter()
-        .map(|t| count_all_parallel(t).unwrap_or_default())
-        .collect()
 }
 
 /// Count tokens for `text` using the encoder family selected by `model`.
@@ -596,24 +601,6 @@ mod tests {
         let direct = count_all(input).unwrap();
         let par = count_all_parallel(input).unwrap();
         assert_eq!(direct, par);
-    }
-
-    #[test]
-    fn count_batch_preserves_order_and_per_text_counts() {
-        let texts = ["", "Hello", "fn main() {}", "日本"];
-        let refs: Vec<&str> = texts.to_vec();
-        let batch = count_batch(&refs);
-        assert_eq!(batch.len(), texts.len());
-        for (i, t) in texts.iter().enumerate() {
-            let single = count_all_parallel(t).unwrap();
-            assert_eq!(batch[i], single, "batch[{i}] disagrees with single-call");
-        }
-    }
-
-    #[test]
-    fn count_batch_empty_input_returns_empty_vec() {
-        let batch = count_batch(&[]);
-        assert!(batch.is_empty());
     }
 
     #[test]

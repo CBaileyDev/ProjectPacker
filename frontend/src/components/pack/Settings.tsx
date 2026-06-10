@@ -10,6 +10,7 @@ import {
   EyeOffIcon,
   GithubIcon,
   LockIcon,
+  XIcon,
 } from "./icons";
 
 export function Settings() {
@@ -238,19 +239,7 @@ export function Settings() {
                 aria-label="Dismiss save error"
                 className="-mr-1 -mt-1 shrink-0 rounded p-1 text-red-300/80 hover:bg-red-900/40 hover:text-red-200 transition-colors"
               >
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <line x1="18" y1="6" x2="6" y2="18" />
-                  <line x1="6" y1="6" x2="18" y2="18" />
-                </svg>
+                <XIcon size={12} strokeWidth={2} />
               </button>
             </m.div>
           )}

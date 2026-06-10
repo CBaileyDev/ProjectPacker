@@ -142,6 +142,26 @@ function nextStatus(prev: PackingStatus, e: ProgressEvent): PackingStatus {
   return prev;
 }
 
+/** Fold a single progress event into the `{status, lastStats}` pair —
+ * the one place the transition rules live. `transformDone` patches a
+ * single entry into `lastStats.transforms` during the run; the terminal
+ * `done` overwrites with the authoritative final PackStats. Anything
+ * else passes through. `pushEvent` applies this once; `pushEventsBatched`
+ * folds it over the incoming batch. */
+function foldEvent(
+  acc: { status: PackingStatus; lastStats: PackStats | null },
+  e: ProgressEvent,
+): { status: PackingStatus; lastStats: PackStats | null } {
+  const status = nextStatus(acc.status, e);
+  if (e.kind === "transformDone") {
+    return { status, lastStats: applyTransformDone(acc.lastStats, e) };
+  }
+  if (e.kind === "done") {
+    return { status, lastStats: e.stats };
+  }
+  return { status, lastStats: acc.lastStats };
+}
+
 export const useApp = create<AppState>()(
   persist(
     (set) => ({
@@ -163,21 +183,15 @@ export const useApp = create<AppState>()(
         }),
       pushEvent: (e) =>
         set((s) => {
-          const base = {
+          const { status, lastStats } = foldEvent(
+            { status: s.status, lastStats: s.lastStats },
+            e,
+          );
+          return {
             events: [...s.events, e].slice(-EVENT_CAP),
-            status: nextStatus(s.status, e),
+            status,
+            lastStats,
           };
-          // `transformDone` and the terminal `done` both refresh
-          // `lastStats` — the former patches a single entry into
-          // `transforms` during the run; the latter overwrites with the
-          // authoritative final PackStats. Anything else passes through.
-          if (e.kind === "transformDone") {
-            return { ...base, lastStats: applyTransformDone(s.lastStats, e) };
-          }
-          if (e.kind === "done") {
-            return { ...base, lastStats: e.stats };
-          }
-          return base;
         }),
       pushEventsBatched: (incoming) =>
         set((s) => {
@@ -190,20 +204,14 @@ export const useApp = create<AppState>()(
           // `incoming`, instead of staying as two adjacent walking
           // entries across the boundary.
           const merged = batchEvents([...s.events, ...incoming]);
-          let nextStat = s.status;
-          let nextStats: PackStats | null = s.lastStats;
+          let acc = { status: s.status, lastStats: s.lastStats };
           for (const e of incoming) {
-            nextStat = nextStatus(nextStat, e);
-            if (e.kind === "transformDone") {
-              nextStats = applyTransformDone(nextStats, e);
-            } else if (e.kind === "done") {
-              nextStats = e.stats;
-            }
+            acc = foldEvent(acc, e);
           }
           return {
             events: merged.slice(-EVENT_CAP),
-            status: nextStat,
-            lastStats: nextStats,
+            status: acc.status,
+            lastStats: acc.lastStats,
           };
         }),
       setResult: (r) => set({ result: r, lastStats: r.stats }),

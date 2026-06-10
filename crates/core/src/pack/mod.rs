@@ -61,19 +61,30 @@ pub(crate) fn xml_escape_attr(s: &str) -> String {
 /// at match positions always lands on char boundaries and multibyte content
 /// is copied through intact.
 pub(crate) fn xml_escape_with(s: &str, rep: fn(u8) -> Option<&'static str>) -> String {
+    let mut out = String::new();
+    xml_escape_into(&mut out, s, rep);
+    out
+}
+
+/// Appending form of [`xml_escape_with`]: escapes `s` straight into `out`
+/// (reserving exactly the needed room first), so hot paths that already
+/// hold a pre-sized output buffer skip the escaped-temporary allocation
+/// and second copy.
+pub(crate) fn xml_escape_into(out: &mut String, s: &str, rep: fn(u8) -> Option<&'static str>) {
     let bytes = s.as_bytes();
-    // Pass 1: count extra bytes so pass 2 allocates exactly once.
+    // Pass 1: count extra bytes so pass 2 reserves exactly once.
     let mut extra = 0usize;
     for &b in bytes {
         if let Some(r) = rep(b) {
             extra += r.len() - 1;
         }
     }
+    out.reserve(s.len() + extra);
     if extra == 0 {
-        return s.to_owned();
+        out.push_str(s);
+        return;
     }
     // Pass 2: copy span-wise, splicing entities in at the matched bytes.
-    let mut out = String::with_capacity(s.len() + extra);
     let mut copied_to = 0usize;
     for (i, &b) in bytes.iter().enumerate() {
         if let Some(r) = rep(b) {
@@ -83,5 +94,10 @@ pub(crate) fn xml_escape_with(s: &str, rep: fn(u8) -> Option<&'static str>) -> S
         }
     }
     out.push_str(&s[copied_to..]);
-    out
+}
+
+/// Output-buffer size estimate shared by the markdown and plain renderers:
+/// content bytes plus a 2x margin for wrappers, tables, and escapes.
+pub(crate) fn estimated_text_capacity(bytes_total: u64) -> usize {
+    (bytes_total as usize).saturating_mul(2)
 }

@@ -179,30 +179,7 @@ pub fn run_transform_phase(
 /// Apply a per-file fn returning Option<String> (None means unchanged) over
 /// every entry in parallel. Sums savings into a TransformReport.
 fn per_file(entries: &mut [FileEntry], id: &str, f: fn(&str) -> Option<String>) -> TransformReport {
-    use rayon::prelude::*;
-    let start = Instant::now();
-    let changes: Vec<(usize, String, u64)> = entries
-        .par_iter()
-        .enumerate()
-        .filter_map(|(i, e)| {
-            let before = e.content.len() as u64;
-            let new_content = f(&e.content)?;
-            let saved = before.saturating_sub(new_content.len() as u64);
-            Some((i, new_content, saved))
-        })
-        .collect();
-    let files_touched = changes.len() as u32;
-    let mut bytes_saved = 0u64;
-    for (i, new_content, saved) in changes {
-        entries[i].content = new_content;
-        bytes_saved = bytes_saved.saturating_add(saved);
-    }
-    TransformReport {
-        id: id.into(),
-        bytes_saved,
-        files_touched,
-        elapsed_ms: start.elapsed().as_millis() as u32,
-    }
+    per_file_with_path(entries, id, move |_path, content, _sha| f(content))
 }
 
 /// Like `per_file`, but the transform fn takes (path, content, sha_prefix).
@@ -217,9 +194,11 @@ fn per_file_with_path(
         .par_iter()
         .enumerate()
         .filter_map(|(i, e)| {
-            let sha_prefix: String = e.hash.chars().take(12).collect();
+            // `hash` is BLAKE3 lowercase hex (ASCII) or empty, so a byte
+            // slice is char-boundary-safe and avoids a per-entry allocation.
+            let sha_prefix = e.hash.get(..12).unwrap_or(&e.hash);
             let before = e.content.len() as u64;
-            let new_content = f(&e.path, &e.content, &sha_prefix)?;
+            let new_content = f(&e.path, &e.content, sha_prefix)?;
             let saved = before.saturating_sub(new_content.len() as u64);
             Some((i, new_content, saved))
         })

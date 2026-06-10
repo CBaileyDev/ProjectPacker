@@ -41,12 +41,6 @@ uuid = { version = "1", features = ["v7"] }
 # GitHub PAT storage. We initially used `keyring` 3.x but that crate
 # delegates to the macOS data-protection keychain (`SecItemAdd`), which
 # silently demotes writes from unsigned apps into a transient store —
-# `set_password` reports success but the data never reaches `login.keychain`
-# and can't be read back by another process. Code-signing would fix this
-# but requires an Apple Developer ID. Pragmatic answer: a 0600-permission
-# file in the app data dir. `dirs` resolves the per-platform location.
-dirs = "5"
-
 # Async HTTP for the GitHub REST API. rustls-tls keeps us off OpenSSL so
 # the build stays self-contained on macOS + Windows. `json` pulls in
 # serde_json::Value parsing helpers used by the GitHub client.

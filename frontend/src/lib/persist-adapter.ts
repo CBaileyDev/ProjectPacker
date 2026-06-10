@@ -98,7 +98,9 @@ function sleep(ms: number): Promise<void> {
 /**
  * Zustand `StateStorage` adapter that proxies to Tauri's plugin-store with:
  *  - 300ms debounced writes (rapid typing → at most one disk write per 300ms),
- *  - JSON validation/clamping on every write (see `sanitize`),
+ *  - JSON validation/clamping at flush time (see `sanitize`) — the debounce
+ *    discards all but the last queued value, so sanitizing per `setItem`
+ *    would parse+stringify blobs that never reach disk,
  *  - 3-attempt exponential backoff (500/1000/2000ms) on transient failures.
  *
  * `flush()` immediately writes the pending value (e.g. before unload). Reads
@@ -113,17 +115,18 @@ class DebouncedTauriStorage implements StateStorage {
   async getItem(name: string): Promise<string | null> {
     // Honour a queued-but-not-yet-flushed write so the same render cycle
     // sees what it just wrote. Without this, a setItem→getItem within
-    // 300ms returns the previous value.
-    if (this.pending.has(name)) {
-      return this.pending.get(name) ?? null;
+    // 300ms returns the previous value. Sanitized here for parity with
+    // what flush() will eventually persist.
+    const queued = this.pending.get(name);
+    if (queued !== undefined) {
+      return sanitize(queued);
     }
     const value = await this.store.get<string>(name);
     return value ?? null;
   }
 
   setItem(name: string, value: string): void {
-    const safe = sanitize(value);
-    this.pending.set(name, safe);
+    this.pending.set(name, value);
     if (this.flushTimer !== null) clearTimeout(this.flushTimer);
     this.flushTimer = setTimeout(() => {
       void this.flush();
@@ -147,7 +150,12 @@ class DebouncedTauriStorage implements StateStorage {
       this.flushTimer = null;
     }
     if (this.pending.size === 0) return;
-    const snapshot = new Map(this.pending);
+    // Sanitize once per flushed value — every preceding setItem in the
+    // debounce window was overwritten and never needed the round-trip.
+    const snapshot = new Map<string, string>();
+    for (const [name, value] of this.pending) {
+      snapshot.set(name, sanitize(value));
+    }
     this.pending.clear();
     await this.writeWithRetry(async () => {
       for (const [name, value] of snapshot) {

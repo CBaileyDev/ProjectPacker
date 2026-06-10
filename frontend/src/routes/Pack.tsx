@@ -79,20 +79,83 @@ const GITHUB_URL_PATTERN =
 const MAX_FILE_SIZE_KB = 102_400;
 
 type PackTab = "packer" | "results" | "bridge" | "github" | "settings";
-const TAB_LABELS: Record<PackTab, string> = {
-  packer: "Packer",
-  results: "Results",
-  bridge: "Bridge",
-  github: "GitHub",
-  settings: "Settings",
-};
-const TAB_HEADLINES: Record<PackTab, string> = {
-  packer: "Pack a project",
-  results: "Pack results",
-  bridge: "Validate a plan, build the executor prompt",
-  github: "Browse your GitHub repositories",
-  settings: "Settings",
-};
+
+/** Single source of truth for tab metadata. The sidebar derives its
+ * descriptor list from this table (adding the dynamic description /
+ * disabled fields) and the header reads label/headline from the same
+ * entries — adding or renaming a tab touches only this table. */
+interface TabDef {
+  id: PackTab;
+  label: string;
+  headline: string;
+  Icon: ComponentType<LucideProps>;
+}
+
+const TABS: readonly TabDef[] = [
+  {
+    id: "packer",
+    label: "Packer",
+    headline: "Pack a project",
+    Icon: PackageIcon,
+  },
+  {
+    id: "results",
+    label: "Results",
+    headline: "Pack results",
+    Icon: FileTextIcon,
+  },
+  {
+    id: "bridge",
+    label: "Bridge",
+    headline: "Validate a plan, build the executor prompt",
+    Icon: BridgeIcon,
+  },
+  {
+    id: "github",
+    label: "GitHub",
+    headline: "Browse your GitHub repositories",
+    Icon: GithubIcon,
+  },
+  {
+    id: "settings",
+    label: "Settings",
+    headline: "Settings",
+    Icon: SettingsIcon,
+  },
+];
+
+const TAB_BY_ID = Object.fromEntries(TABS.map((t) => [t.id, t])) as Record<
+  PackTab,
+  TabDef
+>;
+
+/** Sidebar description per tab. `packer`/`results` are dynamic; the rest
+ * are static copy kept here so the whole tab vocabulary reads in one
+ * place. */
+function tabDescription(
+  id: PackTab,
+  isRunning: boolean,
+  result: PackResult | null,
+): string {
+  switch (id) {
+    case "packer":
+      return isRunning ? "Packing in progress" : "Configure and run";
+    case "results":
+      return result
+        ? `${fmtNum(result.stats.filesIncluded)} files packed`
+        : "Detailed view after a run";
+    case "bridge":
+      return "Plan → executor prompt";
+    case "github":
+      return "Pick a repo to pack";
+    case "settings":
+      return "Tokens and preferences";
+  }
+}
+
+function isValidTargetValue(kind: "folder" | "github", value: string): boolean {
+  return kind === "folder" ? value.length > 0 : GITHUB_URL_PATTERN.test(value);
+}
 
 function SectionTitle({ children }: { children: React.ReactNode }) {
   return (
@@ -121,74 +184,31 @@ export default function Pack() {
     },
   });
 
-  async function pickFolder() {
-    const path = await open({ directory: true });
-    if (typeof path === "string") {
-      patchOptions({ target: { kind: "folder", value: path } });
-    }
-  }
-
   const targetMode = options.target.kind;
   const targetVal = options.target.value;
 
   const isValidTarget = useMemo(
-    () =>
-      targetMode === "folder"
-        ? targetVal.length > 0
-        : GITHUB_URL_PATTERN.test(targetVal),
+    () => isValidTargetValue(targetMode, targetVal),
     [targetMode, targetVal],
   );
-
-  function setTargetMode(mode: "folder" | "github") {
-    patchOptions({ target: { kind: mode, value: "" } });
-  }
 
   const isDone = status === "done";
   const showResultSkeleton = isRunning && !result;
 
   const [activeTab, setActiveTab] = useState<PackTab>("packer");
 
-  const tabs: Array<{
-    id: PackTab;
-    label: string;
-    description: string;
-    Icon: ComponentType<LucideProps>;
-    disabled?: boolean;
-  }> = [
-    {
-      id: "packer",
-      label: "Packer",
-      description: isRunning ? "Packing in progress" : "Configure and run",
-      Icon: PackageIcon,
-    },
-    {
-      id: "results",
-      label: "Results",
-      description: result
-        ? `${fmtNum(result.stats.filesIncluded)} files packed`
-        : "Detailed view after a run",
-      Icon: FileTextIcon,
-      disabled: !result,
-    },
-    {
-      id: "bridge",
-      label: "Bridge",
-      description: "Plan → executor prompt",
-      Icon: BridgeIcon,
-    },
-    {
-      id: "github",
-      label: "GitHub",
-      description: "Pick a repo to pack",
-      Icon: GithubIcon,
-    },
-    {
-      id: "settings",
-      label: "Settings",
-      description: "Tokens and preferences",
-      Icon: SettingsIcon,
-    },
-  ];
+  // Only `description`/`disabled` are dynamic — derive the sidebar
+  // descriptors from the static TABS table and rebuild them only when
+  // the inputs actually change instead of on every render.
+  const tabs = useMemo(
+    () =>
+      TABS.map((tab) => ({
+        ...tab,
+        description: tabDescription(tab.id, isRunning, result),
+        disabled: tab.id === "results" ? !result : undefined,
+      })),
+    [isRunning, result],
+  );
 
   // Auto-route to Results when output lands.
   useEffect(() => {
@@ -324,10 +344,10 @@ export default function Pack() {
         >
           <div className="mb-5">
             <p className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
-              {TAB_LABELS[activeTab]}
+              {TAB_BY_ID[activeTab].label}
             </p>
             <h2 className="mt-1 text-2xl font-bold tracking-tight">
-              {TAB_HEADLINES[activeTab]}
+              {TAB_BY_ID[activeTab].headline}
             </h2>
           </div>
 
@@ -349,154 +369,12 @@ export default function Pack() {
               {activeTab === "packer" && (
                 <div className="space-y-6">
                   {/* Target */}
-                  <section className="space-y-3">
-                    <SectionTitle>Target</SectionTitle>
-
-                    <div className="flex w-fit gap-1.5 rounded-lg border border-zinc-700/50 bg-zinc-800/60 p-1">
-                      <button
-                        type="button"
-                        onClick={() => setTargetMode("folder")}
-                        aria-pressed={targetMode === "folder"}
-                        className={`flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-sm font-medium transition-all duration-200 ${
-                          targetMode === "folder"
-                            ? "bg-emerald-600 text-white shadow-lg shadow-emerald-900/30"
-                            : "text-zinc-400 hover:text-zinc-200"
-                        }`}
-                      >
-                        <FolderIcon size={14} />
-                        Folder
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setTargetMode("github")}
-                        aria-pressed={targetMode === "github"}
-                        className={`flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-sm font-medium transition-all duration-200 ${
-                          targetMode === "github"
-                            ? "bg-emerald-600 text-white shadow-lg shadow-emerald-900/30"
-                            : "text-zinc-400 hover:text-zinc-200"
-                        }`}
-                      >
-                        <GithubIcon size={14} />
-                        GitHub URL
-                      </button>
-                    </div>
-
-                    <AnimatePresence mode="wait">
-                      {targetMode === "folder" ? (
-                        <m.div
-                          key="folder"
-                          className="flex gap-2"
-                          initial={
-                            prefersReducedMotion ? false : { opacity: 0, y: -6 }
-                          }
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={
-                            prefersReducedMotion
-                              ? { opacity: 0 }
-                              : { opacity: 0, y: 6 }
-                          }
-                          transition={{
-                            duration: prefersReducedMotion ? 0 : 0.2,
-                          }}
-                        >
-                          <input
-                            className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800/60 px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 transition-colors focus:border-emerald-500/50 focus:outline-none"
-                            value={targetVal}
-                            placeholder="/path/to/project"
-                            aria-label="Folder path"
-                            onChange={(e) =>
-                              patchOptions({
-                                target: {
-                                  kind: "folder",
-                                  value: e.target.value,
-                                },
-                              })
-                            }
-                          />
-                          <m.button
-                            type="button"
-                            className="rounded-lg border border-zinc-600 bg-zinc-700 px-4 py-2.5 text-sm text-zinc-200 hover:bg-zinc-600 transition-colors"
-                            onClick={pickFolder}
-                            whileTap={springButton}
-                          >
-                            Browse…
-                          </m.button>
-                        </m.div>
-                      ) : (
-                        <m.div
-                          key="github"
-                          initial={
-                            prefersReducedMotion ? false : { opacity: 0, y: -6 }
-                          }
-                          animate={{ opacity: 1, y: 0 }}
-                          exit={
-                            prefersReducedMotion
-                              ? { opacity: 0 }
-                              : { opacity: 0, y: 6 }
-                          }
-                          transition={{
-                            duration: prefersReducedMotion ? 0 : 0.2,
-                          }}
-                        >
-                          <div className="flex gap-2">
-                            <input
-                              className={`flex-1 rounded-lg border bg-zinc-800/60 px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 transition-colors focus:outline-none ${
-                                targetVal && !isValidTarget
-                                  ? "border-red-600 focus:border-red-500"
-                                  : "border-zinc-700 focus:border-emerald-500/50"
-                              }`}
-                              value={targetVal}
-                              placeholder="https://github.com/owner/repo"
-                              aria-label="GitHub repository URL"
-                              aria-invalid={
-                                Boolean(targetVal) && !isValidTarget
-                              }
-                              onChange={(e) =>
-                                patchOptions({
-                                  target: {
-                                    kind: "github",
-                                    value: e.target.value,
-                                  },
-                                })
-                              }
-                            />
-                            <m.button
-                              type="button"
-                              className="rounded-lg border border-zinc-600 bg-zinc-700 px-4 py-2.5 text-sm text-zinc-200 hover:bg-zinc-600 transition-colors"
-                              onClick={() => setActiveTab("github")}
-                              whileTap={springButton}
-                              title="Pick a repo from the GitHub tab"
-                            >
-                              Browse…
-                            </m.button>
-                          </div>
-                          {targetVal && !isValidTarget && (
-                            <m.div
-                              className="mt-1.5 text-xs text-red-400"
-                              role="alert"
-                              initial={{ opacity: 0, y: -4 }}
-                              animate={{ opacity: 1, y: 0 }}
-                            >
-                              Enter a valid GitHub repo URL, such as
-                              https://github.com/owner/repo
-                            </m.div>
-                          )}
-                        </m.div>
-                      )}
-                    </AnimatePresence>
-                  </section>
+                  <TargetSection
+                    onBrowseGithub={() => setActiveTab("github")}
+                  />
 
                   {/* Goal */}
-                  <section className="space-y-3">
-                    <SectionTitle>Goal / Task Description</SectionTitle>
-                    <textarea
-                      className="h-20 w-full resize-none rounded-lg border border-zinc-700 bg-zinc-800/60 px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 transition-colors focus:border-emerald-500/50 focus:outline-none"
-                      value={options.goal}
-                      placeholder="Describe what you want to build or fix…"
-                      aria-label="Goal or task description"
-                      onChange={(e) => patchOptions({ goal: e.target.value })}
-                    />
-                  </section>
+                  <GoalSection />
 
                   {/* Options */}
                   <section className="space-y-4 rounded-xl border border-zinc-700/50 bg-zinc-800/30 p-5">
@@ -862,6 +740,174 @@ function LiveProgress() {
       <PackProgressBar value={progress} />
       <ProgressLog events={events} />
     </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Target + Goal sections — extracted with field-level store selectors so a
+// keystroke in these inputs subscribes only the owning component to the
+// changed field, mirroring the LiveProgress isolation pattern above.
+// ─────────────────────────────────────────────────────────────────────────
+
+function TargetSection({ onBrowseGithub }: { onBrowseGithub: () => void }) {
+  const target = useApp((s) => s.options.target);
+  const patchOptions = useApp((s) => s.patchOptions);
+
+  const targetMode = target.kind;
+  const targetVal = target.value;
+  const isValidTarget = isValidTargetValue(targetMode, targetVal);
+
+  function setTargetMode(mode: "folder" | "github") {
+    patchOptions({ target: { kind: mode, value: "" } });
+  }
+
+  async function pickFolder() {
+    const path = await open({ directory: true });
+    if (typeof path === "string") {
+      patchOptions({ target: { kind: "folder", value: path } });
+    }
+  }
+
+  return (
+    <section className="space-y-3">
+      <SectionTitle>Target</SectionTitle>
+
+      <div className="flex w-fit gap-1.5 rounded-lg border border-zinc-700/50 bg-zinc-800/60 p-1">
+        <button
+          type="button"
+          onClick={() => setTargetMode("folder")}
+          aria-pressed={targetMode === "folder"}
+          className={`flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-sm font-medium transition-all duration-200 ${
+            targetMode === "folder"
+              ? "bg-emerald-600 text-white shadow-lg shadow-emerald-900/30"
+              : "text-zinc-400 hover:text-zinc-200"
+          }`}
+        >
+          <FolderIcon size={14} />
+          Folder
+        </button>
+        <button
+          type="button"
+          onClick={() => setTargetMode("github")}
+          aria-pressed={targetMode === "github"}
+          className={`flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-sm font-medium transition-all duration-200 ${
+            targetMode === "github"
+              ? "bg-emerald-600 text-white shadow-lg shadow-emerald-900/30"
+              : "text-zinc-400 hover:text-zinc-200"
+          }`}
+        >
+          <GithubIcon size={14} />
+          GitHub URL
+        </button>
+      </div>
+
+      <AnimatePresence mode="wait">
+        {targetMode === "folder" ? (
+          <m.div
+            key="folder"
+            className="flex gap-2"
+            initial={prefersReducedMotion ? false : { opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+            transition={{
+              duration: prefersReducedMotion ? 0 : 0.2,
+            }}
+          >
+            <input
+              className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800/60 px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 transition-colors focus:border-emerald-500/50 focus:outline-none"
+              value={targetVal}
+              placeholder="/path/to/project"
+              aria-label="Folder path"
+              onChange={(e) =>
+                patchOptions({
+                  target: {
+                    kind: "folder",
+                    value: e.target.value,
+                  },
+                })
+              }
+            />
+            <m.button
+              type="button"
+              className="rounded-lg border border-zinc-600 bg-zinc-700 px-4 py-2.5 text-sm text-zinc-200 hover:bg-zinc-600 transition-colors"
+              onClick={pickFolder}
+              whileTap={springButton}
+            >
+              Browse…
+            </m.button>
+          </m.div>
+        ) : (
+          <m.div
+            key="github"
+            initial={prefersReducedMotion ? false : { opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
+            transition={{
+              duration: prefersReducedMotion ? 0 : 0.2,
+            }}
+          >
+            <div className="flex gap-2">
+              <input
+                className={`flex-1 rounded-lg border bg-zinc-800/60 px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 transition-colors focus:outline-none ${
+                  targetVal && !isValidTarget
+                    ? "border-red-600 focus:border-red-500"
+                    : "border-zinc-700 focus:border-emerald-500/50"
+                }`}
+                value={targetVal}
+                placeholder="https://github.com/owner/repo"
+                aria-label="GitHub repository URL"
+                aria-invalid={Boolean(targetVal) && !isValidTarget}
+                onChange={(e) =>
+                  patchOptions({
+                    target: {
+                      kind: "github",
+                      value: e.target.value,
+                    },
+                  })
+                }
+              />
+              <m.button
+                type="button"
+                className="rounded-lg border border-zinc-600 bg-zinc-700 px-4 py-2.5 text-sm text-zinc-200 hover:bg-zinc-600 transition-colors"
+                onClick={onBrowseGithub}
+                whileTap={springButton}
+                title="Pick a repo from the GitHub tab"
+              >
+                Browse…
+              </m.button>
+            </div>
+            {targetVal && !isValidTarget && (
+              <m.div
+                className="mt-1.5 text-xs text-red-400"
+                role="alert"
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+              >
+                Enter a valid GitHub repo URL, such as
+                https://github.com/owner/repo
+              </m.div>
+            )}
+          </m.div>
+        )}
+      </AnimatePresence>
+    </section>
+  );
+}
+
+function GoalSection() {
+  const goal = useApp((s) => s.options.goal);
+  const patchOptions = useApp((s) => s.patchOptions);
+  return (
+    <section className="space-y-3">
+      <SectionTitle>Goal / Task Description</SectionTitle>
+      <textarea
+        className="h-20 w-full resize-none rounded-lg border border-zinc-700 bg-zinc-800/60 px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 transition-colors focus:border-emerald-500/50 focus:outline-none"
+        value={goal}
+        placeholder="Describe what you want to build or fix…"
+        aria-label="Goal or task description"
+        onChange={(e) => patchOptions({ goal: e.target.value })}
+      />
+    </section>
   );
 }
 

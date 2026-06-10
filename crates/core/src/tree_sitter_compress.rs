@@ -92,13 +92,16 @@ thread_local! {
 /// parser is returned to the pool on drop. Construction can fail (the
 /// language plug-in might refuse to bind) — in that case we return
 /// `None` and the caller must fall back to processing the source as-is.
-struct PooledParser {
+///
+/// `pub(crate)` so sibling transforms (e.g. `transforms::elide_types`)
+/// share the pool instead of building a fresh parser per file.
+pub(crate) struct PooledParser {
     lang: Lang,
     parser: Option<Parser>,
 }
 
 impl PooledParser {
-    fn acquire(lang: Lang) -> Option<Self> {
+    pub(crate) fn acquire(lang: Lang) -> Option<Self> {
         let cached = PARSER_POOL.with(|pool| {
             let mut pool = pool.borrow_mut();
             pool.entry(lang).or_default().pop()
@@ -120,7 +123,7 @@ impl PooledParser {
         })
     }
 
-    fn parser_mut(&mut self) -> &mut Parser {
+    pub(crate) fn parser_mut(&mut self) -> &mut Parser {
         self.parser
             .as_mut()
             .expect("parser is always Some until Drop")
@@ -239,22 +242,27 @@ pub fn remove_comments(source: &str, lang: Lang) -> String {
             ranges.push((cap.node.start_byte(), cap.node.end_byte()));
         }
     }
-    ranges.sort_by_key(|r| r.0);
+    let stripped = splice_out_ranges(source, &mut ranges);
+    collapse_blank_lines(&stripped)
+}
 
-    // Rebuild the string omitting comment byte-ranges.
-    let mut stripped = String::with_capacity(source.len());
+/// Sort `ranges` by start and rebuild `source` with those byte ranges
+/// omitted, copying the unchanged spans between them wholesale. Shared by
+/// the comment stripper above and `transforms::elide_types`.
+pub(crate) fn splice_out_ranges(source: &str, ranges: &mut [(usize, usize)]) -> String {
+    ranges.sort_by_key(|r| r.0);
+    let mut out = String::with_capacity(source.len());
     let mut pos = 0usize;
-    for (start, end) in &ranges {
+    for (start, end) in ranges.iter() {
         if *start > pos {
-            stripped.push_str(&source[pos..*start]);
+            out.push_str(&source[pos..*start]);
         }
         pos = *end;
     }
     if pos < source.len() {
-        stripped.push_str(&source[pos..]);
+        out.push_str(&source[pos..]);
     }
-
-    collapse_blank_lines(&stripped)
+    out
 }
 
 /// Heuristic comment-removal for sources below

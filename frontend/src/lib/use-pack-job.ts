@@ -148,15 +148,13 @@ export function usePackJob(): UsePackJobReturn {
     // Install the real handler BEFORE awaiting packStart. An event emitted
     // between packStart returning (server side) and the JS continuation
     // reassigning onmessage would otherwise be silently swallowed. The
-    // `Started` event carries `job_id`, so we capture it from inside the
-    // handler instead of waiting for packStart's return value.
-    let capturedJobId: string | null = null;
-
+    // `Started` event carries `job_id`, so we capture it into `jobIdRef`
+    // from inside the handler instead of waiting for packStart's return
+    // value.
     channel.onmessage = (e) => {
       const isTerminal = e.kind === "done" || (e.kind === "error" && e.fatal);
 
       if (e.kind === "started") {
-        capturedJobId = e.job_id;
         jobIdRef.current = e.job_id;
       }
 
@@ -178,7 +176,7 @@ export function usePackJob(): UsePackJobReturn {
         stopFlushTimer();
 
         if (e.kind === "done") {
-          const id = capturedJobId;
+          const id = jobIdRef.current;
           if (!id) {
             // Shouldn't happen — `started` always precedes `done`. Fall back
             // to a useful error rather than swallowing.
