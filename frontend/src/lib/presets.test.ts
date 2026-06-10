@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { PackOptions } from "../bindings";
+import { defaultOptions } from "./default-options";
 import { applyPreset, matchPreset, PRESETS } from "./presets";
 
 const base: PackOptions = {
@@ -56,7 +57,17 @@ describe("presets", () => {
     expect(matchPreset({ ...base, maxFileSizeKb: 777 })).toBeNull();
   });
 
-  it("base defaults match the balanced preset", () => {
+  it("the hardcoded base fixture matches balanced", () => {
     expect(matchPreset(base)).toBe("balanced");
+  });
+
+  it("factory defaults match the balanced preset", () => {
+    expect(matchPreset(defaultOptions)).toBe("balanced");
+  });
+
+  it("goal/target/format changes never disqualify a preset", () => {
+    expect(matchPreset({ ...base, goal: "anything", format: "markdown" })).toBe(
+      "balanced",
+    );
   });
 });

@@ -8,11 +8,44 @@ import type {
   ProgressEvent,
   TransformReport,
 } from "./api";
+import { defaultOptions } from "./default-options";
 import { batchEvents } from "./events";
 import { tauriStoreAdapter } from "./persist-adapter";
-import { PROTOCOL_VERSION } from "./protocol";
 
 type PackingStatus = "idle" | "running" | "done" | "error" | "cancelled";
+
+export type Moment = "home" | "packing" | "results" | "bridge";
+export type SheetId = "github" | "settings";
+
+export interface RecentTarget {
+  kind: "folder" | "github";
+  value: string;
+}
+
+/** Moment transition applied when the pack status CHANGES. `done` lands on
+ * Results; a fatal error returns Home (the error surfaces as a banner).
+ * Statuses handled here are the ones foldEvent can produce; running→packing
+ * and cancelled→home are set directly in setJob/markCancelled. */
+function momentAfterStatus(prev: Moment, status: PackingStatus): Moment {
+  if (status === "done") return "results";
+  if (status === "error") return "home";
+  return prev;
+}
+
+const RECENTS_CAP = 5;
+
+function pushRecent(
+  recents: RecentTarget[],
+  target: RecentTarget,
+): RecentTarget[] {
+  if (target.value.length === 0) return recents;
+  return [
+    { kind: target.kind, value: target.value },
+    ...recents.filter(
+      (r) => !(r.kind === target.kind && r.value === target.value),
+    ),
+  ].slice(0, RECENTS_CAP);
+}
 
 interface AppState {
   jobId: string | null;
@@ -32,6 +65,19 @@ interface AppState {
    * persisted (see `partialize`): a pasted plan should not outlive the
    * app session. */
   bridgePlanMd: string;
+  /** Which full-screen view is showing. Driven by user navigation and by
+   * pack-status transitions (setJob → packing, done → results,
+   * error/cancel → home). Never persisted — the app always boots Home. */
+  moment: Moment;
+  /** Overlay sheet (GitHub / Settings) — orthogonal to `moment`. */
+  activeSheet: SheetId | null;
+  /** Whether Home's Advanced options panel is expanded. Persisted. */
+  advancedOpen: boolean;
+  /** Last 5 pack targets, most recent first. Persisted. */
+  recentTargets: RecentTarget[];
+  setMoment: (m: Moment) => void;
+  setSheet: (s: SheetId | null) => void;
+  setAdvancedOpen: (v: boolean) => void;
   setBridgePlanMd: (md: string) => void;
   setJob: (id: string) => void;
   pushEvent: (e: ProgressEvent) => void;
@@ -54,32 +100,6 @@ interface AppState {
    * to a different field on save. */
   patchOptions: (patch: Partial<PackOptions>) => void;
 }
-
-const defaultOptions: PackOptions = {
-  target: { kind: "folder", value: "" },
-  goal: "",
-  countTokens: true,
-  tokenizerModel: "gpt-4o-mini",
-  secretScan: true,
-  compress: false,
-  removeComments: false,
-  // Lossless 4 (default on — match Rust `PackOptions::default`).
-  dedupFiles: true,
-  trimTrailingWs: true,
-  collapseBlankLines: true,
-  normalizeLineEndings: true,
-  // Semantic 3 + TS type-only elider (default off — opt in).
-  collapseLockfiles: false,
-  collapseMinified: false,
-  markGenerated: false,
-  elideTypeOnlyExports: false,
-  maxFileSizeKb: 1024,
-  respectGitignore: true,
-  customIgnorePatterns: [],
-  protocolVersion: PROTOCOL_VERSION,
-  format: "xml",
-  xmlSchema: "cxml",
-};
 
 /** Empty PackStats used as a seed for `lastStats` when the first
  * `transformDone` event arrives before any other stats are known. The UI
@@ -135,10 +155,13 @@ function applyTransformDone(
 // to work with. Above 500 the array slice cost dominates.
 const EVENT_CAP = 500;
 
-/** Compute the next status given the current status and an incoming event. */
+/** Compute the next status given the current status and an incoming event.
+ * Only a FATAL error is terminal — non-fatal error events are informational
+ * (use-pack-job keeps streaming after them) and must not flip the status,
+ * which would also yank the moment machine back Home mid-pack. */
 function nextStatus(prev: PackingStatus, e: ProgressEvent): PackingStatus {
   if (e.kind === "done") return "done";
-  if (e.kind === "error") return "error";
+  if (e.kind === "error" && e.fatal) return "error";
   return prev;
 }
 
@@ -172,15 +195,24 @@ export const useApp = create<AppState>()(
       lastStats: null,
       options: defaultOptions,
       bridgePlanMd: "",
+      moment: "home",
+      activeSheet: null,
+      advancedOpen: false,
+      recentTargets: [],
+      setMoment: (m) => set({ moment: m }),
+      setSheet: (sheet) => set({ activeSheet: sheet }),
+      setAdvancedOpen: (v) => set({ advancedOpen: v }),
       setBridgePlanMd: (md) => set({ bridgePlanMd: md }),
       setJob: (id) =>
-        set({
+        set((s) => ({
           jobId: id,
           status: "running",
           events: [],
           result: null,
           lastStats: null,
-        }),
+          moment: "packing",
+          recentTargets: pushRecent(s.recentTargets, s.options.target),
+        })),
       pushEvent: (e) =>
         set((s) => {
           const { status, lastStats } = foldEvent(
@@ -191,6 +223,10 @@ export const useApp = create<AppState>()(
             events: [...s.events, e].slice(-EVENT_CAP),
             status,
             lastStats,
+            moment:
+              status !== s.status
+                ? momentAfterStatus(s.moment, status)
+                : s.moment,
           };
         }),
       pushEventsBatched: (incoming) =>
@@ -212,6 +248,10 @@ export const useApp = create<AppState>()(
             events: merged.slice(-EVENT_CAP),
             status: acc.status,
             lastStats: acc.lastStats,
+            moment:
+              acc.status !== s.status
+                ? momentAfterStatus(s.moment, acc.status)
+                : s.moment,
           };
         }),
       setResult: (r) => set({ result: r, lastStats: r.stats }),
@@ -222,16 +262,24 @@ export const useApp = create<AppState>()(
           events: [],
           result: null,
           lastStats: null,
+          moment: "home",
         }),
       markCancelled: () =>
-        set((s) => (s.status === "running" ? { status: "cancelled" } : s)),
+        set((s) =>
+          s.status === "running" ? { status: "cancelled", moment: "home" } : s,
+        ),
       patchOptions: (patch) =>
         set((s) => ({ options: { ...s.options, ...patch } })),
     }),
     {
       name: "app-state",
       storage: createJSONStorage(() => tauriStoreAdapter),
-      partialize: (state) => ({ options: state.options }) as Partial<AppState>,
+      partialize: (state) =>
+        ({
+          options: state.options,
+          advancedOpen: state.advancedOpen,
+          recentTargets: state.recentTargets,
+        }) as Partial<AppState>,
       // Persisted state from v0.5 lacks the 8 new toggle fields; a naive
       // shallow merge would replace `defaultOptions` wholesale and leave
       // `dedupFiles` etc. undefined → all lossless defaults silently off.
@@ -240,10 +288,33 @@ export const useApp = create<AppState>()(
       // edits. New fields land via `defaultOptions`, persisted edits win
       // for fields the user has touched.
       merge: (persisted, current) => {
-        const p = persisted as { options?: Partial<PackOptions> } | undefined;
+        const p = persisted as
+          | {
+              options?: Partial<PackOptions>;
+              advancedOpen?: boolean;
+              recentTargets?: unknown;
+            }
+          | undefined;
+        const recents: RecentTarget[] = Array.isArray(p?.recentTargets)
+          ? (p.recentTargets as unknown[])
+              .filter(
+                (r): r is RecentTarget =>
+                  !!r &&
+                  typeof r === "object" &&
+                  ((r as RecentTarget).kind === "folder" ||
+                    (r as RecentTarget).kind === "github") &&
+                  typeof (r as RecentTarget).value === "string",
+              )
+              .slice(0, RECENTS_CAP)
+          : current.recentTargets;
         return {
           ...current,
           options: { ...current.options, ...(p?.options ?? {}) },
+          advancedOpen:
+            typeof p?.advancedOpen === "boolean"
+              ? p.advancedOpen
+              : current.advancedOpen,
+          recentTargets: recents,
         };
       },
     },

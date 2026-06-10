@@ -3,7 +3,9 @@ import type { PackOptions } from "../bindings";
 /** A preset is a named bundle over existing PackOptions fields. Matching
  * compares ONLY the patch keys, so target/goal/format never disqualify a
  * preset. The chip row derives its highlighted state via matchPreset —
- * the active preset is never stored. */
+ * the active preset is never stored. Options objects must be fully
+ * populated (the store's defaults + persist merge guarantee this); a
+ * missing transform key never matches any preset. */
 export interface Preset {
   id: "balanced" | "minimal" | "everything";
   label: string;
