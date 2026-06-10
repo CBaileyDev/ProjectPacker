@@ -14,12 +14,7 @@ import { PhaseBreakdown } from "../components/pack/PhaseBreakdown";
 import { SaveButton } from "../components/pack/SaveButton";
 import { FitsCard } from "../components/results/FitsCard";
 import { fmtBytes, fmtNum } from "../lib/format";
-import {
-  fadeUp,
-  prefersReducedMotion,
-  springButton,
-  springQuick,
-} from "../lib/motion";
+import { prefersReducedMotion, springButton, springQuick } from "../lib/motion";
 import { COPY_BUTTON_LABELS, SAVE_FILENAMES } from "../lib/pack-meta";
 import { clampList } from "../lib/paginate";
 import { useApp, usePackOptions, usePackProgress } from "../lib/store";
@@ -60,12 +55,9 @@ export default function Results() {
   const stats = result.stats;
 
   return (
-    <m.div
-      className="mx-auto w-full max-w-3xl space-y-6 px-6 pb-16 pt-8"
-      variants={fadeUp}
-      initial="hidden"
-      animate="visible"
-    >
+    // Plain div: MomentView's wrapper is the single entrance-animation
+    // owner — a route-level fadeUp on top compounds into a double slide.
+    <div className="mx-auto w-full max-w-3xl space-y-6 px-6 pb-16 pt-8">
       {/* Crumb */}
       <div className="flex items-center gap-2 font-mono text-xs text-zinc-500">
         <span className="truncate">{options.target.value}</span>
@@ -129,7 +121,11 @@ export default function Results() {
           suggestedFilename={SAVE_FILENAMES[options.format]}
           text={result.output}
         />
-        <CopyButton label="Copy Executor Prompt" text={result.executorPrompt} />
+        <CopyButton
+          label="Copy Executor Prompt"
+          text={result.executorPrompt}
+          shortcut={false}
+        />
       </section>
 
       <FitsCard tokensPerModel={stats.tokensPerModel} />
@@ -271,6 +267,6 @@ export default function Results() {
           )}
         </pre>
       </section>
-    </m.div>
+    </div>
   );
 }

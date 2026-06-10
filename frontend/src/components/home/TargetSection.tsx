@@ -1,6 +1,7 @@
 import { open } from "@tauri-apps/plugin-dialog";
 import { AnimatePresence } from "framer-motion";
 import * as m from "framer-motion/m";
+import { useEffect } from "react";
 import { prefersReducedMotion, springButton } from "../../lib/motion";
 import { isValidTargetValue } from "../../lib/pack-meta";
 import { useApp } from "../../lib/store";
@@ -20,6 +21,19 @@ export function TargetSection({
 }) {
   const target = useApp((s) => s.options.target);
   const patchOptions = useApp((s) => s.patchOptions);
+  const pendingTargetFocus = useApp((s) => s.pendingTargetFocus);
+  const setPendingTargetFocus = useApp((s) => s.setPendingTargetFocus);
+
+  // mod+k handshake: the global handler sets the flag (possibly before
+  // Home is mounted — AnimatePresence mode="wait" delays the swap); the
+  // effect runs on mount and on flag changes, so the focus lands as soon
+  // as this section exists.
+  useEffect(() => {
+    if (pendingTargetFocus) {
+      document.getElementById("target-input")?.focus();
+      setPendingTargetFocus(false);
+    }
+  }, [pendingTargetFocus, setPendingTargetFocus]);
 
   const targetMode = target.kind;
   const targetVal = target.value;

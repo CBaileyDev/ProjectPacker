@@ -37,17 +37,6 @@ export const fadeUp: Variants = {
   },
 };
 
-export const slideInUp: Variants = {
-  hidden: { opacity: 0, y: prefersReducedMotion ? 0 : 20 },
-  visible: {
-    opacity: 1,
-    y: 0,
-    transition: prefersReducedMotion
-      ? reduced
-      : { duration: 0.35, ease: easeOutCustom },
-  },
-};
-
 // ── Stagger ─────────────────────────────────────────────────────────────────
 export const staggerContainer: Variants = {
   hidden: {},

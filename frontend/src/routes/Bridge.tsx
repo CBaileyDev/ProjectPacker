@@ -1,6 +1,4 @@
-import * as m from "framer-motion/m";
 import { BridgeTab } from "../components/bridge/BridgeTab";
-import { fadeUp } from "../lib/motion";
 import { useApp, usePackProgress } from "../lib/store";
 
 /** Final stage of the journey: paste plan → validate → executor prompt.
@@ -10,12 +8,9 @@ export default function Bridge() {
   const { result } = usePackProgress();
 
   return (
-    <m.div
-      className="mx-auto w-full max-w-3xl space-y-5 px-6 pb-16 pt-8"
-      variants={fadeUp}
-      initial="hidden"
-      animate="visible"
-    >
+    // Plain div: MomentView's wrapper is the single entrance-animation
+    // owner — a route-level fadeUp on top compounds into a double slide.
+    <div className="mx-auto w-full max-w-3xl space-y-5 px-6 pb-16 pt-8">
       <div className="flex items-center justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-primary">
@@ -34,6 +29,6 @@ export default function Bridge() {
         </button>
       </div>
       <BridgeTab />
-    </m.div>
+    </div>
   );
 }

@@ -71,12 +71,18 @@ interface AppState {
   moment: Moment;
   /** Overlay sheet (GitHub / Settings) — orthogonal to `moment`. */
   activeSheet: SheetId | null;
+  /** Set by the global mod+k handler; consumed (and cleared) by
+   * TargetSection once it's mounted — survives the moment-swap animation
+   * delay that breaks a one-shot rAF focus. Transient UI state, never
+   * persisted. */
+  pendingTargetFocus: boolean;
   /** Whether Home's Advanced options panel is expanded. Persisted. */
   advancedOpen: boolean;
   /** Last 5 pack targets, most recent first. Persisted. */
   recentTargets: RecentTarget[];
   setMoment: (m: Moment) => void;
   setSheet: (s: SheetId | null) => void;
+  setPendingTargetFocus: (v: boolean) => void;
   setAdvancedOpen: (v: boolean) => void;
   setBridgePlanMd: (md: string) => void;
   setJob: (id: string) => void;
@@ -197,10 +203,12 @@ export const useApp = create<AppState>()(
       bridgePlanMd: "",
       moment: "home",
       activeSheet: null,
+      pendingTargetFocus: false,
       advancedOpen: false,
       recentTargets: [],
       setMoment: (m) => set({ moment: m }),
       setSheet: (sheet) => set({ activeSheet: sheet }),
+      setPendingTargetFocus: (v) => set({ pendingTargetFocus: v }),
       setAdvancedOpen: (v) => set({ advancedOpen: v }),
       setBridgePlanMd: (md) => set({ bridgePlanMd: md }),
       setJob: (id) =>

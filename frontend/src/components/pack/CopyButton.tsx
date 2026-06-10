@@ -15,6 +15,12 @@ type CopyStatus =
 interface CopyButtonProps {
   label: string;
   text: string;
+  /** Whether this instance owns the window-level `mod+c` shortcut.
+   * Default true. Pass `false` on every non-primary instance when a
+   * screen mounts more than one CopyButton at once — otherwise a single
+   * keypress fires every instance (clipboard race + duplicate toasts).
+   * Gates only the shortcut; the button itself always works. */
+  shortcut?: boolean;
 }
 
 const COPIED_TIMEOUT_MS = 2_000;
@@ -33,7 +39,7 @@ const ERROR_TIMEOUT_MS = 4_000;
  *    state machine resets after 2s/4s, so without a toast the user might
  *    miss a fast click.
  */
-function CopyButtonInner({ label, text }: CopyButtonProps) {
+function CopyButtonInner({ label, text, shortcut = true }: CopyButtonProps) {
   const [status, setStatus] = useState<CopyStatus>({ kind: "idle" });
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const showToast = useShowToast();
@@ -64,7 +70,9 @@ function CopyButtonInner({ label, text }: CopyButtonProps) {
 
   // Pass the live handler through the shortcut map; the hook stashes it
   // in a ref internally so we can re-pass a fresh closure each render.
-  useKeyboardShortcuts({ "mod+c": doCopy });
+  // When `shortcut` is false the map is empty, so no binding can match —
+  // hooks can't be called conditionally, but an empty map is a no-op.
+  useKeyboardShortcuts(shortcut ? { "mod+c": doCopy } : {});
 
   const isCopied = status.kind === "copied";
   const isError = status.kind === "error";

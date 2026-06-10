@@ -149,6 +149,13 @@ describe("moment state machine", () => {
     useApp.getState().setSheet(null);
     expect(useApp.getState().activeSheet).toBeNull();
   });
+
+  it("pendingTargetFocus is a transient flag", () => {
+    useApp.getState().setPendingTargetFocus(true);
+    expect(useApp.getState().pendingTargetFocus).toBe(true);
+    useApp.getState().setPendingTargetFocus(false);
+    expect(useApp.getState().pendingTargetFocus).toBe(false);
+  });
 });
 
 describe("recent targets", () => {

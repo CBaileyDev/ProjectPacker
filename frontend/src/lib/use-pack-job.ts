@@ -189,14 +189,34 @@ export function usePackJob(): UsePackJobReturn {
             const id = jobIdRef.current;
             if (!id) {
               // Shouldn't happen — `started` always precedes `done`. Fall back
-              // to a useful error rather than swallowing.
+              // to a useful error rather than swallowing. The done event
+              // already moved the moment to Results, but there is no result
+              // to show — land on Home where the error banner renders.
               setErrorMsg("internal: done without started");
+              useApp.getState().setMoment("home");
               return;
             }
             (async () => {
-              const r = await commands.packGetResult(id);
-              if (r.status === "ok") actionsRef.current.setResult(r.data);
-              else setErrorMsg(r.error.message);
+              let r: Awaited<ReturnType<typeof commands.packGetResult>>;
+              try {
+                r = await commands.packGetResult(id);
+              } catch (err) {
+                // The done event already moved the moment to Results, but
+                // there is no result to show — land on Home where the error
+                // banner renders.
+                setErrorMsg(err instanceof Error ? err.message : String(err));
+                useApp.getState().setMoment("home");
+                return;
+              }
+              if (r.status === "ok") {
+                actionsRef.current.setResult(r.data);
+              } else {
+                // The done event already moved the moment to Results, but
+                // there is no result to show — land on Home where the error
+                // banner renders.
+                setErrorMsg(r.error.message);
+                useApp.getState().setMoment("home");
+              }
             })();
           } else if (e.kind === "error") {
             setErrorMsg(e.message);

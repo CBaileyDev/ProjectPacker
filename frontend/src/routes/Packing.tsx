@@ -3,7 +3,6 @@ import { useMemo } from "react";
 import { LoaderIcon, XIcon } from "../components/pack/icons";
 import { PackProgressBar } from "../components/pack/PackProgressBar";
 import { ProgressLog } from "../components/pack/ProgressLog";
-import { fadeUp } from "../lib/motion";
 import { usePackJobContext } from "../lib/pack-job-context";
 import { progressFromEvents } from "../lib/pack-progress";
 import { useApp, usePackEvents } from "../lib/store";
@@ -19,12 +18,9 @@ export default function Packing() {
   const progress = useMemo(() => progressFromEvents(events), [events]);
 
   return (
-    <m.div
-      className="mx-auto w-full max-w-2xl space-y-6 px-6 pb-16 pt-12"
-      variants={fadeUp}
-      initial="hidden"
-      animate="visible"
-    >
+    // Plain div: MomentView's wrapper is the single entrance-animation
+    // owner — a route-level fadeUp on top compounds into a double slide.
+    <div className="mx-auto w-full max-w-2xl space-y-6 px-6 pb-16 pt-12">
       <div className="text-center">
         <div className="flex items-center justify-center gap-2 text-xs font-semibold uppercase tracking-wider text-primary">
           <m.span
@@ -56,6 +52,6 @@ export default function Packing() {
           Cancel
         </m.button>
       </div>
-    </m.div>
+    </div>
   );
 }

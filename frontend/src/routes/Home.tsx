@@ -17,7 +17,7 @@ import {
 } from "../components/pack/icons";
 import { ProgressLog } from "../components/pack/ProgressLog";
 import { Toggle } from "../components/pack/Toggle";
-import { fadeUp, prefersReducedMotion } from "../lib/motion";
+import { prefersReducedMotion } from "../lib/motion";
 import { usePackJobContext } from "../lib/pack-job-context";
 import {
   FORMAT_LABELS,
@@ -78,12 +78,9 @@ export default function Home() {
   });
 
   return (
-    <m.div
-      className="mx-auto w-full max-w-2xl space-y-7 px-6 pb-16 pt-10"
-      variants={fadeUp}
-      initial="hidden"
-      animate="visible"
-    >
+    // Plain div: MomentView's wrapper is the single entrance-animation
+    // owner — a route-level fadeUp on top compounds into a double slide.
+    <div className="mx-auto w-full max-w-2xl space-y-7 px-6 pb-16 pt-10">
       <div className="text-center">
         <h1 className="text-3xl font-bold tracking-tight">
           What are we packing?
@@ -336,6 +333,6 @@ export default function Home() {
       )}
 
       <AnimatePresence>{showOnboarding && <OnboardingCard />}</AnimatePresence>
-    </m.div>
+    </div>
   );
 }

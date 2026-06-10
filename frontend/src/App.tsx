@@ -78,9 +78,13 @@ function useSingleInstance(): void {
           try {
             const info = await stat(arg);
             if (info.isDirectory) {
+              // Don't yank options (or the view) out from under a pack
+              // that's mid-run.
+              if (useApp.getState().status === "running") return;
               useApp
                 .getState()
                 .patchOptions({ target: { kind: "folder", value: arg } });
+              useApp.getState().setMoment("home");
               return;
             }
           } catch {
@@ -232,6 +236,12 @@ const MOMENTS = {
 
 function MomentView() {
   const moment = useApp((s) => s.moment);
+  // Each moment is a fresh full-screen view — carry-over scroll position
+  // from the previous moment is never meaningful.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `moment` is a deliberate trigger dep — the effect must re-run on every moment swap even though the body doesn't read it
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [moment]);
   const Active = MOMENTS[moment];
   return (
     <AnimatePresence mode="wait">
@@ -268,9 +278,10 @@ function Shell() {
     "mod+k": () => {
       setSheet(null);
       if (useApp.getState().status !== "running") setMoment("home");
-      requestAnimationFrame(() =>
-        document.getElementById("target-input")?.focus(),
-      );
+      // Store-driven focus handshake: TargetSection consumes (and clears)
+      // the flag once mounted — a one-shot rAF would fire before the
+      // moment-swap animation lets Home mount.
+      useApp.getState().setPendingTargetFocus(true);
     },
     escape: () => {
       // Single Esc policy for the whole app (Packing registers no Esc
