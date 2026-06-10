@@ -3,7 +3,17 @@ name: Release
 on:
   push:
     tags: ["v*.*.*"]
+  # Manual dispatch covers the case where the tag can't be pushed directly
+  # (e.g. branch-scoped credentials): the release step creates `tag` at
+  # `commit` if the tag doesn't exist yet.
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag, e.g. v1.0.0"
+        required: true
+      commit:
+        description: "Full 40-char SHA or branch the tag should point at (defaults to the dispatched ref; the releases API rejects abbreviated SHAs)"
+        required: false
 
 permissions:
   contents: write
@@ -55,7 +65,8 @@ jobs:
       - name: Collect artifacts
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          TAG="${{ inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
           BUNDLE_DIR="$(find . -type d -path '*/release/bundle' | head -1)"
           mkdir dist
           case "${{ runner.os }}" in
@@ -96,7 +107,8 @@ jobs:
       - name: Extract release notes from CHANGELOG.md
         shell: bash
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          TAG="${{ inputs.tag || github.ref_name }}"
+          VERSION="${TAG#v}"
           awk -v ver="$VERSION" '
             $0 ~ "^## \\[" ver "\\]" { flag=1; next }
             /^## / { flag=0 }
@@ -105,6 +117,9 @@ jobs:
 
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          # Only consulted when the tag doesn't exist yet (dispatch path).
+          target_commitish: ${{ inputs.commit || github.sha }}
           files: dist/*
           body_path: RELEASE_NOTES.md
           draft: false
