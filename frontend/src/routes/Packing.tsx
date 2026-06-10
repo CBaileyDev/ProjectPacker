@@ -2,30 +2,21 @@ import * as m from "framer-motion/m";
 import { useMemo } from "react";
 import { LoaderIcon, XIcon } from "../components/pack/icons";
 import { PackProgressBar } from "../components/pack/PackProgressBar";
-import { PhaseBreakdown } from "../components/pack/PhaseBreakdown";
 import { ProgressLog } from "../components/pack/ProgressLog";
 import { fadeUp } from "../lib/motion";
 import { usePackJobContext } from "../lib/pack-job-context";
 import { progressFromEvents } from "../lib/pack-progress";
-import { useApp, useLastStats, usePackEvents } from "../lib/store";
-import { useKeyboardShortcuts } from "../lib/use-keyboard-shortcuts";
+import { useApp, usePackEvents } from "../lib/store";
 
-/** Full-screen progress theater. The ONLY moment subscribed to the
- * high-churn events slice. Esc cancels (unless a sheet is open — the
- * global Esc handler closes that first). */
+/** Full-screen progress theater. The only moment that renders the live
+ * event stream — the high-churn subscription stays out of every other
+ * screen. Esc-to-cancel is owned by the Shell's global handler so it
+ * can't race the sheet-closing Esc. */
 export default function Packing() {
   const events = usePackEvents();
-  const lastStats = useLastStats();
   const target = useApp((s) => s.options.target.value);
-  const { cancel, isRunning } = usePackJobContext();
+  const { cancel } = usePackJobContext();
   const progress = useMemo(() => progressFromEvents(events), [events]);
-
-  useKeyboardShortcuts({
-    escape: () => {
-      if (useApp.getState().activeSheet) return;
-      if (isRunning) cancel();
-    },
-  });
 
   return (
     <m.div
@@ -52,7 +43,6 @@ export default function Packing() {
 
       <PackProgressBar value={progress} />
       <ProgressLog events={events} />
-      {lastStats && <PhaseBreakdown stats={lastStats} />}
 
       <div className="flex justify-center">
         <m.button
