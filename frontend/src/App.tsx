@@ -277,7 +277,10 @@ function Shell() {
   useKeyboardShortcuts({
     "mod+k": () => {
       setSheet(null);
-      if (useApp.getState().status !== "running") setMoment("home");
+      // No focus flag mid-run: a pending flag would survive the pack and
+      // steal focus when Home eventually mounts.
+      if (useApp.getState().status === "running") return;
+      setMoment("home");
       // Store-driven focus handshake: TargetSection consumes (and clears)
       // the flag once mounted — a one-shot rAF would fire before the
       // moment-swap animation lets Home mount.

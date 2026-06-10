@@ -3,6 +3,7 @@ import { AnimatePresence } from "framer-motion";
 import * as m from "framer-motion/m";
 import { useEffect } from "react";
 import { prefersReducedMotion, springButton } from "../../lib/motion";
+import { usePackJobContext } from "../../lib/pack-job-context";
 import { isValidTargetValue } from "../../lib/pack-meta";
 import { useApp } from "../../lib/store";
 import { FolderIcon, GithubIcon } from "../pack/icons";
@@ -21,6 +22,7 @@ export function TargetSection({
 }) {
   const target = useApp((s) => s.options.target);
   const patchOptions = useApp((s) => s.patchOptions);
+  const { run, isRunning } = usePackJobContext();
   const pendingTargetFocus = useApp((s) => s.pendingTargetFocus);
   const setPendingTargetFocus = useApp((s) => s.setPendingTargetFocus);
 
@@ -101,6 +103,11 @@ export function TargetSection({
               value={targetVal}
               placeholder="/path/to/project"
               aria-label="Folder path"
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && !isRunning && isValidTarget) {
+                  void run();
+                }
+              }}
               onChange={(e) =>
                 patchOptions({
                   target: {
@@ -141,6 +148,11 @@ export function TargetSection({
                 placeholder="https://github.com/owner/repo"
                 aria-label="GitHub repository URL"
                 aria-invalid={Boolean(targetVal) && !isValidTarget}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !isRunning && isValidTarget) {
+                    void run();
+                  }
+                }}
                 onChange={(e) =>
                   patchOptions({
                     target: {

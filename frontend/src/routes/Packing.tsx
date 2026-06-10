@@ -1,6 +1,7 @@
+import { AnimatePresence } from "framer-motion";
 import * as m from "framer-motion/m";
 import { useMemo } from "react";
-import { LoaderIcon, XIcon } from "../components/pack/icons";
+import { AlertIcon, LoaderIcon, XIcon } from "../components/pack/icons";
 import { PackProgressBar } from "../components/pack/PackProgressBar";
 import { ProgressLog } from "../components/pack/ProgressLog";
 import { usePackJobContext } from "../lib/pack-job-context";
@@ -14,7 +15,7 @@ import { useApp, usePackEvents } from "../lib/store";
 export default function Packing() {
   const events = usePackEvents();
   const target = useApp((s) => s.options.target.value);
-  const { cancel } = usePackJobContext();
+  const { cancel, errorMsg, dismissError } = usePackJobContext();
   const progress = useMemo(() => progressFromEvents(events), [events]);
 
   return (
@@ -52,6 +53,30 @@ export default function Packing() {
           Cancel
         </m.button>
       </div>
+
+      {/* Error banner */}
+      <AnimatePresence>
+        {errorMsg && (
+          <m.div
+            role="alert"
+            className="flex items-start gap-3 rounded-xl border border-red-600/40 bg-red-950/40 px-4 py-3 text-sm text-red-300"
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+          >
+            <AlertIcon size={16} className="mt-0.5 shrink-0 text-red-400" />
+            <div className="flex-1 break-words">{errorMsg}</div>
+            <button
+              type="button"
+              onClick={dismissError}
+              aria-label="Dismiss error"
+              className="-mr-1 -mt-1 shrink-0 rounded p-1 text-red-300/80 transition-colors hover:bg-red-900/40 hover:text-red-200"
+            >
+              <XIcon size={14} />
+            </button>
+          </m.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

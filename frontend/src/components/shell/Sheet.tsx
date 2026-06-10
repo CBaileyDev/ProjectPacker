@@ -56,7 +56,10 @@ export function Sheet({ open, title, onClose, children }: SheetProps) {
             aria-modal="true"
             aria-label={title}
             tabIndex={-1}
-            className="relative flex h-full w-full max-w-xl flex-col overflow-y-auto border-l border-white/10 bg-background p-6 shadow-2xl outline-none"
+            // Pinned dark: the app's components are currently hardcoded
+            // dark-on-zinc; bg-background would render paper under light
+            // OS themes.
+            className="relative flex h-full w-full max-w-xl flex-col overflow-y-auto border-l border-white/10 bg-zinc-950 p-6 shadow-2xl outline-none"
             initial={
               prefersReducedMotion ? { opacity: 0 } : { x: 48, opacity: 0 }
             }

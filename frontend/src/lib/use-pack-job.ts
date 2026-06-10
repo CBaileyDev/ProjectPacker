@@ -266,11 +266,17 @@ export function usePackJob(): UsePackJobReturn {
         // surface the failure (this one IS an error, not a cancellation).
         cancelRequestedRef.current = false;
         setErrorMsg(res.error.message);
+        // A failed cancel must not strand the user on Packing — land Home
+        // where the full error/banner UX lives.
+        useApp.getState().setMoment("home");
         return;
       }
     } catch (e) {
       cancelRequestedRef.current = false;
       setErrorMsg(e instanceof Error ? e.message : String(e));
+      // A failed cancel must not strand the user on Packing — land Home
+      // where the full error/banner UX lives.
+      useApp.getState().setMoment("home");
       return;
     }
     // Resolve the UI immediately rather than waiting on a terminal event
