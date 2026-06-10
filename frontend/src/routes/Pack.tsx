@@ -1,11 +1,13 @@
-import { open } from "@tauri-apps/plugin-dialog";
 import { AnimatePresence } from "framer-motion";
 import * as m from "framer-motion/m";
 import type { LucideProps } from "lucide-react";
-import type React from "react";
 import { type ComponentType, useEffect, useMemo, useState } from "react";
 import type { PackFormat, PackOptions, PackResult } from "../bindings";
 import { BridgeTab } from "../components/bridge/BridgeTab";
+import { GoalSection } from "../components/home/GoalSection";
+import { OnboardingCard } from "../components/home/OnboardingCard";
+import { SectionTitle } from "../components/home/SectionTitle";
+import { TargetSection } from "../components/home/TargetSection";
 import { AiContextTable } from "../components/pack/AiContextTable";
 import { CompressionPanel } from "../components/pack/CompressionPanel";
 import { CopyButton } from "../components/pack/CopyButton";
@@ -16,7 +18,6 @@ import {
   BridgeIcon,
   CheckIcon,
   FileTextIcon,
-  FolderIcon,
   GithubIcon,
   LoaderIcon,
   PackageIcon,
@@ -40,6 +41,13 @@ import {
   springQuick,
   staggerContainer,
 } from "../lib/motion";
+import {
+  COPY_BUTTON_LABELS,
+  FORMAT_LABELS,
+  isValidTargetValue,
+  MAX_FILE_SIZE_KB,
+  SAVE_FILENAMES,
+} from "../lib/pack-meta";
 import { progressFromEvents } from "../lib/pack-progress";
 import { clampList } from "../lib/paginate";
 import {
@@ -54,29 +62,6 @@ import {
   useKeyboardShortcuts,
 } from "../lib/use-keyboard-shortcuts";
 import { usePackJob } from "../lib/use-pack-job";
-
-const FORMAT_LABELS: Record<PackFormat, string> = {
-  xml: "XML  (planner / executor)",
-  markdown: "Markdown",
-  plainText: "Plain Text",
-};
-
-const COPY_BUTTON_LABELS: Record<PackFormat, string> = {
-  xml: "Copy Pack XML",
-  markdown: "Copy Pack Markdown",
-  plainText: "Copy Plain Text",
-};
-
-const SAVE_FILENAMES: Record<PackFormat, string> = {
-  xml: "pack.xml",
-  markdown: "pack.md",
-  plainText: "pack.txt",
-};
-
-const GITHUB_URL_PATTERN =
-  /^(https:\/\/github\.com\/|git@github\.com:|github\.com\/)[A-Za-z0-9._-]+\/[A-Za-z0-9._-]+(\.git)?\/?$/;
-
-const MAX_FILE_SIZE_KB = 102_400;
 
 type PackTab = "packer" | "results" | "bridge" | "github" | "settings";
 
@@ -151,18 +136,6 @@ function tabDescription(
     case "settings":
       return "Tokens and preferences";
   }
-}
-
-function isValidTargetValue(kind: "folder" | "github", value: string): boolean {
-  return kind === "folder" ? value.length > 0 : GITHUB_URL_PATTERN.test(value);
-}
-
-function SectionTitle({ children }: { children: React.ReactNode }) {
-  return (
-    <h3 className="block text-xs font-semibold uppercase tracking-wider text-zinc-500">
-      {children}
-    </h3>
-  );
 }
 
 export default function Pack() {
@@ -740,244 +713,6 @@ function LiveProgress() {
       <PackProgressBar value={progress} />
       <ProgressLog events={events} />
     </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-// Target + Goal sections — extracted with field-level store selectors so a
-// keystroke in these inputs subscribes only the owning component to the
-// changed field, mirroring the LiveProgress isolation pattern above.
-// ─────────────────────────────────────────────────────────────────────────
-
-function TargetSection({ onBrowseGithub }: { onBrowseGithub: () => void }) {
-  const target = useApp((s) => s.options.target);
-  const patchOptions = useApp((s) => s.patchOptions);
-
-  const targetMode = target.kind;
-  const targetVal = target.value;
-  const isValidTarget = isValidTargetValue(targetMode, targetVal);
-
-  function setTargetMode(mode: "folder" | "github") {
-    patchOptions({ target: { kind: mode, value: "" } });
-  }
-
-  async function pickFolder() {
-    const path = await open({ directory: true });
-    if (typeof path === "string") {
-      patchOptions({ target: { kind: "folder", value: path } });
-    }
-  }
-
-  return (
-    <section className="space-y-3">
-      <SectionTitle>Target</SectionTitle>
-
-      <div className="flex w-fit gap-1.5 rounded-lg border border-zinc-700/50 bg-zinc-800/60 p-1">
-        <button
-          type="button"
-          onClick={() => setTargetMode("folder")}
-          aria-pressed={targetMode === "folder"}
-          className={`flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-sm font-medium transition-all duration-200 ${
-            targetMode === "folder"
-              ? "bg-emerald-600 text-white shadow-lg shadow-emerald-900/30"
-              : "text-zinc-400 hover:text-zinc-200"
-          }`}
-        >
-          <FolderIcon size={14} />
-          Folder
-        </button>
-        <button
-          type="button"
-          onClick={() => setTargetMode("github")}
-          aria-pressed={targetMode === "github"}
-          className={`flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-sm font-medium transition-all duration-200 ${
-            targetMode === "github"
-              ? "bg-emerald-600 text-white shadow-lg shadow-emerald-900/30"
-              : "text-zinc-400 hover:text-zinc-200"
-          }`}
-        >
-          <GithubIcon size={14} />
-          GitHub URL
-        </button>
-      </div>
-
-      <AnimatePresence mode="wait">
-        {targetMode === "folder" ? (
-          <m.div
-            key="folder"
-            className="flex gap-2"
-            initial={prefersReducedMotion ? false : { opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
-            transition={{
-              duration: prefersReducedMotion ? 0 : 0.2,
-            }}
-          >
-            <input
-              className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800/60 px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 transition-colors focus:border-emerald-500/50 focus:outline-none"
-              value={targetVal}
-              placeholder="/path/to/project"
-              aria-label="Folder path"
-              onChange={(e) =>
-                patchOptions({
-                  target: {
-                    kind: "folder",
-                    value: e.target.value,
-                  },
-                })
-              }
-            />
-            <m.button
-              type="button"
-              className="rounded-lg border border-zinc-600 bg-zinc-700 px-4 py-2.5 text-sm text-zinc-200 hover:bg-zinc-600 transition-colors"
-              onClick={pickFolder}
-              whileTap={springButton}
-            >
-              Browse…
-            </m.button>
-          </m.div>
-        ) : (
-          <m.div
-            key="github"
-            initial={prefersReducedMotion ? false : { opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={prefersReducedMotion ? { opacity: 0 } : { opacity: 0, y: 6 }}
-            transition={{
-              duration: prefersReducedMotion ? 0 : 0.2,
-            }}
-          >
-            <div className="flex gap-2">
-              <input
-                className={`flex-1 rounded-lg border bg-zinc-800/60 px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 transition-colors focus:outline-none ${
-                  targetVal && !isValidTarget
-                    ? "border-red-600 focus:border-red-500"
-                    : "border-zinc-700 focus:border-emerald-500/50"
-                }`}
-                value={targetVal}
-                placeholder="https://github.com/owner/repo"
-                aria-label="GitHub repository URL"
-                aria-invalid={Boolean(targetVal) && !isValidTarget}
-                onChange={(e) =>
-                  patchOptions({
-                    target: {
-                      kind: "github",
-                      value: e.target.value,
-                    },
-                  })
-                }
-              />
-              <m.button
-                type="button"
-                className="rounded-lg border border-zinc-600 bg-zinc-700 px-4 py-2.5 text-sm text-zinc-200 hover:bg-zinc-600 transition-colors"
-                onClick={onBrowseGithub}
-                whileTap={springButton}
-                title="Pick a repo from the GitHub tab"
-              >
-                Browse…
-              </m.button>
-            </div>
-            {targetVal && !isValidTarget && (
-              <m.div
-                className="mt-1.5 text-xs text-red-400"
-                role="alert"
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-              >
-                Enter a valid GitHub repo URL, such as
-                https://github.com/owner/repo
-              </m.div>
-            )}
-          </m.div>
-        )}
-      </AnimatePresence>
-    </section>
-  );
-}
-
-function GoalSection() {
-  const goal = useApp((s) => s.options.goal);
-  const patchOptions = useApp((s) => s.patchOptions);
-  return (
-    <section className="space-y-3">
-      <SectionTitle>Goal / Task Description</SectionTitle>
-      <textarea
-        className="h-20 w-full resize-none rounded-lg border border-zinc-700 bg-zinc-800/60 px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 transition-colors focus:border-emerald-500/50 focus:outline-none"
-        value={goal}
-        placeholder="Describe what you want to build or fix…"
-        aria-label="Goal or task description"
-        onChange={(e) => patchOptions({ goal: e.target.value })}
-      />
-    </section>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-// Onboarding empty state — shown on the Packer tab when no target is
-// selected and nothing has run yet. Walks through the 3-step flow.
-// ─────────────────────────────────────────────────────────────────────────
-
-const ONBOARDING_STEPS: Array<{
-  Icon: ComponentType<LucideProps>;
-  title: string;
-  body: string;
-}> = [
-  {
-    Icon: FolderIcon,
-    title: "Pick a target",
-    body: "Choose a local folder, drop one onto the window, or paste a GitHub repo URL.",
-  },
-  {
-    Icon: FileTextIcon,
-    title: "Describe your goal",
-    body: "Say what you want to build or fix — it's embedded in the pack for the AI.",
-  },
-  {
-    Icon: PackageIcon,
-    title: "Pack",
-    body: "One AI-ready file with token counts, secret scanning, and compression stats.",
-  },
-];
-
-function OnboardingCard() {
-  return (
-    <m.section
-      aria-label="Getting started"
-      className="rounded-2xl border border-dashed border-zinc-700/70 bg-zinc-900/25 p-6"
-      initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0 }}
-      transition={
-        prefersReducedMotion
-          ? { duration: 0 }
-          : { duration: 0.3, ease: [0.22, 1, 0.36, 1] }
-      }
-    >
-      <div className="flex items-center gap-2">
-        <SparklesIcon size={15} className="text-emerald-400" />
-        <h3 className="text-sm font-semibold text-zinc-200">
-          Get started in three steps
-        </h3>
-      </div>
-      <ol className="mt-4 grid gap-3 md:grid-cols-3">
-        {ONBOARDING_STEPS.map(({ Icon, title, body }, i) => (
-          <li
-            key={title}
-            className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4"
-          >
-            <div className="flex items-center gap-2.5">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 ring-1 ring-emerald-500/20">
-                <Icon size={15} className="text-emerald-400" />
-              </span>
-              <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                Step {i + 1}
-              </span>
-            </div>
-            <p className="mt-3 text-sm font-semibold text-zinc-200">{title}</p>
-            <p className="mt-1 text-xs leading-relaxed text-zinc-500">{body}</p>
-          </li>
-        ))}
-      </ol>
-    </m.section>
   );
 }
 
