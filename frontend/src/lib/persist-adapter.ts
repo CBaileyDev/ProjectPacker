@@ -121,8 +121,13 @@ class DebouncedTauriStorage implements StateStorage {
     if (queued !== undefined) {
       return sanitize(queued);
     }
+    // Sanitize the cold read too — this is the startup rehydration path,
+    // and the ONLY place a stale on-disk blob (e.g. a retired
+    // protocolVersion from a pre-rename build) can be migrated before it
+    // enters the live store. Write-path sanitizing alone heals the file
+    // but not the running app.
     const value = await this.store.get<string>(name);
-    return value ?? null;
+    return value == null ? null : sanitize(value);
   }
 
   setItem(name: string, value: string): void {
