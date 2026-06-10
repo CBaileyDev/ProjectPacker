@@ -27,11 +27,12 @@ export function Sheet({ open, title, onClose, children }: SheetProps) {
     }
   }, [open]);
 
+  // z-[200]: above DropOverlay (z-50) and the toast stack (z-[60]).
   return (
     <AnimatePresence>
       {open && (
         <m.div
-          className="fixed inset-0 z-modal flex justify-end"
+          className="fixed inset-0 z-[200] flex justify-end"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
