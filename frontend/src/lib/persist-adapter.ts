@@ -12,6 +12,7 @@ const ALLOWED_FORMATS = ["xml", "markdown", "plainText"] as const;
 const MIN_FILE_SIZE_KB = 1;
 const MAX_FILE_SIZE_KB = 102_400;
 const MAX_GOAL_LENGTH = 8192;
+const MAX_RECENTS = 5;
 
 function clamp(n: number, min: number, max: number): number {
   if (!Number.isFinite(n)) return min;
@@ -31,6 +32,10 @@ function clamp(n: number, min: number, max: number): number {
  *    retired version string migrate forward).
  *  - `options.format` whitelisted; reset to `'xml'`.
  *  - `options.goal` truncated to 8192 chars.
+ *  - `advancedOpen` (state-level) coerced to a boolean; reset to `false`.
+ *  - `recentTargets` (state-level) filtered to well-formed
+ *    `{kind: 'folder' | 'github', value: string}` entries, capped at
+ *    `MAX_RECENTS` (5).
  *
  * Tolerates non-object / non-JSON input by returning it unchanged — the
  * Zustand layer is the source of truth for shape, this is just the moat.
@@ -46,7 +51,10 @@ function sanitize(raw: string): string {
 
   const root = parsed as Record<string, unknown>;
   const state = root.state as Record<string, unknown> | undefined;
-  const options = state?.options as Record<string, unknown> | undefined;
+  if (!state) return raw;
+  // A blob without options is not a recognizable app-state blob — leave it
+  // untouched (the store's persist `merge` layer handles it).
+  const options = state.options as Record<string, unknown> | undefined;
   if (!options) return raw;
 
   // maxFileSizeKb
@@ -87,6 +95,26 @@ function sanitize(raw: string): string {
   ) {
     options.goal = options.goal.slice(0, MAX_GOAL_LENGTH);
   }
+
+  // advancedOpen — boolean or reset.
+  if (typeof state.advancedOpen !== "boolean") {
+    state.advancedOpen = false;
+  }
+
+  // recentTargets — array of {kind: folder|github, value: string}, cap 5.
+  const rawRecents = Array.isArray(state.recentTargets)
+    ? state.recentTargets
+    : [];
+  state.recentTargets = rawRecents
+    .filter(
+      (r): r is { kind: string; value: string } =>
+        !!r &&
+        typeof r === "object" &&
+        ((r as { kind?: unknown }).kind === "folder" ||
+          (r as { kind?: unknown }).kind === "github") &&
+        typeof (r as { value?: unknown }).value === "string",
+    )
+    .slice(0, MAX_RECENTS);
 
   return JSON.stringify(parsed);
 }

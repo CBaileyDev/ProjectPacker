@@ -52,4 +52,43 @@ describe("persist-adapter rehydration", () => {
     const options = JSON.parse(raw as string).state.options;
     expect(options.protocolVersion).toBe(PROTOCOL_VERSION);
   });
+
+  it("coerces bad advancedOpen / recentTargets on cold read", async () => {
+    backing.set(
+      "app-state",
+      JSON.stringify({
+        state: {
+          options: {
+            protocolVersion: PROTOCOL_VERSION,
+            maxFileSizeKb: 1024,
+            format: "xml",
+            goal: "",
+          },
+          advancedOpen: "yes",
+          recentTargets: [
+            { kind: "folder", value: "/ok" },
+            { kind: "evil", value: "/bad" },
+            { kind: "github", value: 42 },
+            { kind: "github", value: "https://github.com/a/b" },
+            { kind: "folder", value: "/2" },
+            { kind: "folder", value: "/3" },
+            { kind: "folder", value: "/4" },
+            { kind: "folder", value: "/5" },
+          ],
+        },
+        version: 0,
+      }),
+    );
+    const raw = await tauriStoreAdapter.getItem("app-state");
+    const state = JSON.parse(raw as string).state;
+    expect(state.advancedOpen).toBe(false);
+    // invalid entries dropped, cap 5
+    expect(state.recentTargets).toEqual([
+      { kind: "folder", value: "/ok" },
+      { kind: "github", value: "https://github.com/a/b" },
+      { kind: "folder", value: "/2" },
+      { kind: "folder", value: "/3" },
+      { kind: "folder", value: "/4" },
+    ]);
+  });
 });
