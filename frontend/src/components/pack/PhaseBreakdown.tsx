@@ -63,7 +63,7 @@ function PhaseBreakdownInner({ stats }: PhaseBreakdownProps) {
         key: "emit",
         label: "Emit",
         value: stats.emitMs,
-        cls: "bg-primary/60",
+        cls: "bg-fuchsia-500/60",
       },
     ],
     [stats],

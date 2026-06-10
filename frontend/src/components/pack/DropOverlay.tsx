@@ -73,7 +73,7 @@ export function DropOverlay({
   // computed classnames.
   const cardBorderCls = isInvalid ? "border-amber-400/60" : "border-primary/60";
   const titleCls = isInvalid ? "text-amber-300" : "text-primary";
-  const subtitleCls = isInvalid ? "text-amber-400/60" : "text-primary/60";
+  const subtitleCls = isInvalid ? "text-amber-400/60" : "text-primary/70";
   const iconCls = isInvalid ? "text-amber-400" : "text-primary";
   const backdropCls = isInvalid ? "bg-amber-500/8" : "bg-primary/8";
 
