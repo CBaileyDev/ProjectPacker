@@ -18,6 +18,7 @@ import {
 import { ProgressLog } from "../components/pack/ProgressLog";
 import { Toggle } from "../components/pack/Toggle";
 import { fadeUp, prefersReducedMotion } from "../lib/motion";
+import { usePackJobContext } from "../lib/pack-job-context";
 import {
   FORMAT_LABELS,
   isValidTargetValue,
@@ -34,7 +35,6 @@ import {
   isMacPlatform,
   useKeyboardShortcuts,
 } from "../lib/use-keyboard-shortcuts";
-import { usePackJob } from "../lib/use-pack-job";
 
 /** Derive a short display label for a recent target. */
 function recentLabel(value: string, kind: "folder" | "github"): string {
@@ -55,7 +55,12 @@ export default function Home() {
   const setAdvancedOpen = useApp((s) => s.setAdvancedOpen);
   const recentTargets = useApp((s) => s.recentTargets);
   const events = usePackEvents();
-  const { run: runPack, isRunning, errorMsg, dismissError } = usePackJob();
+  const {
+    run: runPack,
+    isRunning,
+    errorMsg,
+    dismissError,
+  } = usePackJobContext();
 
   const isValidTarget = useMemo(
     () => isValidTargetValue(options.target.kind, options.target.value),

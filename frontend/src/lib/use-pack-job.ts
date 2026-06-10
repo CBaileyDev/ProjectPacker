@@ -5,7 +5,7 @@ import { commands } from "../bindings";
 import { createPackProgressChannel } from "./events";
 import { useApp } from "./store";
 
-interface UsePackJobReturn {
+export interface UsePackJobReturn {
   /** Start a pack run with the current options. No-op if a pack is already in flight. */
   run: () => Promise<void>;
   /** Cancel the in-flight pack. No-op when nothing is running. User-initiated,
@@ -70,6 +70,13 @@ export function usePackJob(): UsePackJobReturn {
    * `error` event arriving afterwards is the backend acknowledging the
    * cancellation — swallow it instead of surfacing an error banner. */
   const cancelRequestedRef = useRef(false);
+  /** Synchronous reentry latch for the pre-start window. `isRunningRef`
+   * only flips after `setJob` lands and the component re-renders, so a
+   * fast double-click (or held mod+enter) could re-enter `run()` before
+   * then — resetting the store and detaching the first run's channel
+   * while starting a second backend job. Set before any await, cleared
+   * when the start attempt resolves or fails. */
+  const startingRef = useRef(false);
 
   const isRunning = status === "running";
   const isRunningRef = useRef(isRunning);
@@ -128,97 +135,103 @@ export function usePackJob(): UsePackJobReturn {
   }, []);
 
   async function run() {
+    if (startingRef.current) return; // a start attempt is already in flight
     if (isRunningRef.current) return; // double-click / pre-await reentry guard
-    setErrorMsg(null);
-    cancelRequestedRef.current = false;
-    jobIdRef.current = null;
-    reset();
+    startingRef.current = true;
+    try {
+      setErrorMsg(null);
+      cancelRequestedRef.current = false;
+      jobIdRef.current = null;
+      reset();
 
-    // Detach the previous channel's handler so any stragglers (shouldn't
-    // happen — pack #1 has already terminated by now — but defensively)
-    // can't write to the store mid-run #2.
-    if (channelRef.current !== null) {
-      channelRef.current.onmessage = () => {};
-    }
-    // Fresh channel per run. Tauri 2 `Channel<T>` is single-use; see the
-    // hook-level doc comment for the failure mode of reuse.
-    const channel = createPackProgressChannel(() => {});
-    channelRef.current = channel;
-
-    // Install the real handler BEFORE awaiting packStart. An event emitted
-    // between packStart returning (server side) and the JS continuation
-    // reassigning onmessage would otherwise be silently swallowed. The
-    // `Started` event carries `job_id`, so we capture it into `jobIdRef`
-    // from inside the handler instead of waiting for packStart's return
-    // value.
-    channel.onmessage = (e) => {
-      const isTerminal = e.kind === "done" || (e.kind === "error" && e.fatal);
-
-      if (e.kind === "started") {
-        jobIdRef.current = e.job_id;
+      // Detach the previous channel's handler so any stragglers (shouldn't
+      // happen — pack #1 has already terminated by now — but defensively)
+      // can't write to the store mid-run #2.
+      if (channelRef.current !== null) {
+        channelRef.current.onmessage = () => {};
       }
+      // Fresh channel per run. Tauri 2 `Channel<T>` is single-use; see the
+      // hook-level doc comment for the failure mode of reuse.
+      const channel = createPackProgressChannel(() => {});
+      channelRef.current = channel;
 
-      // User-initiated cancel: the backend acknowledges by erroring the
-      // job. That's expected, not failure — drain the buffer, mark the
-      // run cancelled, and surface no error banner/toast.
-      if (e.kind === "error" && cancelRequestedRef.current) {
-        flushBuffer();
+      // Install the real handler BEFORE awaiting packStart. An event emitted
+      // between packStart returning (server side) and the JS continuation
+      // reassigning onmessage would otherwise be silently swallowed. The
+      // `Started` event carries `job_id`, so we capture it into `jobIdRef`
+      // from inside the handler instead of waiting for packStart's return
+      // value.
+      channel.onmessage = (e) => {
+        const isTerminal = e.kind === "done" || (e.kind === "error" && e.fatal);
+
+        if (e.kind === "started") {
+          jobIdRef.current = e.job_id;
+        }
+
+        // User-initiated cancel: the backend acknowledges by erroring the
+        // job. That's expected, not failure — drain the buffer, mark the
+        // run cancelled, and surface no error banner/toast.
+        if (e.kind === "error" && cancelRequestedRef.current) {
+          flushBuffer();
+          stopFlushTimer();
+          actionsRef.current.markCancelled();
+          return;
+        }
+
+        if (isTerminal) {
+          // Drain whatever's buffered, THEN apply the terminal event so the
+          // UI sees the buffered progress before the result/error lands.
+          flushBuffer();
+          actionsRef.current.pushEventStable(e);
+          stopFlushTimer();
+
+          if (e.kind === "done") {
+            const id = jobIdRef.current;
+            if (!id) {
+              // Shouldn't happen — `started` always precedes `done`. Fall back
+              // to a useful error rather than swallowing.
+              setErrorMsg("internal: done without started");
+              return;
+            }
+            (async () => {
+              const r = await commands.packGetResult(id);
+              if (r.status === "ok") actionsRef.current.setResult(r.data);
+              else setErrorMsg(r.error.message);
+            })();
+          } else if (e.kind === "error") {
+            setErrorMsg(e.message);
+          }
+        } else {
+          eventBufferRef.current.push(e);
+        }
+      };
+
+      startFlushTimer();
+
+      // The auto-generated binding re-throws any `Error`-instance the IPC
+      // layer rejects with (e.g. PackOptions deserialization failures from a
+      // stale persisted store) instead of returning {status:"error",...}.
+      // Without this catch, those become unhandled promise rejections inside
+      // a button click handler — the UI shows no error and the pack appears
+      // to do nothing.
+      let startRes: Awaited<ReturnType<typeof commands.packStart>>;
+      try {
+        startRes = await commands.packStart(options, channel);
+      } catch (e) {
         stopFlushTimer();
-        actionsRef.current.markCancelled();
+        setErrorMsg(e instanceof Error ? e.message : String(e));
         return;
       }
-
-      if (isTerminal) {
-        // Drain whatever's buffered, THEN apply the terminal event so the
-        // UI sees the buffered progress before the result/error lands.
-        flushBuffer();
-        actionsRef.current.pushEventStable(e);
+      if (startRes.status !== "ok") {
         stopFlushTimer();
-
-        if (e.kind === "done") {
-          const id = jobIdRef.current;
-          if (!id) {
-            // Shouldn't happen — `started` always precedes `done`. Fall back
-            // to a useful error rather than swallowing.
-            setErrorMsg("internal: done without started");
-            return;
-          }
-          (async () => {
-            const r = await commands.packGetResult(id);
-            if (r.status === "ok") actionsRef.current.setResult(r.data);
-            else setErrorMsg(r.error.message);
-          })();
-        } else if (e.kind === "error") {
-          setErrorMsg(e.message);
-        }
-      } else {
-        eventBufferRef.current.push(e);
+        setErrorMsg(startRes.error.message);
+        return;
       }
-    };
-
-    startFlushTimer();
-
-    // The auto-generated binding re-throws any `Error`-instance the IPC
-    // layer rejects with (e.g. PackOptions deserialization failures from a
-    // stale persisted store) instead of returning {status:"error",...}.
-    // Without this catch, those become unhandled promise rejections inside
-    // a button click handler — the UI shows no error and the pack appears
-    // to do nothing.
-    let startRes: Awaited<ReturnType<typeof commands.packStart>>;
-    try {
-      startRes = await commands.packStart(options, channel);
-    } catch (e) {
-      stopFlushTimer();
-      setErrorMsg(e instanceof Error ? e.message : String(e));
-      return;
+      jobIdRef.current ??= startRes.data;
+      setJob(startRes.data);
+    } finally {
+      startingRef.current = false;
     }
-    if (startRes.status !== "ok") {
-      stopFlushTimer();
-      setErrorMsg(startRes.error.message);
-      return;
-    }
-    jobIdRef.current ??= startRes.data;
-    setJob(startRes.data);
   }
 
   async function cancel() {
