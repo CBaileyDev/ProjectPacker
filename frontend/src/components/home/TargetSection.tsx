@@ -61,7 +61,7 @@ export function TargetSection({
           aria-pressed={targetMode === "folder"}
           className={`flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-sm font-medium transition-all duration-200 ${
             targetMode === "folder"
-              ? "bg-emerald-600 text-white shadow-lg shadow-emerald-900/30"
+              ? "bg-primary text-primary-foreground shadow-lg shadow-black/30"
               : "text-zinc-400 hover:text-zinc-200"
           }`}
         >
@@ -74,7 +74,7 @@ export function TargetSection({
           aria-pressed={targetMode === "github"}
           className={`flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-sm font-medium transition-all duration-200 ${
             targetMode === "github"
-              ? "bg-emerald-600 text-white shadow-lg shadow-emerald-900/30"
+              ? "bg-primary text-primary-foreground shadow-lg shadow-black/30"
               : "text-zinc-400 hover:text-zinc-200"
           }`}
         >
@@ -97,7 +97,7 @@ export function TargetSection({
           >
             <input
               id="target-input"
-              className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800/60 px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 transition-colors focus:border-emerald-500/50 focus:outline-none"
+              className="flex-1 rounded-lg border border-zinc-700 bg-zinc-800/60 px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 transition-colors focus:border-primary/50 focus:outline-none"
               value={targetVal}
               placeholder="/path/to/project"
               aria-label="Folder path"
@@ -135,7 +135,7 @@ export function TargetSection({
                 className={`flex-1 rounded-lg border bg-zinc-800/60 px-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 transition-colors focus:outline-none ${
                   targetVal && !isValidTarget
                     ? "border-red-600 focus:border-red-500"
-                    : "border-zinc-700 focus:border-emerald-500/50"
+                    : "border-zinc-700 focus:border-primary/50"
                 }`}
                 value={targetVal}
                 placeholder="https://github.com/owner/repo"

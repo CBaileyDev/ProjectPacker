@@ -116,9 +116,9 @@ const TOAST_KIND_STYLES: Record<
     Icon: AlertIcon,
   },
   success: {
-    bg: "bg-emerald-950/90",
-    text: "text-emerald-200",
-    ring: "ring-emerald-700/60",
+    bg: "bg-zinc-900/90",
+    text: "text-success",
+    ring: "ring-success/40",
     Icon: CheckIcon,
   },
   error: {

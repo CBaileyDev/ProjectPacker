@@ -112,7 +112,7 @@ export function Settings() {
           <GithubIcon size={16} className="text-zinc-300" />
           <h3 className="text-sm font-semibold text-zinc-100">GitHub</h3>
           {ready && hasToken && (
-            <span className="ml-auto flex items-center gap-1 rounded bg-emerald-500/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-emerald-300">
+            <span className="ml-auto flex items-center gap-1 rounded bg-success/15 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-success">
               <CheckIcon size={10} />
               Connected
             </span>
@@ -129,7 +129,7 @@ export function Settings() {
           repos).
         </p>
 
-        <div className="mt-1 flex items-center gap-2 rounded-lg border border-emerald-700/30 bg-emerald-950/20 px-3 py-2 text-[11px] text-emerald-300/85">
+        <div className="mt-1 flex items-center gap-2 rounded-lg border border-success/25 bg-success/10 px-3 py-2 text-[11px] text-success/85">
           <LockIcon size={12} className="shrink-0" />
           Stored in a user-only file under your app-data folder. Never visible
           to the renderer process.
@@ -156,7 +156,7 @@ export function Settings() {
                 }
                 autoComplete="off"
                 spellCheck={false}
-                className="w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-3.5 py-2.5 pr-10 font-mono text-sm text-zinc-100 placeholder-zinc-600 transition-colors focus:border-emerald-500/50 focus:outline-none"
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-800/60 px-3.5 py-2.5 pr-10 font-mono text-sm text-zinc-100 placeholder-zinc-600 transition-colors focus:border-primary/50 focus:outline-none"
                 disabled={!ready || saving}
               />
               <button
@@ -174,7 +174,7 @@ export function Settings() {
               disabled={!isDirty || saving}
               className={`rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors ${
                 isDirty && !saving
-                  ? "bg-emerald-600 text-white hover:bg-emerald-500"
+                  ? "bg-primary text-primary-foreground hover:bg-primary/90"
                   : "cursor-not-allowed bg-zinc-800 text-zinc-500"
               }`}
               whileTap={isDirty && !saving ? springButton : undefined}
@@ -209,7 +209,7 @@ export function Settings() {
           {justSaved && !saveError && (
             <m.div
               role="status"
-              className="mt-3 flex items-center gap-2 rounded-lg border border-emerald-700/40 bg-emerald-950/30 px-3 py-2.5 text-sm text-emerald-300"
+              className="mt-3 flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-2.5 text-sm text-success"
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
             >
@@ -248,7 +248,7 @@ export function Settings() {
         {/* Connection status */}
         {testStatus.kind === "ok" && (
           <m.div
-            className="mt-3 flex items-center gap-3 rounded-lg border border-emerald-700/40 bg-emerald-950/30 px-3 py-2.5"
+            className="mt-3 flex items-center gap-3 rounded-lg border border-success/30 bg-success/10 px-3 py-2.5"
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
           >
@@ -261,7 +261,7 @@ export function Settings() {
               className="h-7 w-7 rounded-full bg-zinc-800"
             />
             <div className="flex-1 text-sm">
-              <div className="flex items-center gap-1.5 font-semibold text-emerald-300">
+              <div className="flex items-center gap-1.5 font-semibold text-success">
                 <CheckIcon size={13} />
                 Connected as {testStatus.user.login}
               </div>

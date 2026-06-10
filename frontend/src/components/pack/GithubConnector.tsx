@@ -97,7 +97,7 @@ export function GithubConnector({
         </p>
         <m.button
           type="button"
-          className="mt-5 flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-emerald-900/30 hover:bg-emerald-500"
+          className="mt-5 flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground shadow-lg shadow-black/30 hover:bg-primary/90"
           onClick={onGoToSettings}
           whileTap={springButton}
         >
@@ -127,7 +127,7 @@ export function GithubConnector({
             onChange={(e) => setFilter(e.target.value)}
             placeholder="Filter by name, description, or language…"
             aria-label="Filter repositories"
-            className="w-full rounded-lg border border-zinc-700 bg-zinc-800/60 pl-9 pr-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 transition-colors focus:border-emerald-500/50 focus:outline-none"
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-800/60 pl-9 pr-3.5 py-2.5 text-sm text-zinc-100 placeholder-zinc-600 transition-colors focus:border-primary/50 focus:outline-none"
           />
         </div>
         <m.button

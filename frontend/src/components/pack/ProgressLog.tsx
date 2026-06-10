@@ -19,14 +19,14 @@ const STAGE_ICONS: Record<string, string> = {
 };
 
 const STAGE_COLORS: Record<string, string> = {
-  started: "text-emerald-400",
+  started: "text-primary",
   walking: "text-blue-400",
   tokenizing: "text-violet-400",
   secretScanning: "text-amber-400",
   compressing: "text-cyan-400",
-  buildingOutput: "text-emerald-400",
+  buildingOutput: "text-primary",
   cloning: "text-blue-400",
-  done: "text-emerald-400",
+  done: "text-success",
   error: "text-red-400",
   secretHit: "text-amber-400",
   fileFoundBatch: "text-zinc-500",
@@ -141,7 +141,7 @@ function ProgressLogInner({ events }: { events: ProgressEvent[] }) {
         <div className="flex items-center gap-2">
           <m.div
             aria-hidden="true"
-            className="h-2 w-2 rounded-full bg-emerald-400"
+            className="h-2 w-2 rounded-full bg-primary"
             animate={
               prefersReducedMotion ? { opacity: 1 } : { opacity: [1, 0.3, 1] }
             }

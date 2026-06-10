@@ -42,7 +42,7 @@ function useReducedMotion(): boolean {
  * Full-screen overlay shown while a drag-drop is in flight.
  *
  * Two visual states drive the look-and-feel:
- *  - `'valid'`: emerald theme, pulsing folder icon, "Drop folder to pack"
+ *  - `'valid'`: ember theme, pulsing folder icon, "Drop folder to pack"
  *  - `'invalid'`: amber theme, alert icon, "Invalid drop — folders only"
  *
  * The component is `pointer-events-none` end-to-end so the underlying
@@ -50,7 +50,7 @@ function useReducedMotion(): boolean {
  * visual.
  *
  * Backwards-compat: `dropState` defaults to `'valid'` so legacy callers
- * passing only `visible` still get the expected emerald drop affordance.
+ * passing only `visible` still get the expected ember drop affordance.
  *
  * Reduced motion: the continuous CSS-keyframe pulse ring is gated, the
  * y-bounce is replaced with a static frame, and AnimatePresence
@@ -66,18 +66,16 @@ export function DropOverlay({
   if (dropState === "idle" && !visible) return null;
 
   const isInvalid = dropState === "invalid";
-  const accent = isInvalid ? "amber" : "emerald";
+  const accent = isInvalid ? "amber" : "ember";
 
   // Pre-compose the variant strings so each Tailwind class is a literal
   // somewhere in source — the JIT scanner can't see template-string
   // computed classnames.
-  const cardBorderCls = isInvalid
-    ? "border-amber-400/60"
-    : "border-emerald-400/60";
-  const titleCls = isInvalid ? "text-amber-300" : "text-emerald-300";
-  const subtitleCls = isInvalid ? "text-amber-400/60" : "text-emerald-400/60";
-  const iconCls = isInvalid ? "text-amber-400" : "text-emerald-400";
-  const backdropCls = isInvalid ? "bg-amber-500/8" : "bg-emerald-500/8";
+  const cardBorderCls = isInvalid ? "border-amber-400/60" : "border-primary/60";
+  const titleCls = isInvalid ? "text-amber-300" : "text-primary";
+  const subtitleCls = isInvalid ? "text-amber-400/60" : "text-primary/60";
+  const iconCls = isInvalid ? "text-amber-400" : "text-primary";
+  const backdropCls = isInvalid ? "bg-amber-500/8" : "bg-primary/8";
 
   const title = isInvalid
     ? "Invalid drop — folders only"

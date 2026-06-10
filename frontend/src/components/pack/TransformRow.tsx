@@ -62,7 +62,7 @@ export function TransformRow({
           onKeyDown={onKey}
           className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full border transition-colors duration-150 outline-none ${
             checked
-              ? "border-emerald-400 bg-emerald-500"
+              ? "border-primary bg-primary"
               : "border-zinc-600 bg-zinc-700 hover:border-zinc-500"
           }`}
         >

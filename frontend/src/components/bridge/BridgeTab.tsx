@@ -94,7 +94,7 @@ export function BridgeTab() {
         }
         aria-label="Plan markdown"
         spellCheck={false}
-        className="h-64 w-full resize-y rounded-lg border border-zinc-700 bg-zinc-800/60 px-3.5 py-3 font-mono text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-emerald-500/50 focus:outline-none"
+        className="h-64 w-full resize-y rounded-lg border border-zinc-700 bg-zinc-800/60 px-3.5 py-3 font-mono text-xs text-zinc-200 placeholder:text-zinc-600 focus:border-primary/50 focus:outline-none"
       />
 
       <div className="flex flex-wrap items-center gap-2.5">
@@ -103,7 +103,7 @@ export function BridgeTab() {
           disabled={!canValidate}
           onClick={validate}
           whileTap={springButton}
-          className="flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-emerald-500 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-500"
+          className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-500"
         >
           {status.kind === "validating" ? (
             <>
@@ -131,7 +131,7 @@ export function BridgeTab() {
 
       {status.kind === "valid" && (
         <m.div
-          className="flex items-center gap-2 rounded-lg border border-emerald-600/50 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-400"
+          className="flex items-center gap-2 rounded-lg border border-success/40 bg-success/10 px-4 py-3 text-sm text-success"
           variants={fadeUp}
           initial="hidden"
           animate="visible"

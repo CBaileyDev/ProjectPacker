@@ -51,7 +51,7 @@ export function OnboardingCard() {
       }
     >
       <div className="flex items-center gap-2">
-        <SparklesIcon size={15} className="text-emerald-400" />
+        <SparklesIcon size={15} className="text-primary" />
         <h3 className="text-sm font-semibold text-zinc-200">
           Get started in three steps
         </h3>
@@ -63,8 +63,8 @@ export function OnboardingCard() {
             className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4"
           >
             <div className="flex items-center gap-2.5">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 ring-1 ring-emerald-500/20">
-                <Icon size={15} className="text-emerald-400" />
+              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 ring-1 ring-primary/20">
+                <Icon size={15} className="text-primary" />
               </span>
               <span className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
                 Step {i + 1}
