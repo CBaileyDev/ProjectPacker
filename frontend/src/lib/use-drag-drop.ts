@@ -1,6 +1,4 @@
-import { dirname } from "@tauri-apps/api/path";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
-import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { stat } from "@tauri-apps/plugin-fs";
 import { useEffect, useRef, useState } from "react";
 
@@ -16,32 +14,9 @@ interface UseDragDropReturn {
   isDragging: boolean;
   /** Visual state of the drop overlay: idle / valid (folder hovering) / invalid (file hovering). */
   dropState: DropState;
-  /** Keyboard fallback that opens the OS folder picker via plugin-dialog. */
-  openFileDialog: () => Promise<void>;
 }
 
 const INVALID_DROP_TIMEOUT_MS = 1_200;
-
-/**
- * Resolve a path the user dropped to the directory we should operate on:
- *  - directory → return as-is
- *  - file → return its parent dir
- *  - inaccessible (permissions, deleted) → return the original path so the
- *    backend's error message is what the user sees, not a silent fallback.
- */
-async function resolveFolderPath(path: string): Promise<string> {
-  try {
-    const info = await stat(path);
-    if (info.isDirectory) return path;
-  } catch {
-    return path;
-  }
-  try {
-    return await dirname(path);
-  } catch {
-    return path;
-  }
-}
 
 /**
  * Probe `path` and return `true` only if it points to a directory. Used by
@@ -64,9 +39,9 @@ async function isDirectory(path: string): Promise<boolean> {
  * (e.g. `tauri dev` in a Linux container where the native drop event is
  * occasionally swallowed).
  *
- * Returns `{ isDragging, dropState, openFileDialog }`. `dropState` is
- * three-valued: `'idle'` while no drag is active, `'valid'` while a drag
- * hovers, and `'invalid'` for 1.2s after the user drops a non-folder.
+ * Returns `{ isDragging, dropState }`. `dropState` is three-valued:
+ * `'idle'` while no drag is active, `'valid'` while a drag hovers, and
+ * `'invalid'` for 1.2s after the user drops a non-folder.
  *
  * The HTML5 listeners use a `dragDepthRef` ref-counter (incremented on
  * `dragenter`, decremented on `dragleave`) to cancel out the dozens of
@@ -149,8 +124,7 @@ export function useDragDrop({ onDrop }: UseDragDropOptions): UseDragDropReturn {
               return;
             }
             setDropState("idle");
-            const folder = await resolveFolderPath(paths[0]);
-            onDropRef.current(folder);
+            onDropRef.current(paths[0]);
           })();
         }
       });
@@ -241,12 +215,5 @@ export function useDragDrop({ onDrop }: UseDragDropOptions): UseDragDropReturn {
     };
   }, []);
 
-  async function openFileDialog() {
-    const path = await openDialog({ directory: true });
-    if (typeof path === "string") {
-      onDropRef.current(path);
-    }
-  }
-
-  return { isDragging, dropState, openFileDialog };
+  return { isDragging, dropState };
 }

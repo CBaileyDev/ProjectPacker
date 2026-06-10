@@ -22,6 +22,16 @@ pub struct AppError {
     pub details: Option<String>,
 }
 
+impl AppError {
+    fn new(code: &str, message: impl std::fmt::Display) -> Self {
+        Self {
+            code: code.into(),
+            message: message.to_string(),
+            details: None,
+        }
+    }
+}
+
 impl From<CoreError> for AppError {
     fn from(e: CoreError) -> Self {
         let code = match &e {
@@ -32,23 +42,14 @@ impl From<CoreError> for AppError {
             CoreError::PlanInvalid { .. } => "plan_invalid",
             CoreError::Cancelled => "cancelled",
             _ => "internal",
-        }
-        .to_string();
-        AppError {
-            code,
-            message: e.to_string(),
-            details: None,
-        }
+        };
+        AppError::new(code, e)
     }
 }
 
 impl From<github::GithubError> for AppError {
     fn from(e: github::GithubError) -> Self {
-        AppError {
-            code: e.code().to_string(),
-            message: e.to_string(),
-            details: None,
-        }
+        AppError::new(e.code(), e)
     }
 }
 
@@ -57,16 +58,13 @@ pub type CmdResult<T> = Result<T, AppError>;
 /// Map a tokio JoinError into AppError. JoinError happens when a
 /// spawn_blocking panics — rare but worth surfacing rather than swallowing.
 fn join_error_to_app_error(e: tokio::task::JoinError) -> AppError {
-    AppError {
-        code: "internal".into(),
-        message: format!("join error: {e}"),
-        details: None,
-    }
+    AppError::new("internal", format!("join error: {e}"))
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn pack_start(
+    app: AppHandle,
     registry: State<'_, Arc<JobRegistry>>,
     opts: PackOptions,
     on_event: tauri::ipc::Channel<ProgressEvent>,
@@ -92,13 +90,15 @@ pub async fn pack_start(
     // the registration and leak its token entry.
     registry_arc.register(&job_id, cancel);
 
-    // For a GitHub target, look up the keychain PAT so the clone can
-    // pull private repos. We do this synchronously here (the keychain
-    // op is sub-millisecond on the happy path) and pass the token down
-    // into `pack` as a runtime parameter — never serialized into
-    // PackOptions, never reachable from JS.
+    // For a GitHub target, look up the stored PAT (user-only 0600 file
+    // under the app-data dir — see the `github` module docs) so the clone
+    // can pull private repos. We do this synchronously here (a small file
+    // read) and pass the token down into `pack` as a runtime parameter —
+    // never serialized into PackOptions, never reachable from JS.
     let github_token = if matches!(opts.target, PackTarget::GitHub(_)) {
-        github::read_token().ok().flatten()
+        token_dir(&app)
+            .ok()
+            .and_then(|dir| github::read_token(&dir).ok().flatten())
     } else {
         None
     };
@@ -207,11 +207,10 @@ pub async fn pack_get_result(
     registry: State<'_, Arc<JobRegistry>>,
     job_id: String,
 ) -> CmdResult<PackResult> {
-    registry.inner().take_result(&job_id).ok_or(AppError {
-        code: "result_not_ready".into(),
-        message: format!("no result for job {job_id}"),
-        details: None,
-    })
+    registry
+        .inner()
+        .take_result(&job_id)
+        .ok_or_else(|| AppError::new("result_not_ready", format!("no result for job {job_id}")))
 }
 
 #[tauri::command]
@@ -229,18 +228,20 @@ pub async fn build_combined_prompt(plan_md: String, protocol_version: String) ->
 #[tauri::command]
 #[specta::specta]
 pub async fn get_settings(app: AppHandle) -> CmdResult<Settings> {
-    Ok(load_or_default(&settings_path(&app)))
+    let path = settings_path(&app);
+    tokio::task::spawn_blocking(move || load_or_default(&path))
+        .await
+        .map_err(join_error_to_app_error)
 }
 
 #[tauri::command]
 #[specta::specta]
 pub async fn save_settings(app: AppHandle, settings: Settings) -> CmdResult<Settings> {
-    save(&settings_path(&app), &settings).map_err(|e| AppError {
-        code: "settings_save_failed".into(),
-        message: e.to_string(),
-        details: None,
-    })?;
-    Ok(settings)
+    let path = settings_path(&app);
+    tokio::task::spawn_blocking(move || save(&path, &settings).map(|()| settings))
+        .await
+        .map_err(join_error_to_app_error)?
+        .map_err(|e| AppError::new("settings_save_failed", e))
 }
 
 /// Show a save dialog and write `contents` to the user-chosen path.
@@ -262,24 +263,18 @@ pub async fn save_pack_output(
         .save_file(move |path| {
             let _ = tx.send(path);
         });
-    let chosen = rx.await.map_err(|e| AppError {
-        code: "dialog_failed".into(),
-        message: e.to_string(),
-        details: None,
-    })?;
+    let chosen = rx.await.map_err(|e| AppError::new("dialog_failed", e))?;
     let Some(file_path) = chosen else {
         return Ok(None);
     };
-    let path: PathBuf = file_path.into_path().map_err(|e| AppError {
-        code: "invalid_path".into(),
-        message: e.to_string(),
-        details: None,
-    })?;
-    std::fs::write(&path, contents).map_err(|e| AppError {
-        code: "save_failed".into(),
-        message: e.to_string(),
-        details: None,
-    })?;
+    let path: PathBuf = file_path
+        .into_path()
+        .map_err(|e| AppError::new("invalid_path", e))?;
+    // Pack output can be tens of MB — keep the write off the async runtime.
+    let path = tokio::task::spawn_blocking(move || std::fs::write(&path, contents).map(|()| path))
+        .await
+        .map_err(join_error_to_app_error)?
+        .map_err(|e| AppError::new("save_failed", e))?;
     Ok(Some(path.display().to_string()))
 }
 
@@ -302,17 +297,28 @@ fn settings_path(app: &AppHandle) -> PathBuf {
 // ─────────────────────────────────────────────────────────────────────────
 // GitHub commands
 //
-// The PAT lives in the OS keychain (Apple Keychain on macOS, Credential
-// Manager on Windows 11). The renderer never receives it: status returns
-// a bool, set/clear take/return nothing, and the user/repo fetches read
-// the token in-process and only return the API response.
+// The PAT lives in a user-only (0600) file under the app-data dir — see
+// the `github` module docs for why the OS keychain was abandoned. The
+// renderer never receives it: status returns a bool, set/clear take/return
+// nothing, and the user/repo fetches read the token in-process and only
+// return the API response.
 // ─────────────────────────────────────────────────────────────────────────
+
+/// Resolve the app-data dir that holds the token file. Uses the same Tauri
+/// path resolver as `settings_path` so there is exactly one notion of
+/// "our app-data dir" in the codebase.
+fn token_dir(app: &AppHandle) -> CmdResult<PathBuf> {
+    app.path().app_data_dir().map_err(|e| {
+        github::GithubError::Storage(format!("could not resolve app data dir: {e}")).into()
+    })
+}
 
 /// Read the token on a blocking pool — file-system reads are normally
 /// fast enough to call inline, but routing through `spawn_blocking` keeps
 /// the async runtime predictable if the disk is busy.
-async fn read_token_or_err() -> CmdResult<String> {
-    let token = tokio::task::spawn_blocking(github::read_token)
+async fn read_token_or_err(app: &AppHandle) -> CmdResult<String> {
+    let dir = token_dir(app)?;
+    let token = tokio::task::spawn_blocking(move || github::read_token(&dir))
         .await
         .map_err(join_error_to_app_error)?
         .map_err(AppError::from)?;
@@ -321,10 +327,11 @@ async fn read_token_or_err() -> CmdResult<String> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn github_set_token(token: String) -> CmdResult<()> {
+pub async fn github_set_token(app: AppHandle, token: String) -> CmdResult<()> {
     // Log the length only — the token itself never reaches a log line.
     log::info!("github_set_token called, token_len={}", token.len());
-    let result = tokio::task::spawn_blocking(move || github::store_token(&token))
+    let dir = token_dir(&app)?;
+    let result = tokio::task::spawn_blocking(move || github::store_token(&dir, &token))
         .await
         .map_err(join_error_to_app_error)?
         .map_err(AppError::from);
@@ -337,9 +344,10 @@ pub async fn github_set_token(token: String) -> CmdResult<()> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn github_clear_token() -> CmdResult<()> {
+pub async fn github_clear_token(app: AppHandle) -> CmdResult<()> {
     log::info!("github_clear_token called");
-    let result = tokio::task::spawn_blocking(github::clear_token)
+    let dir = token_dir(&app)?;
+    let result = tokio::task::spawn_blocking(move || github::clear_token(&dir))
         .await
         .map_err(join_error_to_app_error)?
         .map_err(AppError::from);
@@ -356,23 +364,26 @@ pub async fn github_clear_token() -> CmdResult<()> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn github_token_status() -> CmdResult<bool> {
-    // has_token swallows keychain errors — if the keychain is locked,
+pub async fn github_token_status(app: AppHandle) -> CmdResult<bool> {
+    // has_token swallows storage errors — if the token file is unreadable,
     // we treat that as "no token" so the UI shows the connect prompt
     // rather than a scary error. The actual API calls below will
-    // surface a real error if the keychain is genuinely broken.
-    let has = tokio::task::spawn_blocking(github::has_token)
-        .await
-        .unwrap_or(false);
+    // surface a real error if storage is genuinely broken.
+    let has = match token_dir(&app) {
+        Ok(dir) => tokio::task::spawn_blocking(move || github::has_token(&dir))
+            .await
+            .unwrap_or(false),
+        Err(_) => false,
+    };
     log::debug!("github_token_status: has_token={has}");
     Ok(has)
 }
 
 #[tauri::command]
 #[specta::specta]
-pub async fn github_get_user() -> CmdResult<github::GithubUser> {
+pub async fn github_get_user(app: AppHandle) -> CmdResult<github::GithubUser> {
     log::info!("github_get_user called");
-    let token = read_token_or_err().await?;
+    let token = read_token_or_err(&app).await?;
     let user = github::fetch_user(&token).await.map_err(|e| {
         log::error!("github_get_user failed: code={} msg={}", e.code(), e);
         e
@@ -383,9 +394,9 @@ pub async fn github_get_user() -> CmdResult<github::GithubUser> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn github_list_repos() -> CmdResult<Vec<github::GithubRepo>> {
+pub async fn github_list_repos(app: AppHandle) -> CmdResult<Vec<github::GithubRepo>> {
     log::info!("github_list_repos called");
-    let token = read_token_or_err().await?;
+    let token = read_token_or_err(&app).await?;
     let repos = github::fetch_all_repos(&token).await.map_err(|e| {
         log::error!("github_list_repos failed: code={} msg={}", e.code(), e);
         e

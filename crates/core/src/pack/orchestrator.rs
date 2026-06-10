@@ -646,16 +646,16 @@ fn run_secret_scan_phase(
     (secrets_found, all_redactions, secret_scan_ms)
 }
 
-/// Per-file `count_by_name` (parallel) + per-file `count_all` sum (parallel).
+/// Single parallel pass: per-file `count_all` populates both the per-file
+/// `tokens` (gpt4o slot) and the summed `TokensPerModel`.
 ///
 /// Returns `(tokens_per_model_or_None, tokenize_ms_or_None, tokenize_warnings)`.
 /// Both `Option`s are `None` when `opts.count_tokens` is false.
 ///
 /// Per-file token counts run AFTER the secret-scan loop so each entry's
 /// `tokens` reflects the same (post-redaction) content as `tokens_total`
-/// and `tokens_per_model`. The encoder behind `count_by_name` is `&'static`
-/// (cached via `OnceLock<CoreBPE>`) and each thread mutates only its own
-/// entry slot.
+/// and `tokens_per_model`. The encoders are `&'static` (cached via
+/// `OnceLock`) and each thread mutates only its own entry slot.
 ///
 /// `tokens_per_model` is always `Some(_)` when `count_tokens` is on so
 /// the UI can distinguish "count_tokens disabled" from "count_tokens
@@ -678,48 +678,48 @@ fn run_tokenize_phase(
     }
 
     let tokenize_start = Instant::now();
-    // Parallel per-file tokenization: each thread owns one entry slot
-    // via `par_iter_mut` and writes back its own `tokens`. Warnings are
-    // collected as `Vec<Option<PackWarning>>` (one slot per entry to
-    // preserve order) and flattened back into `warnings` after.
-    let tokenize_warnings: Vec<Option<PackWarning>> = entries
-        .par_iter_mut()
-        .map(
-            |e| match tokens::count_by_name(&opts.tokenizer_model, &e.content) {
-                Ok(n) => {
-                    e.tokens = Some(n);
-                    None
-                }
-                Err(err) => {
-                    e.tokens = None;
-                    Some(PackWarning {
-                        kind: WarningKind::TokenizeFailed,
-                        path: Some(e.path.clone()),
-                        message: format!("token count failed: {err}"),
-                    })
-                }
-            },
-        )
-        .collect();
-    let warnings: Vec<PackWarning> = tokenize_warnings.into_iter().flatten().collect();
+    // Validate the requested per-file tokenizer once up front: `count_by_name`
+    // on an empty input is free, and an unknown model string is its only
+    // failure mode.
+    let model_err = tokens::count_by_name(&opts.tokenizer_model, "").err();
 
-    // Parallel per-file count_all. Each file is encoded once across all 7 model
-    // tokenizers; the per-file results are summed via saturating arithmetic into
-    // a single TokensPerModel. This avoids the ~content-bytes peak-memory of
-    // the previous joined-string approach and parallelizes across cores.
-    let per_file_counts: Vec<TokensPerModel> = entries
-        .par_iter()
-        .map(|e| tokens::count_all(&e.content).unwrap_or_default())
+    // One parallel pass: each thread owns one entry slot via `par_iter_mut`,
+    // encodes the content once across all 7 model tokenizers, writes back the
+    // per-file `tokens` (the gpt4o slot uses the same o200k encoder as the
+    // legacy `count_by_name`, so the counts are identical), and returns its
+    // warning slot + per-model contribution (one tuple per entry, order
+    // preserved). This halves the encode work vs. the previous two-pass shape.
+    let per_entry: Vec<(Option<PackWarning>, TokensPerModel)> = entries
+        .par_iter_mut()
+        .map(|e| match (&model_err, tokens::count_all(&e.content)) {
+            (None, Ok(counts)) => {
+                e.tokens = Some(counts.gpt4o);
+                (None, counts)
+            }
+            (None, Err(_)) => {
+                // count_all only fails in the HF branch; the o200k count is
+                // still available via the infallible-for-known-models legacy
+                // API, matching the old independent-passes behavior.
+                e.tokens = tokens::count_by_name(&opts.tokenizer_model, &e.content).ok();
+                (None, TokensPerModel::default())
+            }
+            (Some(err), counted) => {
+                e.tokens = None;
+                let warning = PackWarning {
+                    kind: WarningKind::TokenizeFailed,
+                    path: Some(e.path.clone()),
+                    message: format!("token count failed: {err}"),
+                };
+                (Some(warning), counted.unwrap_or_default())
+            }
+        })
         .collect();
+
+    let mut warnings = Vec::new();
     let mut acc = TokensPerModel::default();
-    for c in per_file_counts {
-        acc.gpt4o = acc.gpt4o.saturating_add(c.gpt4o);
-        acc.claude = acc.claude.saturating_add(c.claude);
-        acc.llama3 = acc.llama3.saturating_add(c.llama3);
-        acc.qwen2_5 = acc.qwen2_5.saturating_add(c.qwen2_5);
-        acc.deep_seek = acc.deep_seek.saturating_add(c.deep_seek);
-        acc.mistral = acc.mistral.saturating_add(c.mistral);
-        acc.gemini_approx = acc.gemini_approx.saturating_add(c.gemini_approx);
+    for (warning, counts) in per_entry {
+        warnings.extend(warning);
+        acc = acc.saturating_add(counts);
     }
     (
         Some(acc),
@@ -765,8 +765,10 @@ fn run_emit_phase(
     let output = match opts.format {
         PackFormat::Xml => {
             let protocol_block = protocol::block_for_pack(&opts.goal, &opts.protocol_version)?;
-            let mut builder =
-                XmlBuilder::with_capacity((stats.bytes_total as usize).saturating_mul(2));
+            let mut builder = XmlBuilder::with_capacity(crate::pack::xml::estimated_xml_capacity(
+                stats.bytes_total,
+                entries.len(),
+            ));
             builder
                 .open_repository()
                 .raw_block(&protocol_block)

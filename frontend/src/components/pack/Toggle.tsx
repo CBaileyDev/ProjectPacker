@@ -21,7 +21,7 @@ interface ToggleProps {
  *    and a Space/Enter keydown handler so the keyboard flips the switch
  *    even when the input isn't focused (the visible track is what
  *    receives focus via tabIndex=0).
- *  - 2px emerald `focus-visible` ring inherits from the global rule in
+ *  - 2px ember `focus-visible` ring inherits from the global rule in
  *    `globals.css`; we don't redeclare it per-component.
  *  - Thumb x-offset uses a framer-motion spring so the slide reads as
  *    physical rather than as a CSS transition. The thumb is `aria-hidden`
@@ -45,16 +45,14 @@ export function Toggle({ label, hint, checked, onChange }: ToggleProps) {
       htmlFor={inputId}
       className={`group flex cursor-pointer items-center justify-between gap-4 rounded-xl border px-4 py-3 transition-all duration-200 ${
         checked
-          ? "border-emerald-500/40 bg-emerald-500/10 shadow-[0_0_24px_rgba(16,185,129,0.08)]"
+          ? "border-primary/40 bg-primary/10 shadow-[0_0_24px_rgba(245,158,66,0.08)]"
           : "border-zinc-700/60 bg-zinc-900/40 hover:border-zinc-600 hover:bg-zinc-800/50"
       }`}
     >
       <span className="min-w-0">
         <span
           className={`block text-sm font-medium transition-colors ${
-            checked
-              ? "text-emerald-100"
-              : "text-zinc-200 group-hover:text-white"
+            checked ? "text-primary" : "text-zinc-200 group-hover:text-white"
           }`}
         >
           {label}
@@ -87,7 +85,7 @@ export function Toggle({ label, hint, checked, onChange }: ToggleProps) {
           }}
           className={`block h-7 w-12 rounded-full border transition-all duration-200 outline-none ${
             checked
-              ? "border-emerald-400 bg-emerald-500"
+              ? "border-primary bg-primary"
               : "border-zinc-600 bg-zinc-700 group-hover:border-zinc-500"
           }`}
         >

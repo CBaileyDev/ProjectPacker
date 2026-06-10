@@ -2,6 +2,7 @@ import { AnimatePresence } from "framer-motion";
 import * as m from "framer-motion/m";
 import { memo, useEffect, useMemo, useRef } from "react";
 import type { ProgressEvent } from "../../bindings";
+import { batchEvents } from "../../lib/events";
 import { prefersReducedMotion } from "../../lib/motion";
 
 const STAGE_ICONS: Record<string, string> = {
@@ -18,14 +19,14 @@ const STAGE_ICONS: Record<string, string> = {
 };
 
 const STAGE_COLORS: Record<string, string> = {
-  started: "text-emerald-400",
+  started: "text-primary",
   walking: "text-blue-400",
   tokenizing: "text-violet-400",
   secretScanning: "text-amber-400",
   compressing: "text-cyan-400",
-  buildingOutput: "text-emerald-400",
+  buildingOutput: "text-primary",
   cloning: "text-blue-400",
-  done: "text-emerald-400",
+  done: "text-success",
   error: "text-red-400",
   secretHit: "text-amber-400",
   fileFoundBatch: "text-zinc-500",
@@ -44,9 +45,6 @@ const WINDOW_SIZE = 50;
 const ANIMATED_TAIL = 5;
 
 interface RenderedLine {
-  /** Stable identity within this batch. We append-only, so the original
-   * insertion index in the rendered slice is monotonic. */
-  id: number;
   kind: string;
   text: string;
 }
@@ -83,10 +81,9 @@ function eventText(e: ProgressEvent): string | null {
  *  - Slices the events array to the last 200 (circular-buffer cap).
  *  - Within that, renders the last 50 items inside a max-height
  *    scrollable container.
- *  - Walking events are deduped at render time (consecutive walking
- *    events collapse into the most recent one), in addition to the
- *    pre-pass that `lib/events.ts::batchEvents` already applies in the
- *    store.
+ *  - Walking events are deduped at render time via the same
+ *    `lib/events.ts::batchEvents` helper the store applies at ingestion,
+ *    so the collapse rule lives in exactly one place.
  *  - Only the trailing 5 items animate (framer-motion AnimatePresence).
  *    Older items render as plain `<div>` so a long log doesn't cost
  *    one motion-component per row.
@@ -97,20 +94,13 @@ function ProgressLogInner({ events }: { events: ProgressEvent[] }) {
 
   const lines = useMemo<RenderedLine[]>(() => {
     // Cap the working set first so large logs don't dominate the
-    // walking-dedup loop below.
-    const recent = events.slice(-RENDER_BUFFER_CAP);
+    // walking-collapse pass below.
+    const recent = batchEvents(events.slice(-RENDER_BUFFER_CAP));
     const out: RenderedLine[] = [];
-    for (let i = 0; i < recent.length; i++) {
-      const e = recent[i];
-      // Walking-event dedup: if the next event is also walking, skip
-      // this one — the next iteration will subsume it.
-      if (e.kind === "walking") {
-        const next = recent[i + 1];
-        if (next && next.kind === "walking") continue;
-      }
+    for (const e of recent) {
       const text = eventText(e);
       if (text === null) continue;
-      out.push({ id: i, kind: e.kind, text });
+      out.push({ kind: e.kind, text });
     }
     return out;
   }, [events]);
@@ -151,7 +141,7 @@ function ProgressLogInner({ events }: { events: ProgressEvent[] }) {
         <div className="flex items-center gap-2">
           <m.div
             aria-hidden="true"
-            className="h-2 w-2 rounded-full bg-emerald-400"
+            className="h-2 w-2 rounded-full bg-primary"
             animate={
               prefersReducedMotion ? { opacity: 1 } : { opacity: [1, 0.3, 1] }
             }

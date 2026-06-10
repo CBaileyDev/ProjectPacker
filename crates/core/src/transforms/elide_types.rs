@@ -4,9 +4,9 @@
 //! Scope: only matches `export type { Name1, Name2 } from "module"` — i.e.
 //! type-only RE-exports. Leaves `export type Foo = ...` declarations alone.
 
-use crate::tree_sitter_compress;
+use crate::tree_sitter_compress::{splice_out_ranges, Lang, PooledParser};
 use std::sync::OnceLock;
-use tree_sitter::{Parser, Query, QueryCursor, StreamingIterator};
+use tree_sitter::{Query, QueryCursor, StreamingIterator};
 
 fn lang() -> tree_sitter::Language {
     tree_sitter_typescript::LANGUAGE_TYPESCRIPT.into()
@@ -27,11 +27,8 @@ pub fn apply(path: &str, content: &str) -> Option<String> {
     if !(path.ends_with(".ts") || path.ends_with(".tsx")) {
         return None;
     }
-    let mut parser = Parser::new();
-    if parser.set_language(&lang()).is_err() {
-        return None;
-    }
-    let tree = parser.parse(content, None)?;
+    let mut pooled = PooledParser::acquire(Lang::TypeScript)?;
+    let tree = pooled.parser_mut().parse(content, None)?;
     let bytes = content.as_bytes();
     let stmt_idx = ts_query()
         .capture_index_for_name("stmt")
@@ -60,20 +57,7 @@ pub fn apply(path: &str, content: &str) -> Option<String> {
     if ranges.is_empty() {
         return None;
     }
-    ranges.sort_by_key(|r| r.0);
-    let mut out = String::with_capacity(content.len());
-    let mut pos = 0usize;
-    for (s, e) in &ranges {
-        if *s > pos {
-            out.push_str(&content[pos..*s]);
-        }
-        pos = *e;
-    }
-    if pos < content.len() {
-        out.push_str(&content[pos..]);
-    }
-    let _ = tree_sitter_compress::detect_language(path); // keep the module link
-    Some(out)
+    Some(splice_out_ranges(content, &mut ranges))
 }
 
 #[cfg(test)]

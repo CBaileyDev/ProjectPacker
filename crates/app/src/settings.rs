@@ -4,14 +4,11 @@
 //! * `ValidationError` + `Settings::validate` / `Settings::apply_corrections`
 //!   keep persisted JSON within sane bounds even if the file was hand-edited
 //!   or written by an older buggy build.
-//! * `SettingsMigration` + `MigrationRegistry` give us a place to land schema
-//!   bumps without touching every call site.
 //! * `load_sync_fallible` exposes the precise failure mode (missing vs. parse
 //!   vs. IO) for callers that care; `load_or_default` is the lenient wrapper
 //!   used by the Tauri commands.
 //! * `save` is atomic (write-tmp → fsync → rename) so a crash mid-write can
 //!   never leave a half-written settings.json.
-//! * `save_async` ships the blocking IO onto a tokio worker.
 //!
 //! The on-disk schema is **additive only** — every new field carries
 //! `#[serde(default)]` so older JSON deserializes cleanly.
@@ -20,7 +17,6 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use std::path::{Path, PathBuf};
 use thiserror::Error;
-use tokio::task::JoinHandle;
 
 // ---------------------------------------------------------------------------
 // Limits
@@ -41,8 +37,9 @@ pub const MAX_CUSTOM_IGNORE_LEN: usize = 4096;
 /// validation does not need to take a runtime dep on core's private list.
 pub const SUPPORTED_PROTOCOL_VERSIONS: &[&str] = &["plan-exec-v1"];
 
-/// Schema version embedded in serialized settings. Bumped together with a
-/// new `SettingsMigration` registration.
+/// Schema version embedded in serialized settings. The on-disk schema is
+/// additive-only today; this version field is the hook for a future
+/// breaking migration.
 pub const CURRENT_SETTINGS_VERSION: u32 = 1;
 
 // ---------------------------------------------------------------------------
@@ -79,72 +76,13 @@ impl Settings {
 
     /// Validate every field. Returns *all* errors so a UI can surface the
     /// full list rather than fixing one and re-validating in a loop.
+    ///
+    /// Implemented on top of [`Self::apply_corrections`] — the corrections
+    /// pass records exactly one `ValidationError` per out-of-range field, in
+    /// field order, so running it against a throwaway clone yields the same
+    /// error list without duplicating every per-field rule here.
     pub fn validate(&self) -> Result<(), Vec<ValidationError>> {
-        let mut errs = Vec::new();
-
-        if self.default_protocol_version.is_empty() {
-            errs.push(ValidationError::EmptyProtocol);
-        } else if !SUPPORTED_PROTOCOL_VERSIONS.contains(&self.default_protocol_version.as_str()) {
-            errs.push(ValidationError::UnsupportedProtocolVersion(
-                self.default_protocol_version.clone(),
-            ));
-        }
-
-        if self.default_tokenizer_model.is_empty() {
-            errs.push(ValidationError::TokenizerModelEmpty);
-        } else if !is_plausible_tokenizer_model(&self.default_tokenizer_model) {
-            errs.push(ValidationError::InvalidTokenizerModel(
-                self.default_tokenizer_model.clone(),
-            ));
-        }
-
-        for r in &self.recents {
-            if r.label.len() > MAX_RECENT_LABEL_LEN {
-                errs.push(ValidationError::RecentLabelTooLong {
-                    actual: r.label.len(),
-                    max: MAX_RECENT_LABEL_LEN,
-                });
-            }
-            if r.target.len() > MAX_PATH_LEN {
-                errs.push(ValidationError::PathTooLong {
-                    actual: r.target.len(),
-                    max: MAX_PATH_LEN,
-                });
-            }
-        }
-
-        for t in &self.goal_templates {
-            if t.name.len() > MAX_PRESET_NAME_LEN {
-                errs.push(ValidationError::PresetNameTooLong {
-                    actual: t.name.len(),
-                    max: MAX_PRESET_NAME_LEN,
-                });
-            }
-            if t.body.len() > MAX_GOAL_LEN {
-                errs.push(ValidationError::GoalTooLong {
-                    actual: t.body.len(),
-                    max: MAX_GOAL_LEN,
-                });
-            }
-        }
-
-        for p in &self.presets {
-            if p.name.len() > MAX_PRESET_NAME_LEN {
-                errs.push(ValidationError::PresetNameTooLong {
-                    actual: p.name.len(),
-                    max: MAX_PRESET_NAME_LEN,
-                });
-            }
-            // options_json blobs are bounded by the preset itself, but a
-            // single embedded custom-ignore should not exceed MAX_PATH_LEN.
-            if p.options_json.len() > MAX_CUSTOM_IGNORE_LEN * 64 {
-                errs.push(ValidationError::CustomIgnoreTooLong {
-                    actual: p.options_json.len(),
-                    max: MAX_CUSTOM_IGNORE_LEN * 64,
-                });
-            }
-        }
-
+        let errs = self.clone().apply_corrections();
         if errs.is_empty() {
             Ok(())
         } else {
@@ -327,8 +265,6 @@ pub enum ValidationError {
     PathTooLong { actual: usize, max: usize },
     #[error("custom-ignore pattern too long: {actual} > {max}")]
     CustomIgnoreTooLong { actual: usize, max: usize },
-    #[error("invalid theme value: {0}")]
-    InvalidThemeValue(String),
 }
 
 #[derive(Debug, Error)]
@@ -339,108 +275,6 @@ pub enum SettingsLoadError {
     IoError(#[from] std::io::Error),
     #[error("settings file parse error: {0}")]
     ParseError(#[from] serde_json::Error),
-}
-
-#[derive(Debug, Error)]
-pub enum SettingsSaveError {
-    #[error("settings file IO error: {0}")]
-    IoError(#[from] std::io::Error),
-    #[error("settings serialization error: {0}")]
-    Serialize(#[from] serde_json::Error),
-}
-
-#[derive(Debug, Error)]
-pub enum MigrationError {
-    #[error("no migration registered from version {from} to current")]
-    MissingMigration { from: u32 },
-    #[error("migration {from}->{to} failed: {message}")]
-    StepFailed { from: u32, to: u32, message: String },
-}
-
-// ---------------------------------------------------------------------------
-// Migration framework
-// ---------------------------------------------------------------------------
-
-pub trait SettingsMigration: Send + Sync {
-    // `from_version` reads as a constructor name to clippy, but here it's
-    // an accessor describing which schema version this migration upgrades
-    // *from*. The spec calls for this exact name; the false-positive is
-    // worth the readability.
-    #[allow(clippy::wrong_self_convention)]
-    fn from_version(&self) -> u32;
-    fn to_version(&self) -> u32;
-    fn migrate(&self, value: serde_json::Value) -> Result<serde_json::Value, MigrationError>;
-}
-
-/// Registry of migrations applied in `from_version` order.
-///
-/// The registry contains zero entries today — the migration infrastructure
-/// is here so the *next* schema bump is a one-liner instead of a refactor.
-pub struct MigrationRegistry {
-    migrations: Vec<Box<dyn SettingsMigration>>,
-}
-
-impl MigrationRegistry {
-    pub fn new() -> Self {
-        Self {
-            migrations: Vec::new(),
-        }
-    }
-
-    pub fn register(&mut self, m: Box<dyn SettingsMigration>) -> &mut Self {
-        self.migrations.push(m);
-        self
-    }
-
-    pub fn len(&self) -> usize {
-        self.migrations.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.migrations.is_empty()
-    }
-
-    /// Apply every registered migration whose `from_version` is reachable
-    /// from `from_version`, in order. If no migration starts at
-    /// `from_version` and `from_version != CURRENT_SETTINGS_VERSION`, returns
-    /// `MissingMigration`.
-    pub fn migrate(
-        &self,
-        mut value: serde_json::Value,
-        from_version: u32,
-    ) -> Result<serde_json::Value, MigrationError> {
-        let mut current = from_version;
-        loop {
-            if current == CURRENT_SETTINGS_VERSION {
-                return Ok(value);
-            }
-            let Some(step) = self.migrations.iter().find(|m| m.from_version() == current) else {
-                if self.migrations.is_empty() {
-                    // No migrations registered at all — accept the value as-is
-                    // (Settings derives serde defaults so additive fields are
-                    // tolerated without an explicit step).
-                    return Ok(value);
-                }
-                return Err(MigrationError::MissingMigration { from: current });
-            };
-            let to = step.to_version();
-            value = step.migrate(value).map_err(|e| match e {
-                MigrationError::StepFailed { message, .. } => MigrationError::StepFailed {
-                    from: current,
-                    to,
-                    message,
-                },
-                other => other,
-            })?;
-            current = to;
-        }
-    }
-}
-
-impl Default for MigrationRegistry {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 // ---------------------------------------------------------------------------
@@ -531,11 +365,6 @@ pub fn save(path: &Path, settings: &Settings) -> std::io::Result<()> {
     }
 
     std::fs::rename(&tmp, path)
-}
-
-/// Async wrapper around `save` for callers on the tokio runtime.
-pub fn save_async(path: PathBuf, settings: Settings) -> JoinHandle<Result<(), SettingsSaveError>> {
-    tokio::task::spawn_blocking(move || save(&path, &settings).map_err(SettingsSaveError::from))
 }
 
 fn unix_seconds() -> u64 {
@@ -869,23 +698,6 @@ mod tests {
         assert!(path.exists());
     }
 
-    // ---- save_async -------------------------------------------------------
-
-    #[test]
-    fn save_async_persists_via_blocking_pool() {
-        let rt = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .unwrap();
-        let d = tempdir().unwrap();
-        let path = d.path().join("settings.json");
-        rt.block_on(async {
-            let h = save_async(path.clone(), Settings::defaults());
-            h.await.unwrap().unwrap();
-        });
-        assert!(path.exists());
-    }
-
     // ---- load_sync_fallible -----------------------------------------------
 
     #[test]
@@ -915,96 +727,6 @@ mod tests {
         match load_sync_fallible(&path) {
             Err(SettingsLoadError::ParseError(_)) => {}
             other => panic!("expected ParseError, got {other:?}"),
-        }
-    }
-
-    // ---- migration framework ----------------------------------------------
-
-    struct NoopMigration {
-        from: u32,
-        to: u32,
-    }
-
-    impl SettingsMigration for NoopMigration {
-        fn from_version(&self) -> u32 {
-            self.from
-        }
-        fn to_version(&self) -> u32 {
-            self.to
-        }
-        fn migrate(&self, value: serde_json::Value) -> Result<serde_json::Value, MigrationError> {
-            Ok(value)
-        }
-    }
-
-    struct BumpVersionMigration {
-        from: u32,
-        to: u32,
-    }
-
-    impl SettingsMigration for BumpVersionMigration {
-        fn from_version(&self) -> u32 {
-            self.from
-        }
-        fn to_version(&self) -> u32 {
-            self.to
-        }
-        fn migrate(
-            &self,
-            mut value: serde_json::Value,
-        ) -> Result<serde_json::Value, MigrationError> {
-            if let Some(obj) = value.as_object_mut() {
-                obj.insert("schemaVersion".into(), json!(self.to));
-            }
-            Ok(value)
-        }
-    }
-
-    #[test]
-    fn migration_registry_register_and_lookup() {
-        let mut reg = MigrationRegistry::new();
-        assert!(reg.is_empty());
-        reg.register(Box::new(NoopMigration { from: 0, to: 1 }));
-        assert_eq!(reg.len(), 1);
-    }
-
-    #[test]
-    fn migration_registry_passthrough_when_empty() {
-        // No migrations registered: any input value comes back unchanged
-        // (additive serde defaults handle the schema drift).
-        let reg = MigrationRegistry::new();
-        let v = json!({ "schemaVersion": 0, "theme": "dark" });
-        let out = reg.migrate(v.clone(), 0).unwrap();
-        assert_eq!(out, v);
-    }
-
-    #[test]
-    fn migration_registry_already_current_is_passthrough() {
-        let mut reg = MigrationRegistry::new();
-        reg.register(Box::new(NoopMigration { from: 0, to: 1 }));
-        let v = json!({ "schemaVersion": CURRENT_SETTINGS_VERSION });
-        let out = reg.migrate(v.clone(), CURRENT_SETTINGS_VERSION).unwrap();
-        assert_eq!(out, v);
-    }
-
-    #[test]
-    fn migration_registry_runs_step() {
-        let mut reg = MigrationRegistry::new();
-        reg.register(Box::new(BumpVersionMigration { from: 0, to: 1 }));
-        let v = json!({ "schemaVersion": 0 });
-        let out = reg.migrate(v, 0).unwrap();
-        assert_eq!(out["schemaVersion"], json!(1));
-    }
-
-    #[test]
-    fn migration_registry_missing_migration_errors() {
-        let mut reg = MigrationRegistry::new();
-        // Registry has *some* migration but none that starts at version 7.
-        reg.register(Box::new(NoopMigration { from: 0, to: 1 }));
-        let v = json!({});
-        match reg.migrate(v, 7) {
-            Err(MigrationError::MissingMigration { from }) => assert_eq!(from, 7),
-            other => panic!("expected MissingMigration, got {other:?}"),
         }
     }
 }

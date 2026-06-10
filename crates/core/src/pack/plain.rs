@@ -13,7 +13,7 @@ pub fn render(
     redactions: &[PackRedaction],
 ) -> String {
     let block = StatsBlock::from(root_label, opts, stats, entries, redactions);
-    let mut out = String::with_capacity((stats.bytes_total as usize).saturating_mul(2));
+    let mut out = String::with_capacity(crate::pack::estimated_text_capacity(stats.bytes_total));
 
     out.push_str("=== STATS ===\n");
     let _ = writeln!(out, "Target: {}", block.target_label);

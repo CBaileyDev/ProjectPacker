@@ -70,3 +70,13 @@ export function useToast() {
   const dismissToast = useToastStore((s) => s.dismissToast);
   return { toasts, showToast, dismissToast };
 }
+
+/**
+ * Subscribe to the stable `showToast` action only. Zustand actions never
+ * change identity, so components that only fire toasts (e.g. CopyButton)
+ * never re-render when the toast list churns — use this instead of
+ * `useToast` unless you actually render the list.
+ */
+export function useShowToast() {
+  return useToastStore((s) => s.showToast);
+}

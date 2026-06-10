@@ -45,58 +45,61 @@ pub fn pinned_files(root: &Path) -> Vec<String> {
         }
     }
 
-    // ── 2. Glob: .cursor/rules/*.mdc ──────────────────────────────────────
-    let cursor_rules = root.join(".cursor").join("rules");
-    if cursor_rules.is_dir() {
-        let mut matches: Vec<String> = WalkDir::new(&cursor_rules)
-            .min_depth(1)
-            .max_depth(1)
-            .follow_links(false)
-            .into_iter()
-            .filter_map(Result::ok)
-            .filter(|e| {
-                e.file_type().is_file()
-                    && e.path()
-                        .extension()
-                        .map(|x| x.eq_ignore_ascii_case("mdc"))
-                        .unwrap_or(false)
-            })
-            .filter_map(|e| {
-                e.path()
-                    .strip_prefix(root)
-                    .ok()
-                    .map(|r| r.to_string_lossy().replace('\\', "/"))
-            })
-            .collect();
-        matches.sort();
-        for m in matches {
-            push(m);
-        }
-    }
-
-    // ── 3. Glob: .claude/** (all files, recursive) ─────────────────────────
-    let claude_dir = root.join(".claude");
-    if claude_dir.is_dir() {
-        let mut matches: Vec<String> = WalkDir::new(&claude_dir)
-            .min_depth(1)
-            .follow_links(false)
-            .into_iter()
-            .filter_map(Result::ok)
-            .filter(|e| e.file_type().is_file())
-            .filter_map(|e| {
-                e.path()
-                    .strip_prefix(root)
-                    .ok()
-                    .map(|r| r.to_string_lossy().replace('\\', "/"))
-            })
-            .collect();
-        matches.sort();
-        for m in matches {
-            push(m);
-        }
-    }
+    // ── 2. Glob pins (PIN_GLOB_PATTERNS) ───────────────────────────────────
+    // `.cursor/rules/*.mdc`: top level only, .mdc files only.
+    glob_pins(
+        root,
+        &root.join(".cursor").join("rules"),
+        Some(1),
+        Some("mdc"),
+        &mut push,
+    );
+    // `.claude/**`: all files, recursive.
+    glob_pins(root, &root.join(".claude"), None, None, &mut push);
 
     results
+}
+
+/// Expand one glob pin: walk `dir` (optionally depth- and extension-limited),
+/// emit root-relative forward-slash paths in sorted order. Shared by both
+/// `PIN_GLOB_PATTERNS` entries above.
+fn glob_pins(
+    root: &Path,
+    dir: &Path,
+    max_depth: Option<usize>,
+    ext: Option<&str>,
+    push: &mut impl FnMut(String),
+) {
+    if !dir.is_dir() {
+        return;
+    }
+    let mut walk = WalkDir::new(dir).min_depth(1).follow_links(false);
+    if let Some(d) = max_depth {
+        walk = walk.max_depth(d);
+    }
+    let mut matches: Vec<String> = walk
+        .into_iter()
+        .filter_map(Result::ok)
+        .filter(|e| {
+            e.file_type().is_file()
+                && ext.is_none_or(|x| {
+                    e.path()
+                        .extension()
+                        .map(|p| p.eq_ignore_ascii_case(x))
+                        .unwrap_or(false)
+                })
+        })
+        .filter_map(|e| {
+            e.path()
+                .strip_prefix(root)
+                .ok()
+                .map(|r| crate::walker::normalize_separators(&r.to_string_lossy()))
+        })
+        .collect();
+    matches.sort();
+    for m in matches {
+        push(m);
+    }
 }
 
 #[cfg(test)]

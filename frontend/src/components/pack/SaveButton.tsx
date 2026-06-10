@@ -88,7 +88,7 @@ function SaveButtonInner({ label, suggestedFilename, text }: SaveButtonProps) {
       whileTap={isSaving ? undefined : springButton}
       className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors duration-200 focus-visible:outline-none disabled:cursor-wait ${
         isSaved
-          ? "border-emerald-600/50 bg-emerald-500/10 text-emerald-400"
+          ? "border-success/40 bg-success/10 text-success"
           : isError
             ? "border-red-600/50 bg-red-500/10 text-red-400"
             : "border-zinc-600/80 bg-zinc-800 text-zinc-200 hover:bg-zinc-700 hover:border-zinc-500"

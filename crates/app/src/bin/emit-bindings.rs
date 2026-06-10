@@ -1,42 +1,11 @@
 use specta_typescript::{BigIntExportBehavior, Typescript};
-use tauri_specta::{collect_commands, Builder};
 
 fn main() {
     let out_path = "frontend/src/bindings/index.ts";
 
-    let builder = Builder::<tauri::Wry>::new()
-        .commands(collect_commands![
-            projectpacker_app_lib::commands::pack_start,
-            projectpacker_app_lib::commands::pack_cancel,
-            projectpacker_app_lib::commands::pack_get_result,
-            projectpacker_app_lib::commands::validate_plan,
-            projectpacker_app_lib::commands::build_combined_prompt,
-            projectpacker_app_lib::commands::get_settings,
-            projectpacker_app_lib::commands::save_settings,
-            projectpacker_app_lib::commands::save_pack_output,
-            projectpacker_app_lib::commands::github_set_token,
-            projectpacker_app_lib::commands::github_clear_token,
-            projectpacker_app_lib::commands::github_token_status,
-            projectpacker_app_lib::commands::github_get_user,
-            projectpacker_app_lib::commands::github_list_repos,
-        ])
-        .typ::<projectpacker_core::types::ProgressEvent>()
-        .typ::<projectpacker_core::tokens::TokenModel>()
-        .typ::<projectpacker_core::tokens::TokensPerModel>()
-        // The engine-level `Redaction` (with `matched_excerpt`) is internal
-        // to `secrets::engine`; the pack surface uses `PackRedaction` (no
-        // excerpt by design — excerpts would echo the very secret we just
-        // redacted into the security report). Don't expose `Redaction` to
-        // TS to keep the wire surface tight.
-        .typ::<projectpacker_core::types::PackRedaction>()
-        // GitHub wire types — also flow into commands above. Listed
-        // explicitly so TS imports stay tidy even if a command surface
-        // shifts later.
-        .typ::<projectpacker_app_lib::github::GithubUser>()
-        .typ::<projectpacker_app_lib::github::GithubRepo>()
-        .typ::<projectpacker_app_lib::github::GithubRepoOwner>();
-
-    builder
+    // The command list and exported types live in one place —
+    // `specta_builder()` in lib.rs — shared with the runtime invoke handler.
+    projectpacker_app_lib::specta_builder()
         .export(
             Typescript::default()
                 .bigint(BigIntExportBehavior::Number)

@@ -1,4 +1,5 @@
 import { type KeyboardEvent, useId } from "react";
+import { fmtBytesSaved } from "../../lib/format";
 
 export interface TransformRowProps {
   label: string;
@@ -12,13 +13,6 @@ export interface TransformRowProps {
    * lockfiles in the project). Rendered as "n/a — no eligible files"
    * rather than "0 B saved" so the user understands the difference. */
   noEligibleFiles?: boolean;
-}
-
-function formatBytes(n: number): string {
-  if (n === 0) return "0 B";
-  if (n < 1024) return `${n} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / 1024 / 1024).toFixed(2)} MB`;
 }
 
 /**
@@ -46,7 +40,7 @@ export function TransformRow({
       ? "—"
       : noEligibleFiles
         ? "n/a — no eligible files"
-        : `${formatBytes(bytesSaved)} saved`;
+        : `${fmtBytesSaved(bytesSaved)} saved`;
 
   function onKey(e: KeyboardEvent<HTMLButtonElement>) {
     if (e.key === " " || e.key === "Enter") {
@@ -68,7 +62,7 @@ export function TransformRow({
           onKeyDown={onKey}
           className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full border transition-colors duration-150 outline-none ${
             checked
-              ? "border-emerald-400 bg-emerald-500"
+              ? "border-primary bg-primary"
               : "border-zinc-600 bg-zinc-700 hover:border-zinc-500"
           }`}
         >

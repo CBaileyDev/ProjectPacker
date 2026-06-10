@@ -25,7 +25,7 @@ function PackProgressBarInner({ value }: PackProgressBarProps) {
       className="h-1.5 w-full overflow-hidden rounded-full bg-zinc-800/80 ring-1 ring-zinc-700/40"
     >
       <m.div
-        className="h-full rounded-full bg-gradient-to-r from-emerald-600 to-emerald-400"
+        className="h-full rounded-full bg-gradient-to-r from-primary/70 to-primary"
         initial={false}
         animate={{ width: `${pct}%` }}
         transition={

@@ -12,6 +12,7 @@ const ALLOWED_FORMATS = ["xml", "markdown", "plainText"] as const;
 const MIN_FILE_SIZE_KB = 1;
 const MAX_FILE_SIZE_KB = 102_400;
 const MAX_GOAL_LENGTH = 8192;
+const MAX_RECENTS = 5;
 
 function clamp(n: number, min: number, max: number): number {
   if (!Number.isFinite(n)) return min;
@@ -31,6 +32,10 @@ function clamp(n: number, min: number, max: number): number {
  *    retired version string migrate forward).
  *  - `options.format` whitelisted; reset to `'xml'`.
  *  - `options.goal` truncated to 8192 chars.
+ *  - `advancedOpen` (state-level) coerced to a boolean; reset to `false`.
+ *  - `recentTargets` (state-level) filtered to well-formed
+ *    `{kind: 'folder' | 'github', value: string}` entries, capped at
+ *    `MAX_RECENTS` (5).
  *
  * Tolerates non-object / non-JSON input by returning it unchanged — the
  * Zustand layer is the source of truth for shape, this is just the moat.
@@ -46,7 +51,10 @@ function sanitize(raw: string): string {
 
   const root = parsed as Record<string, unknown>;
   const state = root.state as Record<string, unknown> | undefined;
-  const options = state?.options as Record<string, unknown> | undefined;
+  if (!state) return raw;
+  // A blob without options is not a recognizable app-state blob — leave it
+  // untouched (the store's persist `merge` layer handles it).
+  const options = state.options as Record<string, unknown> | undefined;
   if (!options) return raw;
 
   // maxFileSizeKb
@@ -88,6 +96,26 @@ function sanitize(raw: string): string {
     options.goal = options.goal.slice(0, MAX_GOAL_LENGTH);
   }
 
+  // advancedOpen — boolean or reset.
+  if (typeof state.advancedOpen !== "boolean") {
+    state.advancedOpen = false;
+  }
+
+  // recentTargets — array of {kind: folder|github, value: string}, cap 5.
+  const rawRecents = Array.isArray(state.recentTargets)
+    ? state.recentTargets
+    : [];
+  state.recentTargets = rawRecents
+    .filter(
+      (r): r is { kind: string; value: string } =>
+        !!r &&
+        typeof r === "object" &&
+        ((r as { kind?: unknown }).kind === "folder" ||
+          (r as { kind?: unknown }).kind === "github") &&
+        typeof (r as { value?: unknown }).value === "string",
+    )
+    .slice(0, MAX_RECENTS);
+
   return JSON.stringify(parsed);
 }
 
@@ -98,7 +126,9 @@ function sleep(ms: number): Promise<void> {
 /**
  * Zustand `StateStorage` adapter that proxies to Tauri's plugin-store with:
  *  - 300ms debounced writes (rapid typing → at most one disk write per 300ms),
- *  - JSON validation/clamping on every write (see `sanitize`),
+ *  - JSON validation/clamping at flush time (see `sanitize`) — the debounce
+ *    discards all but the last queued value, so sanitizing per `setItem`
+ *    would parse+stringify blobs that never reach disk,
  *  - 3-attempt exponential backoff (500/1000/2000ms) on transient failures.
  *
  * `flush()` immediately writes the pending value (e.g. before unload). Reads
@@ -113,17 +143,23 @@ class DebouncedTauriStorage implements StateStorage {
   async getItem(name: string): Promise<string | null> {
     // Honour a queued-but-not-yet-flushed write so the same render cycle
     // sees what it just wrote. Without this, a setItem→getItem within
-    // 300ms returns the previous value.
-    if (this.pending.has(name)) {
-      return this.pending.get(name) ?? null;
+    // 300ms returns the previous value. Sanitized here for parity with
+    // what flush() will eventually persist.
+    const queued = this.pending.get(name);
+    if (queued !== undefined) {
+      return sanitize(queued);
     }
+    // Sanitize the cold read too — this is the startup rehydration path,
+    // and the ONLY place a stale on-disk blob (e.g. a retired
+    // protocolVersion from a pre-rename build) can be migrated before it
+    // enters the live store. Write-path sanitizing alone heals the file
+    // but not the running app.
     const value = await this.store.get<string>(name);
-    return value ?? null;
+    return value == null ? null : sanitize(value);
   }
 
   setItem(name: string, value: string): void {
-    const safe = sanitize(value);
-    this.pending.set(name, safe);
+    this.pending.set(name, value);
     if (this.flushTimer !== null) clearTimeout(this.flushTimer);
     this.flushTimer = setTimeout(() => {
       void this.flush();
@@ -147,7 +183,12 @@ class DebouncedTauriStorage implements StateStorage {
       this.flushTimer = null;
     }
     if (this.pending.size === 0) return;
-    const snapshot = new Map(this.pending);
+    // Sanitize once per flushed value — every preceding setItem in the
+    // debounce window was overwritten and never needed the round-trip.
+    const snapshot = new Map<string, string>();
+    for (const [name, value] of this.pending) {
+      snapshot.set(name, sanitize(value));
+    }
     this.pending.clear();
     await this.writeWithRetry(async () => {
       for (const [name, value] of snapshot) {

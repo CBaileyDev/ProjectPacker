@@ -3,7 +3,7 @@ import { AnimatePresence } from "framer-motion";
 import * as m from "framer-motion/m";
 import { memo, useCallback, useRef, useState } from "react";
 import { springButton } from "../../lib/motion";
-import { useToast } from "../../lib/toast";
+import { useShowToast } from "../../lib/toast";
 import { useKeyboardShortcuts } from "../../lib/use-keyboard-shortcuts";
 import { CheckIcon, CopyIcon, XIcon } from "./icons";
 
@@ -15,6 +15,12 @@ type CopyStatus =
 interface CopyButtonProps {
   label: string;
   text: string;
+  /** Whether this instance owns the window-level `mod+c` shortcut.
+   * Default true. Pass `false` on every non-primary instance when a
+   * screen mounts more than one CopyButton at once — otherwise a single
+   * keypress fires every instance (clipboard race + duplicate toasts).
+   * Gates only the shortcut; the button itself always works. */
+  shortcut?: boolean;
 }
 
 const COPIED_TIMEOUT_MS = 2_000;
@@ -33,10 +39,10 @@ const ERROR_TIMEOUT_MS = 4_000;
  *    state machine resets after 2s/4s, so without a toast the user might
  *    miss a fast click.
  */
-function CopyButtonInner({ label, text }: CopyButtonProps) {
+function CopyButtonInner({ label, text, shortcut = true }: CopyButtonProps) {
   const [status, setStatus] = useState<CopyStatus>({ kind: "idle" });
   const resetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { showToast } = useToast();
+  const showToast = useShowToast();
 
   const doCopy = useCallback(async () => {
     if (resetTimerRef.current !== null) {
@@ -64,7 +70,9 @@ function CopyButtonInner({ label, text }: CopyButtonProps) {
 
   // Pass the live handler through the shortcut map; the hook stashes it
   // in a ref internally so we can re-pass a fresh closure each render.
-  useKeyboardShortcuts({ "mod+c": doCopy });
+  // When `shortcut` is false the map is empty, so no binding can match —
+  // hooks can't be called conditionally, but an empty map is a no-op.
+  useKeyboardShortcuts(shortcut ? { "mod+c": doCopy } : {});
 
   const isCopied = status.kind === "copied";
   const isError = status.kind === "error";
@@ -81,7 +89,7 @@ function CopyButtonInner({ label, text }: CopyButtonProps) {
       whileTap={springButton}
       className={`flex items-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors duration-200 focus-visible:outline-none ${
         isCopied
-          ? "border-emerald-600/50 bg-emerald-500/10 text-emerald-400"
+          ? "border-success/40 bg-success/10 text-success"
           : isError
             ? "border-red-600/50 bg-red-500/10 text-red-400"
             : "border-zinc-600/80 bg-zinc-800 text-zinc-200 hover:bg-zinc-700 hover:border-zinc-500"
